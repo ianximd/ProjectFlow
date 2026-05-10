@@ -1,0 +1,38 @@
+.page {
+  padding: 1.5rem 2rem;
+  max-width: 960px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.pageTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #cdd6f4;
+}
+
+.projectSelect {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  padding: 0.45rem 0.75rem;
+  color: #cdd6f4;
+  font-size: 0.875rem;
+  min-width: 220px;
+}
+.projectSelect:focus { outline: none; border-color: #6c63ff; }
+
+.noProject {
+  color: #585b70;
+  font-size: 0.9rem;
+  padding: 3rem;
+  text-align: center;
+  border: 1px dashed #313244;
+  border-radius: 8px;
+}

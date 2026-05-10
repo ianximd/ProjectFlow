@@ -1,0 +1,242 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #cdd6f4;
+  margin: 0 0 0.25rem;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  color: #7f849c;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.code {
+  background: #313244;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.8em;
+  color: #cba6f7;
+}
+
+.addBtn {
+  flex-shrink: 0;
+  padding: 0.45rem 1rem;
+  background: #6c63ff;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.addBtn:hover { background: #574fd6; }
+
+/* ── Form ── */
+.form {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.formTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #cdd6f4;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 1rem;
+}
+
+.label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #7f849c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input {
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  color: #cdd6f4;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus { border-color: #6c63ff; }
+
+.hint {
+  font-size: 0.78rem;
+  color: #585b70;
+  margin: 0.1rem 0 0;
+}
+
+.providerRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.providerBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  color: #a6adc8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.providerBtn:hover { border-color: #6c63ff; color: #cdd6f4; }
+.providerBtnActive { border-color: #6c63ff !important; color: #cdd6f4 !important; background: #1e1e2e !important; }
+
+.error {
+  color: #f38ba8;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cancelBtn {
+  padding: 0.45rem 1rem;
+  background: transparent;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  color: #a6adc8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.cancelBtn:hover { border-color: #585b70; }
+
+.saveBtn {
+  padding: 0.45rem 1.25rem;
+  background: #6c63ff;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.saveBtn:hover:not(:disabled) { background: #574fd6; }
+.saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── List ── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+}
+
+.providerIcon {
+  color: #7f849c;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.repoInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.repoName {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+.providerLabel {
+  font-size: 0.75rem;
+  color: #585b70;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.connectedAt {
+  font-size: 0.78rem;
+  color: #585b70;
+  flex-shrink: 0;
+}
+
+.deleteBtn {
+  background: transparent;
+  border: none;
+  color: #585b70;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.deleteBtn:hover { color: #f38ba8; background: rgba(243, 139, 168, 0.1); }
+
+.empty {
+  text-align: center;
+  color: #585b70;
+  padding: 2rem 0;
+  font-size: 0.9rem;
+}
+
+.loading {
+  color: #585b70;
+  padding: 1rem 0;
+  font-size: 0.9rem;
+}

@@ -1,0 +1,343 @@
+/* AutomationRuleBuilder.module.css */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ── list panel ── */
+.listPanel {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text, #cdd6f4);
+  margin: 0;
+}
+
+/* ── rule cards ── */
+.ruleCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 0.6rem;
+  gap: 1rem;
+}
+
+.ruleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.ruleName {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #cdd6f4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ruleMeta {
+  font-size: 0.78rem;
+  color: #7f849c;
+}
+
+.ruleActions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.toggleOn,
+.toggleOff {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+}
+
+.toggleOn  { background: #a6e3a1; color: #1e1e2e; }
+.toggleOff { background: #45475a; color: #9399b2; }
+
+.editBtn {
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #6c63ff;
+  color: #6c63ff;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.editBtn:hover { background: #6c63ff22; }
+
+.deleteBtn {
+  font-size: 0.8rem;
+  background: transparent;
+  border: 1px solid #f38ba8;
+  color: #f38ba8;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+}
+.deleteBtn:hover    { background: #f38ba822; }
+.deleteBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.emptyState {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #7f849c;
+}
+
+.empty { color: #7f849c; font-size: 0.85rem; margin: 0.25rem 0; }
+
+/* ── primary button ── */
+.primaryBtn {
+  background: #6c63ff;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.primaryBtn:hover    { background: #5b53e0; }
+.primaryBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cancelBtn {
+  background: transparent;
+  color: #9399b2;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.cancelBtn:hover { background: #313244; }
+
+/* ── drawer (slide-over) ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drawer {
+  width: 480px;
+  max-width: 100vw;
+  background: #181825;
+  border-left: 1px solid #313244;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.drawerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+}
+
+.drawerTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #cdd6f4;
+  margin: 0;
+}
+
+.closeBtn {
+  background: transparent;
+  border: none;
+  color: #7f849c;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.closeBtn:hover { color: #cdd6f4; }
+
+.drawerBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.drawerFooter {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #313244;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+/* ── form sections ── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.85rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9399b2;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.75rem;
+  color: #6c7086;
+}
+
+.addBtn {
+  font-size: 0.78rem;
+  background: #313244;
+  border: none;
+  color: #cdd6f4;
+  border-radius: 4px;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+.addBtn:hover { background: #45475a; }
+
+.input {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus { outline: none; border-color: #6c63ff; }
+
+.select {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+.select:focus { outline: none; border-color: #6c63ff; }
+
+.textarea {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.87rem;
+  padding: 0.45rem 0.6rem;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.textarea:focus { outline: none; border-color: #6c63ff; }
+
+/* inline small inputs in condition/action rows */
+.conditionRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selectSm {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  flex-shrink: 0;
+}
+.selectSm:focus { outline: none; border-color: #6c63ff; }
+
+.inputSm {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  flex: 1;
+  min-width: 80px;
+}
+.inputSm:focus { outline: none; border-color: #6c63ff; }
+
+.removeBtn {
+  background: transparent;
+  border: none;
+  color: #f38ba8;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.1rem 0.3rem;
+  flex-shrink: 0;
+}
+
+/* action card */
+.actionCard {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.actionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}

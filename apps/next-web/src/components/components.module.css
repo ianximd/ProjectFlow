@@ -1,0 +1,30 @@
+.container { max-width: 800px; margin: 0 auto; padding-bottom: 2rem; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+.title { font-size: 1.25rem; font-weight: 600; color: #cdd6f4; }
+.card { background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+.cardTitle { font-size: 1rem; font-weight: 600; color: #cdd6f4; margin-bottom: 1rem; }
+.form { display: flex; flex-direction: column; gap: 0.75rem; }
+.row { display: flex; flex-direction: column; gap: 0.35rem; }
+.row label { font-size: 0.75rem; color: #a6adc8; font-weight: 500; }
+.input { background: #11111b; border: 1px solid #313244; border-radius: 6px; padding: 0.45rem 0.75rem; color: #cdd6f4; font-size: 0.875rem; width: 100%; resize: vertical; }
+.input:focus { outline: none; border-color: #6c63ff; }
+.formActions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+.btnPrimary { background: #6c63ff; color: #fff; border: none; border-radius: 6px; padding: 0.45rem 1rem; font-size: 0.875rem; cursor: pointer; }
+.btnPrimary:hover:not(:disabled) { background: #5a52e0; }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btnSecondary { background: transparent; color: #a6adc8; border: 1px solid #313244; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer; }
+.btnSecondary:hover:not(:disabled) { border-color: #6c63ff; color: #cdd6f4; }
+.btnDanger { background: transparent; color: #f38ba8; border: 1px solid #f38ba833; border-radius: 6px; padding: 0.4rem 0.75rem; font-size: 0.8rem; cursor: pointer; }
+.btnDanger:hover:not(:disabled) { background: #f38ba822; }
+.list { display: flex; flex-direction: column; gap: 0.75rem; }
+.compCard { background: #1e1e2e; border: 1px solid #313244; border-radius: 8px; padding: 1rem 1.25rem; }
+.compHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }
+.compLeft { display: flex; align-items: flex-start; gap: 0.75rem; }
+.compIcon { font-size: 1.2rem; color: #6c63ff; margin-top: 2px; }
+.compName { font-size: 0.95rem; font-weight: 600; color: #cdd6f4; }
+.compDesc { font-size: 0.8rem; color: #a6adc8; margin-top: 2px; }
+.compRight { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.lead { font-size: 0.78rem; color: #a6adc8; }
+.issueCount { font-size: 0.78rem; color: #585b70; }
+.loading { color: #a6adc8; padding: 2rem; text-align: center; }
+.empty { text-align: center; color: #585b70; padding: 3rem; border: 1px dashed #313244; border-radius: 8px; font-size: 0.9rem; }

@@ -1,0 +1,251 @@
+/* WorkLogSection.module.css */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* ── header ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.totalBadge {
+  font-size: 0.82rem;
+  color: #9399b2;
+}
+.totalBadge strong {
+  color: #cdd6f4;
+}
+
+.logBtn {
+  font-size: 0.8rem;
+  background: #313244;
+  border: none;
+  color: #cdd6f4;
+  border-radius: 4px;
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+}
+.logBtn:hover { background: #45475a; }
+
+/* ── form ── */
+.form {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.formRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.fieldLabel {
+  font-size: 0.75rem;
+  color: #9399b2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.88rem;
+  padding: 0.4rem 0.6rem;
+}
+.input:focus { outline: none; border-color: #6c63ff; }
+
+.textarea {
+  background: #181825;
+  border: 1px solid #313244;
+  border-radius: 5px;
+  color: #cdd6f4;
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  min-height: 60px;
+  resize: vertical;
+}
+.textarea:focus { outline: none; border-color: #6c63ff; }
+
+.formActions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.saveBtn {
+  background: #6c63ff;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.saveBtn:hover    { background: #5b53e0; }
+.saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cancelBtn {
+  background: transparent;
+  color: #9399b2;
+  border: 1px solid #45475a;
+  border-radius: 5px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.cancelBtn:hover { background: #313244; }
+
+.error {
+  color: #f38ba8;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+/* ── totals ── */
+.totals {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.totalRow {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #6c63ff;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userName {
+  font-size: 0.85rem;
+  color: #cdd6f4;
+  flex: 1;
+}
+
+.userTotal {
+  font-size: 0.85rem;
+  color: #a6e3a1;
+  font-weight: 600;
+}
+
+/* ── log list ── */
+.logList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.logItem {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 8px;
+  padding: 0.7rem 0.85rem;
+}
+
+.logMeta {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.logInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.logUser {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cdd6f4;
+}
+
+.logTime {
+  font-size: 0.78rem;
+  color: #7f849c;
+}
+
+.logDesc {
+  font-size: 0.83rem;
+  color: #9399b2;
+  margin: 0.2rem 0 0;
+}
+
+.logActions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.editBtn {
+  font-size: 0.78rem;
+  background: transparent;
+  border: 1px solid #6c63ff;
+  color: #6c63ff;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+.editBtn:hover { background: #6c63ff22; }
+
+.deleteBtn {
+  font-size: 0.78rem;
+  background: transparent;
+  border: 1px solid #f38ba8;
+  color: #f38ba8;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+.deleteBtn:hover    { background: #f38ba822; }
+.deleteBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.empty {
+  font-size: 0.85rem;
+  color: #7f849c;
+  margin: 0;
+}

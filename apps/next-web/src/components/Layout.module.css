@@ -1,0 +1,268 @@
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--color-bg);
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 260px;
+  background-color: #fafbfc;
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.logoIcon {
+  width: 32px;
+  height: 32px;
+  background-color: var(--color-primary);
+  color: white;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.logoText {
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-md) var(--spacing-sm);
+  gap: var(--spacing-xs);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.navItem:hover {
+  background-color: rgba(9, 30, 66, 0.04);
+  color: var(--color-text);
+}
+
+.navItem.active {
+  background-color: rgba(0, 82, 204, 0.08);
+  color: var(--color-primary);
+}
+
+.main {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--spacing-lg) var(--spacing-lg) 0;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-surface-secondary, #1e2030);
+  border: 1px solid var(--color-border, #2d3250);
+  border-radius: 6px;
+  color: var(--color-text-secondary, #8892b0);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.searchBtn:hover {
+  border-color: var(--color-accent, #6c63ff);
+  color: var(--color-text-primary, #cdd6f4);
+}
+
+.kbdHint {
+  font-size: 11px;
+  padding: 1px 5px;
+  background: var(--color-surface, #12131a);
+  border: 1px solid var(--color-border, #2d3250);
+  border-radius: 3px;
+  opacity: 0.75;
+}
+
+.breadcrumbs {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+.pageTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.content {
+  flex-grow: 1;
+  overflow: hidden;
+}
+
+/* ── Hamburger button (hidden on desktop) ──────────────────────────────────── */
+.hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  /* touch target */
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.hamburger:hover {
+  background: rgba(9, 30, 66, 0.06);
+}
+
+/* ── Sidebar close button (hidden on desktop) ─────────────────────────────── */
+.sidebarClose {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  min-height: 44px;
+}
+
+/* ── Mobile backdrop overlay ─────────────────────────────────────────────── */
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 199;
+}
+
+/* ══ Responsive breakpoints ══════════════════════════════════════════════════ */
+
+/* Tablet (≤ 1024px) — shrink sidebar */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 220px;
+  }
+}
+
+/* Mobile (≤ 768px) — off-canvas sidebar, hamburger visible */
+@media (max-width: 768px) {
+  .container {
+    overflow: visible;
+  }
+
+  /* Sidebar becomes off-canvas */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 280px;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: var(--shadow-lg);
+    overflow-y: auto;
+  }
+
+  /* Open state — slide in */
+  .sidebarOpen {
+    transform: translateX(0);
+  }
+
+  /* Show overlay */
+  .overlay {
+    display: block;
+  }
+
+  /* Show close button inside sidebar */
+  .sidebarClose {
+    display: flex;
+  }
+
+  /* Show hamburger */
+  .hamburger {
+    display: flex;
+    margin-right: 0.5rem;
+  }
+
+  /* Main takes full width */
+  .main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Header becomes flex-row for hamburger + content */
+  .header {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+  }
+
+  /* Title shrinks gracefully */
+  .pageTitle {
+    font-size: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Actions stay at right */
+  .headerRow {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Hide the "Ctrl+K" keyboard hint on mobile */
+  .kbdHint {
+    display: none;
+  }
+}

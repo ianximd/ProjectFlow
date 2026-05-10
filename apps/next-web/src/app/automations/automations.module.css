@@ -1,0 +1,61 @@
+/* automations page */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #11111b;
+  color: #cdd6f4;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #313244;
+  flex-shrink: 0;
+  gap: 1rem;
+}
+
+.heading {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.selectLabel {
+  font-size: 0.85rem;
+  color: #9399b2;
+}
+
+.select {
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.75rem;
+}
+.select:focus { outline: none; border-color: #6c63ff; }
+
+.loading {
+  font-size: 0.85rem;
+  color: #7f849c;
+}
+
+.placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7f849c;
+  font-size: 1rem;
+}

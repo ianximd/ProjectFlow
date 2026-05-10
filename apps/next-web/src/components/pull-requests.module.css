@@ -1,0 +1,115 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.group {}
+
+.groupTitle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #7f849c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 0.5rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: #11111b;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.providerTag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  letter-spacing: 0.04em;
+}
+.providerTag[data-provider="github"] {
+  background: rgba(88, 91, 112, 0.25);
+  color: #a6adc8;
+}
+.providerTag[data-provider="gitlab"] {
+  background: rgba(250, 179, 135, 0.15);
+  color: #fab387;
+}
+
+.prTitle,
+.commitMsg {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: #cdd6f4;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prTitle:hover,
+.commitMsg:hover {
+  color: #cba6f7;
+  text-decoration: underline;
+}
+
+.stateBadge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  text-transform: capitalize;
+}
+
+.branch {
+  font-size: 0.75rem;
+  color: #7f849c;
+  font-family: 'Fira Code', monospace;
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sha {
+  font-size: 0.75rem;
+  color: #7f849c;
+  font-family: 'Fira Code', monospace;
+  flex-shrink: 0;
+}
+
+.author {
+  font-size: 0.75rem;
+  color: #585b70;
+  flex-shrink: 0;
+}
+
+.date {
+  font-size: 0.75rem;
+  color: #585b70;
+  flex-shrink: 0;
+}
+
+.empty {
+  font-size: 0.85rem;
+  color: #585b70;
+  margin: 0;
+}

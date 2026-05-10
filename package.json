@@ -1,0 +1,21 @@
+{
+  "name": "projectflow",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:deploy-sps": "tsx scripts/db-deploy-sps.ts"
+  },
+  "devDependencies": {
+    "mssql": "^12.5.2",
+    "tsx": "^4.7.1",
+    "turbo": "latest",
+    "typescript": "^5.0.0"
+  }
+}

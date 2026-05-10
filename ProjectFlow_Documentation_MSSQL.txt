@@ -1,0 +1,1835 @@
+================================================================================
+  ProjectFlow — Jira Clone
+  Full Project Documentation Plan
+  Database: Microsoft SQL Server 2022
+  Data Layer: Stored Procedures Only (No ORM)
+================================================================================
+  Document Version : 1.0.0
+  Authored by      : Senior Development Manager
+  Target Audience  : AI Models, Lead Developers, Full-Stack Engineers, DevOps
+  Project Codename : ProjectFlow
+  Date             : 2026-05-07
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+ 1.  Project Overview
+ 2.  Goals & Objectives
+ 3.  System Architecture
+ 4.  Technology Stack
+ 5.  Feature Specification (Full Jira Feature Parity)
+     5.1  Authentication & Authorization
+     5.2  Workspaces & Organizations
+     5.3  Project Management
+     5.4  Issue & Task Tracking
+     5.5  Backlog Management
+     5.6  Sprint Management (Scrum)
+     5.7  Kanban Board
+     5.8  Roadmap & Timeline
+     5.9  Dashboards & Reporting
+     5.10 Custom Workflows
+     5.11 User & Role Management
+     5.12 Notifications & Activity Feed
+     5.13 Search & Filtering (PQL)
+     5.14 Integrations
+     5.15 Automation Engine
+     5.16 Time Tracking
+     5.17 File Attachments & Media
+     5.18 Comments & Collaboration
+     5.19 Labels, Epics & Versions
+     5.20 API & Webhooks
+ 6.  MS SQL Server Database Design
+ 7.  Stored Procedure Catalogue
+ 8.  Data Access Layer (No ORM — node-mssql)
+ 9.  API Design (REST + GraphQL)
+10.  Frontend Architecture
+11.  Backend Architecture
+12.  DevOps & CI/CD Pipeline
+13.  Security Plan
+14.  Testing Strategy
+15.  Project Phases & Milestones
+16.  Folder & File Structure
+17.  Environment Configuration
+18.  Glossary
+
+
+================================================================================
+ 1. PROJECT OVERVIEW
+================================================================================
+
+ProjectFlow is a full-featured, open-source web application that replicates the
+complete functionality of Atlassian's Jira Project Manager. It is designed for
+agile software development teams and supports both Scrum and Kanban methodologies.
+The entire data layer is built on Microsoft SQL Server 2022 using Stored
+Procedures exclusively — no ORM is used anywhere in the application.
+
+This document is the single source of truth for any developer, AI model, or
+contributor building, maintaining, or extending this application. Every major
+design decision, feature specification, architectural choice, and implementation
+guideline is captured here.
+
+  Property              | Value
+  ----------------------+-----------------------------------------------
+  Project Name          | ProjectFlow
+  Type                  | Web Application (SaaS / Self-Hosted)
+  Methodology Support   | Scrum, Kanban, Hybrid
+  Access Model          | Multi-tenant, Workspace-based
+  Database              | Microsoft SQL Server 2022
+  Data Access           | Stored Procedures only — No ORM
+  Deployment            | Docker + Kubernetes, Self-hosted capable
+  License               | MIT
+
+
+================================================================================
+ 2. GOALS & OBJECTIVES
+================================================================================
+
+Primary Goals
+-------------
+  #   Goal                                                    Priority
+  --- -------------------------------------------------------- ----------
+  G1  Full feature parity with Jira Software (Cloud)          Critical
+  G2  Performance <= 200ms API response time (p95)            High
+  G3  Support 10,000+ concurrent users                        High
+  G4  Mobile-responsive UI (iOS, Android browsers)            High
+  G5  REST API + GraphQL for integrations                     Medium
+  G6  Self-hostable with Docker Compose (single command)      Medium
+  G7  AI-assisted task suggestions and automation             Low (Phase 3)
+
+Non-Goals (Out of Scope for v1.0)
+----------------------------------
+  - Native mobile apps (iOS / Android)
+  - Jira Service Management clone (help desk features)
+  - Jira Align (enterprise portfolio management)
+  - Billing / Payment systems
+
+
+================================================================================
+ 3. SYSTEM ARCHITECTURE
+================================================================================
+
+High-Level Architecture
+-----------------------
+
+  +------------------------------------------------------------------+
+  |                        CLIENT LAYER                              |
+  |  React + Next.js 14 (App Router) -- SSR/SSG + Client Components  |
+  +------------------------------------------------------------------+
+                               | HTTPS / WSS
+  +------------------------------------------------------------------+
+  |                      API GATEWAY (Nginx)                         |
+  |     Reverse Proxy / Rate Limiter / SSL Termination               |
+  +-------------------+-------------------------------+--------------+
+                      | REST / GraphQL                | WebSocket
+  +-------------------+----------+    +--------------+--------------+
+  |   BACKEND API SERVICE        |    |   REALTIME SERVICE          |
+  |   Node.js + Hono.js          |    |   Socket.io Server          |
+  |   - Auth Service             |    |   - Live board updates      |
+  |   - Project Service          |    |   - Notifications           |
+  |   - Issue Service            |    +-----------------------------+
+  |   - Sprint Service           |
+  |   - Automation Engine        |
+  +-------------------+----------+
+                      | Stored Procedure Calls (node-mssql)
+  +------------------------------------------------------------------+
+  |                         DATA LAYER                               |
+  |  MS SQL Server 2022        | Redis 7 (Cache + Sessions + Queue)  |
+  |  Stored Procedures Only    | Azure Blob / MinIO (File Storage)   |
+  +------------------------------------------------------------------+
+
+Architecture Principles
+-----------------------
+  1. SP-First Data Access: All reads/writes go through named Stored Procedures.
+     Zero raw SQL in application code.
+  2. Separation of Concerns: Frontend, API, and data layers are strictly
+     decoupled.
+  3. Stateless API: All state stored in SQL Server or Redis; API is
+     horizontally scalable.
+  4. Event-Driven: Automation triggers use an internal event bus (Redis BullMQ).
+  5. API-First Design: All features accessible via REST API before UI is built.
+  6. Domain-Driven Design (DDD): Code organized by business domain.
+
+
+================================================================================
+ 4. TECHNOLOGY STACK
+================================================================================
+
+Frontend
+--------
+  Layer           | Technology              | Version         | Justification
+  ----------------+-------------------------+-----------------+------------------
+  Framework       | Next.js                 | 14.x (App Router) | SSR, SEO, routing
+  UI Library      | React                   | 18.x            | Component-based
+  Language        | TypeScript              | 5.x             | Type safety
+  Styling         | Tailwind CSS            | 3.x             | Utility-first
+  Components      | shadcn/ui + Radix UI    | Latest          | Accessible, unstyled
+  Server State    | TanStack Query          | 5.x             | Caching, mutations
+  Client State    | Zustand                 | 4.x             | Lightweight
+  Forms           | React Hook Form + Zod   | Latest          | Validation
+  Drag & Drop     | @dnd-kit                | Latest          | Accessible DnD
+  Charts          | Recharts                | Latest          | Composable charts
+  Rich Text       | TipTap (ProseMirror)    | Latest          | Issue descriptions
+  Real-time       | Socket.io Client        | Latest          | Live board updates
+  Icons           | Lucide React            | Latest          | Clean icon set
+  Date Handling   | date-fns                | Latest          | Lightweight
+
+Backend
+-------
+  Layer           | Technology              | Version  | Justification
+  ----------------+-------------------------+----------+------------------------
+  Runtime         | Node.js                 | 20.x LTS | Stable, widely supported
+  Framework       | Hono.js                 | 4.x      | Ultra-fast, edge-ready
+  Language        | TypeScript              | 5.x      | End-to-end type safety
+  DB Driver       | node-mssql              | 11.x     | Official MS SQL Server client
+  Database        | MS SQL Server           | 2022     | Enterprise-grade, SP support
+  Cache / Queue   | Redis                   | 7.x      | Sessions, caching, queues
+  Job Queue       | BullMQ                  | Latest   | Automation, email, webhooks
+  File Storage    | Azure Blob / MinIO      | Latest   | Attachments, avatars
+  Email           | Resend / Nodemailer     | Latest   | Notifications
+  Auth            | JWT + OAuth2            | --       | Secure, standard
+  WebSockets      | Socket.io               | Latest   | Real-time updates
+  API Spec        | OpenAPI 3.1 (Swagger)   | --       | Documentation
+  Validation      | Zod                     | 3.x      | Input schema validation
+
+DevOps & Infrastructure
+-----------------------
+  Tool                      | Purpose
+  --------------------------+------------------------------------------
+  Docker + Docker Compose   | Containerization, local dev, self-hosting
+  Kubernetes (K8s)          | Production orchestration
+  GitHub Actions            | CI/CD pipeline
+  Nginx                     | Reverse proxy, SSL termination
+  Terraform                 | Infrastructure as Code (IaC)
+  Prometheus + Grafana      | Monitoring & alerting
+  Sentry                    | Error tracking
+
+
+================================================================================
+ 5. FEATURE SPECIFICATION (FULL JIRA FEATURE PARITY)
+================================================================================
+
+------------------------------------------------------------------------
+ 5.1 Authentication & Authorization
+------------------------------------------------------------------------
+
+Secure user identity and access management system supporting multiple
+authentication methods.
+
+Features:
+  - Email/Password Registration & Login with email verification
+  - OAuth 2.0 Social Login: Google, GitHub, Microsoft
+  - JWT Access Tokens (15-min expiry) + Refresh Tokens (7-day, httpOnly cookie)
+  - Multi-Factor Authentication (MFA): TOTP (Google Authenticator)
+  - Session Management: view and revoke active sessions
+  - Password Reset via email link (time-limited token)
+  - Account deactivation by admin
+
+API Endpoints:
+  POST   /api/auth/register          POST   /api/auth/login
+  POST   /api/auth/logout            POST   /api/auth/refresh
+  POST   /api/auth/forgot-password   POST   /api/auth/reset-password
+  POST   /api/auth/verify-email      GET    /api/auth/me
+  POST   /api/auth/oauth/google      POST   /api/auth/oauth/github
+  POST   /api/auth/mfa/setup         POST   /api/auth/mfa/verify
+
+TypeScript Interface:
+  interface User {
+    id:              string;        // UNIQUEIDENTIFIER (NEWID())
+    email:           string;        // Unique, indexed
+    name:            string;
+    avatarUrl:       string | null;
+    passwordHash:    string | null;
+    isEmailVerified: boolean;
+    mfaEnabled:      boolean;
+    mfaSecret:       string | null;
+    createdAt:       Date;
+    updatedAt:       Date;
+    deletedAt:       Date | null;   // Soft delete
+  }
+
+------------------------------------------------------------------------
+ 5.2 Workspaces & Organizations
+------------------------------------------------------------------------
+
+Top-level organizational container. Each workspace has its own projects,
+members, and settings. Equivalent to a Jira site/organization.
+
+Features:
+  - Create, rename, delete workspaces
+  - Workspace-level member invitation via email or invite link
+  - Workspace avatar/logo upload
+  - Member roles: Owner, Admin, Member, Guest
+  - Workspace-level activity log
+  - Transfer workspace ownership
+
+API Endpoints:
+  POST   /api/workspaces
+  GET    /api/workspaces
+  GET    /api/workspaces/:id
+  PATCH  /api/workspaces/:id
+  DELETE /api/workspaces/:id
+  POST   /api/workspaces/:id/invite
+  POST   /api/workspaces/:id/join/:inviteCode
+  GET    /api/workspaces/:id/members
+  PATCH  /api/workspaces/:id/members/:memberId
+  DELETE /api/workspaces/:id/members/:memberId
+
+------------------------------------------------------------------------
+ 5.3 Project Management
+------------------------------------------------------------------------
+
+Projects live inside workspaces and represent a single software product,
+team initiative, or work stream. Supports Scrum, Kanban, and Business types.
+
+Features:
+  - Create projects with name, key (e.g., PROJ), description, avatar image
+  - Project types: Scrum, Kanban, Business (generic)
+  - Archive and delete projects
+  - Project-level member permissions (inherited or overridden)
+  - Copy/duplicate projects with optional template
+
+TypeScript Interface:
+  interface Project {
+    id:          string;
+    workspaceId: string;
+    name:        string;
+    key:         string;        // e.g., "PROJ"
+    description: string | null;
+    avatarUrl:   string | null;
+    type:        "SCRUM" | "KANBAN" | "BUSINESS";
+    status:      "ACTIVE" | "ARCHIVED" | "DELETED";
+    startDate:   Date | null;
+    endDate:     Date | null;
+    createdById: string;
+    createdAt:   Date;
+    updatedAt:   Date;
+  }
+
+------------------------------------------------------------------------
+ 5.4 Issue & Task Tracking
+------------------------------------------------------------------------
+
+The core unit of work. An issue represents a user story, bug, task, epic,
+sub-task, or improvement.
+
+Issue Types:
+  Epic, Story, Task, Bug, Sub-task, Improvement, Feature, Test Case
+
+Core Fields:
+  - Title / Summary
+  - Description (Rich Text via TipTap — markdown, images, code blocks, tables)
+  - Assignee (single or multiple)
+  - Reporter
+  - Priority: Highest, High, Medium, Low, Lowest
+  - Status (configurable per workflow)
+  - Labels (multi-select, color-coded)
+  - Fix Version / Affected Version
+  - Story Points / Estimate
+  - Start Date, Due Date
+  - Sprint / Epic Link / Components
+  - Custom Fields (text, number, date, dropdown, checkbox, user)
+
+Additional Features:
+  - Issue Key auto-generation (e.g., PROJ-42)
+  - Issue Linking: blocks, is-blocked-by, clones, duplicates, relates-to
+  - Sub-tasks: nested tasks under a parent issue
+  - Watchers & Voting on issues
+  - Full issue history / audit log
+  - Bulk operations: update, assign, transition, delete
+  - Move issue between projects; Clone issue
+
+TypeScript Interface:
+  interface Task {
+    id:           string;
+    projectId:    string;      workspaceId:  string;
+    issueKey:     string;      // e.g., "PROJ-42"
+    title:        string;
+    description:  string | null;
+    type:         IssueType;   status:       string;
+    priority:     Priority;    assigneeIds:  string[];
+    reporterId:   string;      sprintId:     string | null;
+    epicId:       string | null;
+    parentTaskId: string | null;
+    storyPoints:  number | null;
+    startDate:    Date | null;  dueDate:     Date | null;
+    position:     number;
+    labels:       string[];    versionIds:   string[];
+    componentIds: string[];
+    customFields: Record<string, unknown>;
+    createdAt:    Date;        updatedAt:    Date;
+    resolvedAt:   Date | null; deletedAt:   Date | null;
+  }
+
+  enum IssueType { EPIC STORY TASK BUG SUBTASK IMPROVEMENT FEATURE TEST }
+  enum Priority  { HIGHEST HIGH MEDIUM LOW LOWEST }
+
+------------------------------------------------------------------------
+ 5.5 Backlog Management
+------------------------------------------------------------------------
+
+  - Ordered list of all project issues not assigned to an active sprint
+  - Drag-and-drop reordering (fractional position-based ordering)
+  - Quick create issues inline from backlog
+  - Filter by: assignee, label, priority, issue type, epic, version
+  - Epic filter lane; drag issues into sprint from backlog
+  - Bulk move issues to sprint; backlog grouped by sprint sections
+  - "Unscheduled" section for issues with no sprint
+
+------------------------------------------------------------------------
+ 5.6 Sprint Management (Scrum)
+------------------------------------------------------------------------
+
+  - Create Sprint: name, goal, start date, end date, duration (1-4 weeks)
+  - Start Sprint: activates the sprint, sets board active state
+  - Complete Sprint: closes sprint, moves unfinished issues to backlog
+  - Sprint metrics: total story points, completed points, remaining points
+  - Sprint Reports: Burndown, Burnup, Velocity Chart, Sprint Report
+  - Only one active sprint at a time per project (configurable)
+
+API Endpoints:
+  POST   /api/projects/:id/sprints
+  GET    /api/projects/:id/sprints
+  GET    /api/projects/:id/sprints/:sid
+  PATCH  /api/projects/:id/sprints/:sid
+  DELETE /api/projects/:id/sprints/:sid
+  POST   /api/projects/:id/sprints/:sid/start
+  POST   /api/projects/:id/sprints/:sid/complete
+  GET    /api/projects/:id/sprints/:sid/report
+  GET    /api/projects/:id/sprints/:sid/burndown
+
+TypeScript Interface:
+  interface Sprint {
+    id:          string;
+    projectId:   string;
+    name:        string;
+    goal:        string | null;
+    status:      "PLANNED" | "ACTIVE" | "COMPLETED";
+    startDate:   Date | null;
+    endDate:     Date | null;
+    completedAt: Date | null;
+    createdAt:   Date;
+    updatedAt:   Date;
+  }
+
+------------------------------------------------------------------------
+ 5.7 Kanban Board
+------------------------------------------------------------------------
+
+  - Drag and drop issue cards between columns (triggers status transition)
+  - Column customization: add, rename, reorder, remove columns
+  - WIP Limits: maximum card limit per column
+  - Swimlanes: group cards by assignee, epic, priority, or none
+  - Board filtering: assignee, label, issue type, priority, epic
+  - Flag issues (impediment flag — red overlay)
+  - Card color coding by priority or issue type
+  - Subtask progress bar on parent card
+  - Board configuration: manage columns, swimlanes, card layout
+
+------------------------------------------------------------------------
+ 5.8 Roadmap & Timeline
+------------------------------------------------------------------------
+
+  - Horizontal Gantt-style bars for epics and stories over a date range
+  - Zoom levels: Monthly, Quarterly, Yearly
+  - Drag bars to adjust start/end dates
+  - Dependency arrows between issues (blocks/is-blocked-by)
+  - Epic color coding and milestone markers
+  - Progress indicators on epic bars (% complete)
+  - Export roadmap as PNG or PDF
+  - Multi-project roadmap (workspace-level view)
+
+------------------------------------------------------------------------
+ 5.9 Dashboards & Reporting
+------------------------------------------------------------------------
+
+Built-in Reports:
+  Report Name                | Description
+  ---------------------------+--------------------------------------------
+  Burndown Chart             | Remaining story points per day in sprint
+  Burnup Chart               | Completed work vs. total scope over time
+  Velocity Chart             | Story points completed across last N sprints
+  Cumulative Flow Diagram    | Issue distribution across statuses over time
+  Sprint Report              | Completed vs. incomplete issues summary
+  Epic Report                | Progress of issues within an epic
+  Version Report             | Progress toward a release version
+  Created vs. Resolved       | Bug creation vs. resolution trend
+  Time Tracking Report       | Logged vs. estimated time
+  User Workload              | Issues assigned per team member
+  Issue Age                  | How long issues have stayed in each status
+
+Dashboard Features:
+  - Drag-and-drop gadget layout (grid system)
+  - Multiple dashboards per workspace
+  - Dashboard sharing (public link, team access)
+  - Personal dashboard (My Tasks, My Activity)
+
+------------------------------------------------------------------------
+ 5.10 Custom Workflows
+------------------------------------------------------------------------
+
+  - Visual workflow editor: node-and-edge diagram
+  - Create custom statuses with name, category (To Do/In Progress/Done), color
+  - Define transitions: which status can move to which
+  - Transition conditions: only assignee can close, only admin can reject
+  - Transition validators: require fields to be filled before transition
+  - Transition post-functions: auto-assign on start, auto-notify on done
+  - Default workflows: To Do -> In Progress -> Done; Bug Workflow; Agile Workflow
+
+------------------------------------------------------------------------
+ 5.11 User & Role Management
+------------------------------------------------------------------------
+
+Role Hierarchy:
+  Workspace Owner
+    -> Workspace Admin
+         -> Project Lead
+              -> Member (Developer)
+                   -> Reporter
+                        -> Guest (read-only)
+
+Permission Matrix:
+  Permission                | Owner | Admin | Lead | Member | Reporter | Guest
+  --------------------------+-------+-------+------+--------+----------+------
+  Manage workspace settings |  YES  |  YES  |  NO  |   NO   |    NO    |  NO
+  Invite members            |  YES  |  YES  | YES  |   NO   |    NO    |  NO
+  Create/manage projects    |  YES  |  YES  | YES  |   NO   |    NO    |  NO
+  Manage sprints            |  YES  |  YES  | YES  |  YES   |    NO    |  NO
+  Create issues             |  YES  |  YES  | YES  |  YES   |   YES    |  NO
+  Edit any issue            |  YES  |  YES  | YES  |  YES   |    NO    |  NO
+  Delete issues             |  YES  |  YES  | YES  |   NO   |    NO    |  NO
+  View project              |  YES  |  YES  | YES  |  YES   |   YES    | YES
+  Manage workflows          |  YES  |  YES  | YES  |   NO   |    NO    |  NO
+  View reports              |  YES  |  YES  | YES  |  YES   |   YES    |  NO
+
+------------------------------------------------------------------------
+ 5.12 Notifications & Activity Feed
+------------------------------------------------------------------------
+
+Notification Triggers:
+  - Issue assigned to me
+  - Issue I'm watching updated
+  - Comment added to my issue or watched issue
+  - I'm mentioned in a comment (@username)
+  - Sprint started / completed
+  - Issue due date approaching (24h, 1h)
+  - Invitation to workspace / project
+
+Delivery Channels:
+  - In-app: Bell icon badge + notification panel (real-time via WebSocket)
+  - Email: Digest or immediate (configurable per-user)
+  - Slack (via integration): mentions and status changes
+
+Activity Feed:
+  - Per-issue audit trail: all changes logged with timestamp, user, old/new values
+  - Per-project activity feed
+  - Per-user "my activity" feed
+  - Filterable by action type (created, updated, commented, transitioned)
+
+------------------------------------------------------------------------
+ 5.13 Search & Filtering (PQL — ProjectFlow Query Language)
+------------------------------------------------------------------------
+
+PQL is a JQL-inspired structured query syntax for finding issues.
+
+Example Queries:
+  project = "MYAPP" AND status = "In Progress" AND assignee = currentUser()
+  type = BUG AND priority in (HIGH, HIGHEST) AND created >= -7d
+  sprint in openSprints() AND status != "Done" ORDER BY priority DESC
+
+Supported Fields:
+  project, type, status, priority, assignee, reporter, label, sprint, epic,
+  component, version, created, updated, resolved, duedate, storyPoints,
+  summary, description
+
+Supported Functions:
+  currentUser(), openSprints(), closedSprints(), futureSprints(),
+  startOfDay(), endOfDay(), startOfWeek(), now()
+
+Features:
+  - Save filters as named sets
+  - Share filters with team members
+  - Quick filters: My Issues, Recent Issues, Unassigned, Overdue
+
+------------------------------------------------------------------------
+ 5.14 Integrations
+------------------------------------------------------------------------
+
+  Integration             | Features
+  ------------------------+----------------------------------------------
+  GitHub / GitLab         | Link commits, PRs; auto-transition on merge
+  Bitbucket               | Repository linking, PR status
+  Slack / Teams           | Notifications to channels, create issues
+  Figma                   | Embed frames in issue descriptions
+  Google Drive            | Attach Drive files to issues
+  Sentry                  | Link Sentry errors to issues
+  PagerDuty               | Escalate bugs to incidents
+  Webhook (Outgoing)      | HTTP POST on system events, HMAC-SHA256 signed
+
+------------------------------------------------------------------------
+ 5.15 Automation Engine
+------------------------------------------------------------------------
+
+Structure: Trigger -> Conditions -> Actions
+
+Available Triggers:
+  - Issue created / updated / transitioned
+  - Sprint started / completed
+  - Due date approaching
+  - Scheduled (cron: daily, weekly)
+  - Manual trigger (button in issue)
+  - Webhook trigger (external HTTP POST)
+
+Available Conditions:
+  - Issue matches PQL filter
+  - User is member of role
+  - Field has / does not have value
+  - Issue is / is not in sprint
+
+Available Actions:
+  - Transition issue to status
+  - Assign / unassign issue
+  - Set field value (priority, label, custom field)
+  - Create sub-task or linked issue
+  - Send notification / comment
+  - Send email
+  - Trigger webhook (POST to URL)
+  - Log work
+
+------------------------------------------------------------------------
+ 5.16 Time Tracking
+------------------------------------------------------------------------
+
+  - Log work on any issue (hours/minutes, start time, description)
+  - Remaining estimate: auto-updated or manually overridden
+  - Time tracking summary per issue (original estimate, logged, remaining)
+  - Time tracking report per user, sprint, project
+  - Time format: Hours and minutes (e.g., 2h 30m)
+
+------------------------------------------------------------------------
+ 5.17 File Attachments & Media
+------------------------------------------------------------------------
+
+  - Drag-and-drop & paste-from-clipboard file upload on issue detail
+  - Max file size: 25MB per file (configurable)
+  - Supported: images, PDFs, documents, archives, videos, code files
+  - Image preview (lightbox); PDF viewer; code syntax highlighting
+  - Storage: Azure Blob Storage or MinIO (self-hosted S3-compatible)
+  - Signed URL generation (15-minute expiry, secure)
+
+------------------------------------------------------------------------
+ 5.18 Comments & Collaboration
+------------------------------------------------------------------------
+
+  - Rich text comments via TipTap (bold, italic, code, images, tables, links)
+  - @mentions tagging workspace members (triggers notification)
+  - Emoji reactions on comments
+  - Edit comment (own, within 24h grace period or always for admin)
+  - Delete comment (soft delete)
+  - Threaded replies (one level deep)
+  - Pin comment (Project Lead+)
+  - Resolve comment thread
+  - Internal notes (only visible to project members, not guests)
+
+------------------------------------------------------------------------
+ 5.19 Labels, Epics & Versions
+------------------------------------------------------------------------
+
+Labels:
+  - Project-level or workspace-level; name + color
+  - Multi-select on issues; filter by label on board/backlog
+
+Epics:
+  - Special issue type (EPIC) that groups stories
+  - Epic progress bar (% of child issues done)
+  - Epic color for board visualization
+  - Shown in roadmap as parent bars
+
+Versions (Fix Versions / Releases):
+  - Status: Unreleased / Released / Archived
+  - Release date, release notes (rich text)
+  - Version report: issues completed vs. remaining
+  - "Release version" marks all tagged issues as released
+
+Components:
+  - Sub-section of a project (e.g., "Frontend", "Auth", "Database")
+  - Component lead: default assignee when component is added
+
+------------------------------------------------------------------------
+ 5.20 API & Webhooks
+------------------------------------------------------------------------
+
+REST API:
+  - Base URL: /api/v1/
+  - Authentication: Bearer JWT in Authorization header
+  - Response format: JSON
+  - Pagination: cursor-based (cursor, limit) and offset-based (page, pageSize)
+  - Rate limiting: 1000 req/min per user; 10 req/15min on auth endpoints
+  - Versioning: URL-based (/v1/, /v2/)
+
+Standard Response Envelope:
+  // Success
+  { "data": {...}, "meta": { "total": 150, "page": 1, "hasNext": true } }
+
+  // Error
+  { "error": { "code": "TASK_NOT_FOUND", "message": "...", "statusCode": 404 } }
+
+GraphQL API (Phase 2):
+  - Endpoint: /graphql
+  - Subscriptions: real-time issue updates via WebSocket
+  - Schema builder: Pothos (type-safe, TypeScript)
+
+Webhook API:
+  - Outgoing webhooks triggered by system events
+  - Registration: POST /api/webhooks
+  - Events: issue.created, issue.updated, issue.deleted, sprint.started,
+            sprint.completed, comment.created, member.invited
+  - Payload: HTTP POST JSON + X-ProjectFlow-Signature header (HMAC-SHA256)
+  - Retry: 3 attempts with exponential backoff
+
+
+================================================================================
+ 6. MS SQL SERVER DATABASE DESIGN
+================================================================================
+
+All tables are created in SQL Server 2022 using T-SQL DDL.
+Primary keys use UNIQUEIDENTIFIER (NEWID()) for distributed uniqueness.
+Soft-deletes use a DeletedAt column.
+Every table includes CreatedAt and UpdatedAt with DEFAULT GETUTCDATE().
+
+DDL — Core Tables
+-----------------
+
+-- Users --
+CREATE TABLE Users (
+    Id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    Email           NVARCHAR(255) NOT NULL UNIQUE,
+    Name            NVARCHAR(255) NOT NULL,
+    AvatarUrl       NVARCHAR(500) NULL,
+    PasswordHash    NVARCHAR(255) NULL,
+    IsEmailVerified BIT NOT NULL DEFAULT 0,
+    MfaEnabled      BIT NOT NULL DEFAULT 0,
+    MfaSecret       NVARCHAR(255) NULL,
+    CreatedAt       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    DeletedAt       DATETIME2 NULL
+);
+
+-- Workspaces --
+CREATE TABLE Workspaces (
+    Id        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    Name      NVARCHAR(255) NOT NULL,
+    Slug      NVARCHAR(100) NOT NULL UNIQUE,
+    AvatarUrl NVARCHAR(500) NULL,
+    OwnerId   UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+CREATE TABLE WorkspaceMembers (
+    Id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    WorkspaceId UNIQUEIDENTIFIER NOT NULL REFERENCES Workspaces(Id),
+    UserId      UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    Role        NVARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+                     -- OWNER | ADMIN | MEMBER | GUEST
+    JoinedAt    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    CONSTRAINT UQ_WorkspaceMember UNIQUE (WorkspaceId, UserId)
+);
+
+-- Projects --
+CREATE TABLE Projects (
+    Id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    WorkspaceId UNIQUEIDENTIFIER NOT NULL REFERENCES Workspaces(Id),
+    Name        NVARCHAR(255) NOT NULL,
+    [Key]       NVARCHAR(20) NOT NULL,       -- e.g., "PROJ"
+    Description NVARCHAR(MAX) NULL,
+    AvatarUrl   NVARCHAR(500) NULL,
+    Type        NVARCHAR(20) NOT NULL DEFAULT 'SCRUM',
+                     -- SCRUM | KANBAN | BUSINESS
+    Status      NVARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+                     -- ACTIVE | ARCHIVED | DELETED
+    CreatedById UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    StartDate   DATE NULL,
+    EndDate     DATE NULL,
+    CreatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    CONSTRAINT UQ_ProjectKey UNIQUE (WorkspaceId, [Key])
+);
+
+-- Sprints --
+CREATE TABLE Sprints (
+    Id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    ProjectId   UNIQUEIDENTIFIER NOT NULL REFERENCES Projects(Id),
+    Name        NVARCHAR(255) NOT NULL,
+    Goal        NVARCHAR(MAX) NULL,
+    Status      NVARCHAR(20) NOT NULL DEFAULT 'PLANNED',
+                     -- PLANNED | ACTIVE | COMPLETED
+    StartDate   DATETIME2 NULL,
+    EndDate     DATETIME2 NULL,
+    CompletedAt DATETIME2 NULL,
+    CreatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Tasks (Issues) --
+CREATE TABLE Tasks (
+    Id           UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    ProjectId    UNIQUEIDENTIFIER NOT NULL REFERENCES Projects(Id),
+    WorkspaceId  UNIQUEIDENTIFIER NOT NULL REFERENCES Workspaces(Id),
+    IssueKey     NVARCHAR(30) NOT NULL,      -- e.g., "PROJ-42"
+    Title        NVARCHAR(500) NOT NULL,
+    Description  NVARCHAR(MAX) NULL,         -- JSON (TipTap document)
+    Type         NVARCHAR(20) NOT NULL DEFAULT 'TASK',
+                      -- EPIC|STORY|TASK|BUG|SUBTASK|IMPROVEMENT|FEATURE|TEST
+    Status       NVARCHAR(100) NOT NULL,
+    Priority     NVARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+                      -- HIGHEST|HIGH|MEDIUM|LOW|LOWEST
+    ReporterId   UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    SprintId     UNIQUEIDENTIFIER NULL REFERENCES Sprints(Id),
+    EpicId       UNIQUEIDENTIFIER NULL REFERENCES Tasks(Id),
+    ParentTaskId UNIQUEIDENTIFIER NULL REFERENCES Tasks(Id),
+    StoryPoints  FLOAT NULL,
+    StartDate    DATE NULL,
+    DueDate      DATE NULL,
+    Position     FLOAT NOT NULL DEFAULT 0,
+    CreatedAt    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt    DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    ResolvedAt   DATETIME2 NULL,
+    DeletedAt    DATETIME2 NULL,
+    CONSTRAINT UQ_IssueKey UNIQUE (ProjectId, IssueKey)
+);
+
+CREATE TABLE TaskAssignees (
+    TaskId UNIQUEIDENTIFIER NOT NULL REFERENCES Tasks(Id),
+    UserId UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    PRIMARY KEY (TaskId, UserId)
+);
+
+CREATE TABLE TaskLabels (
+    TaskId UNIQUEIDENTIFIER NOT NULL REFERENCES Tasks(Id),
+    Label  NVARCHAR(100) NOT NULL,
+    PRIMARY KEY (TaskId, Label)
+);
+
+-- Comments --
+CREATE TABLE Comments (
+    Id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    TaskId          UNIQUEIDENTIFIER NOT NULL REFERENCES Tasks(Id),
+    AuthorId        UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    ParentCommentId UNIQUEIDENTIFIER NULL REFERENCES Comments(Id),
+    Body            NVARCHAR(MAX) NOT NULL,
+    IsInternal      BIT NOT NULL DEFAULT 0,
+    IsPinned        BIT NOT NULL DEFAULT 0,
+    IsResolved      BIT NOT NULL DEFAULT 0,
+    DeletedAt       DATETIME2 NULL,
+    EditedAt        DATETIME2 NULL,
+    CreatedAt       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+CREATE TABLE CommentReactions (
+    Id        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    CommentId UNIQUEIDENTIFIER NOT NULL REFERENCES Comments(Id),
+    UserId    UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    Emoji     NVARCHAR(10) NOT NULL,
+    CONSTRAINT UQ_CommentReaction UNIQUE (CommentId, UserId, Emoji)
+);
+
+-- Work Logs --
+CREATE TABLE WorkLogs (
+    Id               UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    TaskId           UNIQUEIDENTIFIER NOT NULL REFERENCES Tasks(Id),
+    UserId           UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    TimeSpentSeconds INT NOT NULL,
+    StartedAt        DATETIME2 NOT NULL,
+    Description      NVARCHAR(500) NULL,
+    CreatedAt        DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Attachments --
+CREATE TABLE Attachments (
+    Id         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    TaskId     UNIQUEIDENTIFIER NOT NULL REFERENCES Tasks(Id),
+    UploaderId UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    FileName   NVARCHAR(255) NOT NULL,
+    FileSize   BIGINT NOT NULL,
+    MimeType   NVARCHAR(100) NOT NULL,
+    StorageKey NVARCHAR(500) NOT NULL,
+    CreatedAt  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Notifications --
+CREATE TABLE Notifications (
+    Id        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    UserId    UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    Type      NVARCHAR(50) NOT NULL,
+    Payload   NVARCHAR(MAX) NOT NULL,        -- JSON
+    IsRead    BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Versions --
+CREATE TABLE Versions (
+    Id          UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    ProjectId   UNIQUEIDENTIFIER NOT NULL REFERENCES Projects(Id),
+    Name        NVARCHAR(100) NOT NULL,
+    Description NVARCHAR(MAX) NULL,
+    Status      NVARCHAR(20) NOT NULL DEFAULT 'UNRELEASED',
+                    -- UNRELEASED | RELEASED | ARCHIVED
+    StartDate   DATE NULL,
+    ReleaseDate DATE NULL,
+    ReleasedAt  DATETIME2 NULL,
+    CreatedAt   DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Automation Rules --
+CREATE TABLE AutomationRules (
+    Id              UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    ProjectId       UNIQUEIDENTIFIER NOT NULL REFERENCES Projects(Id),
+    Name            NVARCHAR(255) NOT NULL,
+    IsEnabled       BIT NOT NULL DEFAULT 1,
+    TriggerConfig   NVARCHAR(MAX) NOT NULL,  -- JSON
+    ConditionConfig NVARCHAR(MAX) NOT NULL,  -- JSON
+    ActionConfig    NVARCHAR(MAX) NOT NULL,  -- JSON
+    ExecutionCount  INT NOT NULL DEFAULT 0,
+    LastExecutedAt  DATETIME2 NULL,
+    CreatedAt       DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    UpdatedAt       DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Webhooks --
+CREATE TABLE Webhooks (
+    Id         UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    WorkspaceId UNIQUEIDENTIFIER NOT NULL REFERENCES Workspaces(Id),
+    Url        NVARCHAR(500) NOT NULL,
+    Secret     NVARCHAR(255) NOT NULL,
+    Events     NVARCHAR(MAX) NOT NULL,       -- JSON array
+    IsActive   BIT NOT NULL DEFAULT 1,
+    CreatedAt  DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+-- Refresh Tokens --
+CREATE TABLE RefreshTokens (
+    Id        UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    UserId    UNIQUEIDENTIFIER NOT NULL REFERENCES Users(Id),
+    Token     NVARCHAR(500) NOT NULL UNIQUE,
+    ExpiresAt DATETIME2 NOT NULL,
+    IsRevoked BIT NOT NULL DEFAULT 0,
+    CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+);
+
+Indexing Strategy
+-----------------
+
+-- High-traffic performance indexes
+CREATE INDEX IX_Tasks_ProjectStatus
+    ON Tasks(ProjectId, Status) WHERE DeletedAt IS NULL;
+CREATE INDEX IX_Tasks_SprintId
+    ON Tasks(SprintId) WHERE SprintId IS NOT NULL;
+CREATE INDEX IX_Tasks_CreatedAt      ON Tasks(CreatedAt DESC);
+CREATE INDEX IX_Tasks_Position       ON Tasks(ProjectId, Position);
+CREATE INDEX IX_Comments_TaskId      ON Comments(TaskId) WHERE DeletedAt IS NULL;
+CREATE INDEX IX_Notif_UserRead       ON Notifications(UserId, IsRead);
+CREATE INDEX IX_TaskAssignees_UserId ON TaskAssignees(UserId);
+
+-- Full-text search on issue titles and descriptions
+CREATE FULLTEXT CATALOG PF_Catalog AS DEFAULT;
+CREATE FULLTEXT INDEX ON Tasks(Title, Description) KEY INDEX PK_Tasks;
+
+
+================================================================================
+ 7. STORED PROCEDURE CATALOGUE
+================================================================================
+
+Naming Convention:  usp_<Domain>_<Action>
+Example:            usp_Task_Create,  usp_Sprint_Complete,  usp_User_GetById
+
+All database operations are encapsulated in Stored Procedures. The application
+calls SPs exclusively — no inline SQL, no query builders, no ORM.
+
+Users & Auth SPs
+----------------
+  Stored Procedure          | Description                    | Key Parameters
+  --------------------------+--------------------------------+-------------------
+  usp_User_Create           | Insert new user record         | @Email, @Name, @PasswordHash
+  usp_User_GetById          | Fetch user by Id               | @UserId
+  usp_User_GetByEmail       | Fetch user by email (login)    | @Email
+  usp_User_UpdateProfile    | Update name / avatar           | @UserId, @Name, @AvatarUrl
+  usp_User_VerifyEmail      | Mark email as verified         | @UserId
+  usp_User_SetMfa           | Enable/disable MFA             | @UserId, @MfaSecret, @Enabled
+  usp_User_SoftDelete       | Soft-delete user account       | @UserId
+  usp_RefreshToken_Create   | Store refresh token            | @UserId, @Token, @ExpiresAt
+  usp_RefreshToken_Validate | Lookup + validate token        | @Token
+  usp_RefreshToken_Revoke   | Revoke a token                 | @Token
+  usp_RefreshToken_RevokeAll| Revoke all user tokens         | @UserId
+
+Workspace SPs
+-------------
+  usp_Workspace_Create           | Create workspace, auto-add creator as Owner
+  usp_Workspace_GetById          | Fetch workspace by Id
+  usp_Workspace_GetByUserId      | List all workspaces the user belongs to
+  usp_Workspace_Update           | Update name, slug, avatarUrl
+  usp_Workspace_Delete           | Soft-delete workspace
+  usp_WorkspaceMember_Add        | Add member with role
+  usp_WorkspaceMember_UpdateRole | Change member role
+  usp_WorkspaceMember_Remove     | Remove member from workspace
+  usp_WorkspaceMember_List       | List all members of a workspace
+  usp_WorkspaceInvite_Create     | Generate invite token
+  usp_WorkspaceInvite_Consume    | Accept invite, add member
+
+Project SPs
+-----------
+  usp_Project_Create          | Create project in workspace
+  usp_Project_GetById         | Fetch project details
+  usp_Project_ListByWorkspace | List projects (paginated)
+  usp_Project_Update          | Update name, description, dates, type
+  usp_Project_Archive         | Set status = ARCHIVED
+  usp_Project_Delete          | Set status = DELETED
+  usp_Project_GetAnalytics    | Aggregate issue counts
+
+Task (Issue) SPs
+----------------
+  SP Name                  | Description                          | Notes
+  -------------------------+--------------------------------------+------------------
+  usp_Task_Create          | Insert task, auto-generate IssueKey  | Sequence per project
+  usp_Task_GetById         | Full task detail with assignees      | JOINs TaskAssignees
+  usp_Task_List            | Paginated list with filters          | status/assignee/sprint/type
+  usp_Task_Update          | Update task fields                   | Only non-null params updated
+  usp_Task_Transition      | Change status + log history          | Validates workflow transition
+  usp_Task_SoftDelete      | Set DeletedAt                        |
+  usp_Task_Clone           | Duplicate issue (all fields)         | Returns new TaskId
+  usp_Task_Move            | Move to different project            | Reassigns IssueKey prefix
+  usp_Task_BulkUpdate      | Update multiple tasks                | TVP input: @TaskIds
+  usp_Task_BulkTransition  | Transition multiple tasks            | TVP input
+  usp_Task_Reorder         | Update Position after drag-and-drop  | TVP: @TaskId, @NewPosition
+  usp_TaskAssignee_Set     | Replace assignee list                | Delete-insert pattern
+  usp_TaskLabel_Set        | Replace label list                   | Delete-insert pattern
+  usp_TaskLink_Create      | Create issue link                    | @TaskId, @TargetId, @LinkType
+  usp_TaskLink_Delete      | Remove link                          | @LinkId
+  usp_Task_GetHistory      | Full audit log for an issue          | @TaskId
+  usp_Task_Search_PQL      | Full-text + filtered search          | @ProjectId + parsed PQL params
+
+Sprint SPs
+----------
+  usp_Sprint_Create      | Create new sprint for a project
+  usp_Sprint_Update      | Update name, goal, dates
+  usp_Sprint_Start       | Set status=ACTIVE, validate no other active sprint
+  usp_Sprint_Complete    | Set status=COMPLETED, move incomplete tasks
+  usp_Sprint_Delete      | Delete sprint (PLANNED only)
+  usp_Sprint_GetReport   | Completed vs incomplete tasks summary
+  usp_Sprint_GetBurndown | Daily remaining story-points for chart
+  usp_Sprint_GetVelocity | Completed SP per sprint (last N sprints)
+
+Comments, Attachments & Notifications SPs
+------------------------------------------
+  usp_Comment_Create           | Insert comment on task
+  usp_Comment_Update           | Edit comment body (sets EditedAt)
+  usp_Comment_SoftDelete       | Set DeletedAt
+  usp_Comment_List             | List comments for a task (threaded)
+  usp_CommentReaction_Toggle   | Add or remove emoji reaction
+  usp_Attachment_Create        | Record attachment metadata post-upload
+  usp_Attachment_Delete        | Remove record + queue storage delete
+  usp_Attachment_List          | List attachments for a task
+  usp_Notification_Create      | Insert notification for user
+  usp_Notification_MarkRead    | Mark single notification as read
+  usp_Notification_MarkAllRead | Mark all user notifications as read
+  usp_Notification_List        | Paginated notification list for user
+  usp_WorkLog_Create           | Log work on a task
+  usp_WorkLog_Update           | Edit work log entry
+  usp_WorkLog_Delete           | Delete work log entry
+  usp_WorkLog_ListByTask       | List work logs for a task
+
+Sample SP Implementation: usp_Task_Create
+------------------------------------------
+
+CREATE OR ALTER PROCEDURE usp_Task_Create
+    @ProjectId    UNIQUEIDENTIFIER,
+    @WorkspaceId  UNIQUEIDENTIFIER,
+    @Title        NVARCHAR(500),
+    @Description  NVARCHAR(MAX)    = NULL,
+    @Type         NVARCHAR(20)     = 'TASK',
+    @Priority     NVARCHAR(20)     = 'MEDIUM',
+    @ReporterId   UNIQUEIDENTIFIER,
+    @SprintId     UNIQUEIDENTIFIER = NULL,
+    @EpicId       UNIQUEIDENTIFIER = NULL,
+    @ParentTaskId UNIQUEIDENTIFIER = NULL,
+    @StoryPoints  FLOAT            = NULL,
+    @DueDate      DATE             = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- Generate next issue key (e.g. PROJ-43)
+        DECLARE @ProjectKey NVARCHAR(20);
+        DECLARE @NextNum    INT;
+        SELECT @ProjectKey = [Key] FROM Projects WHERE Id = @ProjectId;
+
+        SELECT @NextNum = ISNULL(MAX(CAST(
+            SUBSTRING(IssueKey, LEN(@ProjectKey)+2, 20) AS INT
+        )), 0) + 1
+        FROM Tasks WHERE ProjectId = @ProjectId;
+
+        DECLARE @IssueKey    NVARCHAR(30) = @ProjectKey + '-' + CAST(@NextNum AS NVARCHAR);
+        DECLARE @NewId       UNIQUEIDENTIFIER = NEWID();
+        DECLARE @MaxPosition FLOAT;
+
+        SELECT @MaxPosition = ISNULL(MAX(Position), 0)
+        FROM Tasks WHERE ProjectId = @ProjectId AND DeletedAt IS NULL;
+
+        INSERT INTO Tasks (
+            Id, ProjectId, WorkspaceId, IssueKey, Title, Description,
+            Type, Status, Priority, ReporterId, SprintId, EpicId,
+            ParentTaskId, StoryPoints, DueDate, Position
+        ) VALUES (
+            @NewId, @ProjectId, @WorkspaceId, @IssueKey, @Title, @Description,
+            @Type, 'To Do', @Priority, @ReporterId, @SprintId, @EpicId,
+            @ParentTaskId, @StoryPoints, @DueDate, @MaxPosition + 1000
+        );
+
+        SELECT * FROM Tasks WHERE Id = @NewId;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+
+Sample SP Implementation: usp_Sprint_Complete
+----------------------------------------------
+
+CREATE OR ALTER PROCEDURE usp_Sprint_Complete
+    @SprintId       UNIQUEIDENTIFIER,
+    @MoveToSprintId UNIQUEIDENTIFIER = NULL  -- NULL = move back to backlog
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        IF NOT EXISTS (SELECT 1 FROM Sprints WHERE Id=@SprintId AND Status='ACTIVE')
+            THROW 50001, 'Sprint is not active.', 1;
+
+        UPDATE Tasks
+        SET SprintId = @MoveToSprintId, UpdatedAt = GETUTCDATE()
+        WHERE SprintId = @SprintId
+          AND Status NOT IN (
+              SELECT ws.Name FROM WorkflowStatuses ws WHERE ws.Category = 'DONE'
+          )
+          AND DeletedAt IS NULL;
+
+        UPDATE Sprints
+        SET Status = 'COMPLETED', CompletedAt = GETUTCDATE(),
+            UpdatedAt = GETUTCDATE()
+        WHERE Id = @SprintId;
+
+        SELECT s.*,
+            (SELECT COUNT(*) FROM Tasks t
+             WHERE t.SprintId=@SprintId AND t.DeletedAt IS NULL) AS TotalTasks,
+            (SELECT COUNT(*) FROM Tasks t
+             WHERE t.SprintId=@SprintId AND t.Status IN (
+                 SELECT Name FROM WorkflowStatuses WHERE Category='DONE')
+             AND t.DeletedAt IS NULL) AS CompletedTasks
+        FROM Sprints s WHERE s.Id = @SprintId;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+
+
+================================================================================
+ 8. DATA ACCESS LAYER (No ORM — node-mssql)
+================================================================================
+
+The application uses the node-mssql package (v11.x) as the official Microsoft
+SQL Server client for Node.js. All database calls go through a centralized
+SqlClient wrapper that manages connection pooling and SP execution.
+
+No ORM. No query builder. No inline SQL. Only named Stored Procedures.
+
+Connection Pool Setup (src/shared/lib/db.ts)
+--------------------------------------------
+
+import sql from 'mssql';
+
+const config: sql.config = {
+  user:     process.env.DB_USER!,
+  password: process.env.DB_PASSWORD!,
+  server:   process.env.DB_SERVER!,
+  database: process.env.DB_NAME!,
+  options: {
+    encrypt: true,
+    trustServerCertificate: process.env.NODE_ENV !== 'production',
+  },
+  pool: {
+    max: 20,
+    min: 2,
+    idleTimeoutMillis: 30000,
+  },
+  requestTimeout: 15000,
+};
+
+let pool: sql.ConnectionPool | null = null;
+
+export async function getPool(): Promise<sql.ConnectionPool> {
+  if (!pool) {
+    pool = await new sql.ConnectionPool(config).connect();
+    pool.on('error', err => console.error('SQL Pool Error:', err));
+  }
+  return pool;
+}
+
+SqlClient Wrapper (src/shared/lib/sqlClient.ts)
+------------------------------------------------
+
+import sql from 'mssql';
+import { getPool } from './db';
+
+type SpParam = {
+  name:  string;
+  type:  sql.ISqlTypeFactory;
+  value: unknown;
+};
+
+export async function execSp<T = unknown>(
+  spName: string,
+  params: SpParam[] = []
+): Promise<sql.IRecordSet<T>[]> {
+  const pool = await getPool();
+  const req  = pool.request();
+  for (const p of params) {
+    req.input(p.name, p.type, p.value);
+  }
+  const result = await req.execute(spName);
+  return result.recordsets as sql.IRecordSet<T>[];
+}
+
+export async function execSpOne<T = unknown>(
+  spName: string,
+  params: SpParam[] = []
+): Promise<sql.IRecordSet<T>> {
+  const sets = await execSp<T>(spName, params);
+  return sets[0] ?? [];
+}
+
+Repository Pattern (src/modules/tasks/task.repository.ts)
+----------------------------------------------------------
+
+import sql from 'mssql';
+import { execSpOne, execSp } from '@/shared/lib/sqlClient';
+import type { Task, CreateTaskInput, TaskFilters } from './task.types';
+
+export class TaskRepository {
+
+  async create(input: CreateTaskInput): Promise<Task> {
+    const rows = await execSpOne<Task>('usp_Task_Create', [
+      { name: 'ProjectId',   type: sql.UniqueIdentifier, value: input.projectId },
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: input.workspaceId },
+      { name: 'Title',       type: sql.NVarChar(500),    value: input.title },
+      { name: 'Description', type: sql.NVarChar(sql.MAX),value: input.description ?? null },
+      { name: 'Type',        type: sql.NVarChar(20),     value: input.type ?? 'TASK' },
+      { name: 'Priority',    type: sql.NVarChar(20),     value: input.priority ?? 'MEDIUM' },
+      { name: 'ReporterId',  type: sql.UniqueIdentifier, value: input.reporterId },
+      { name: 'SprintId',    type: sql.UniqueIdentifier, value: input.sprintId ?? null },
+      { name: 'StoryPoints', type: sql.Float,            value: input.storyPoints ?? null },
+      { name: 'DueDate',     type: sql.Date,             value: input.dueDate ?? null },
+    ]);
+    return rows[0];
+  }
+
+  async getById(taskId: string): Promise<Task | null> {
+    const rows = await execSpOne<Task>('usp_Task_GetById', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+    ]);
+    return rows[0] ?? null;
+  }
+
+  async list(filters: TaskFilters): Promise<{ tasks: Task[]; total: number }> {
+    const sets = await execSp('usp_Task_List', [
+      { name: 'ProjectId',  type: sql.UniqueIdentifier, value: filters.projectId },
+      { name: 'Status',     type: sql.NVarChar(100),    value: filters.status ?? null },
+      { name: 'AssigneeId', type: sql.UniqueIdentifier, value: filters.assigneeId ?? null },
+      { name: 'SprintId',   type: sql.UniqueIdentifier, value: filters.sprintId ?? null },
+      { name: 'Priority',   type: sql.NVarChar(20),     value: filters.priority ?? null },
+      { name: 'Page',       type: sql.Int,              value: filters.page ?? 1 },
+      { name: 'PageSize',   type: sql.Int,              value: filters.pageSize ?? 25 },
+    ]);
+    return { tasks: sets[0] as Task[], total: (sets[1]?.[0] as any)?.Total ?? 0 };
+  }
+
+  async transition(taskId: string, newStatus: string, actorId: string): Promise<Task> {
+    const rows = await execSpOne<Task>('usp_Task_Transition', [
+      { name: 'TaskId',    type: sql.UniqueIdentifier, value: taskId },
+      { name: 'NewStatus', type: sql.NVarChar(100),    value: newStatus },
+      { name: 'ActorId',   type: sql.UniqueIdentifier, value: actorId },
+    ]);
+    return rows[0];
+  }
+}
+
+NOTE: All repositories follow this exact pattern. execSp / execSpOne wrappers
+are used with strongly typed parameters. No raw SQL strings exist outside of
+the SQL Server Stored Procedure definitions.
+
+
+================================================================================
+ 9. API DESIGN (REST + GraphQL)
+================================================================================
+
+REST API Standards
+------------------
+  Property        | Specification
+  ----------------+----------------------------------------------------
+  Base URL        | https://api.projectflow.app/v1
+  Authentication  | Bearer JWT in Authorization header
+  Response Format | JSON  |  Content-Type: application/json
+  Pagination      | Cursor-based (cursor, limit) and offset (page, pageSize)
+  Rate Limiting   | 1000 req/min per user  |  10 req/15min on auth endpoints
+  Versioning      | URL-based (/v1/, /v2/)
+  HTTP Methods    | GET (read), POST (create), PATCH (partial update), DELETE
+
+Key API Route Groups
+--------------------
+  Route Prefix                       | Description
+  -----------------------------------+--------------------------------------
+  /auth/*                            | Authentication
+  /workspaces/*                      | Workspace CRUD + member management
+  /workspaces/:id/projects/*         | Project CRUD + analytics
+  /workspaces/:id/tasks/*            | Task CRUD + transitions + bulk ops
+  /projects/:id/sprints/*            | Sprint lifecycle management
+  /projects/:id/analytics/*          | Reports and chart data
+  /search                            | PQL-based advanced search
+  /notifications/*                   | User notifications
+  /webhooks/*                        | Webhook registration and management
+  /automations/*                     | Automation rule CRUD
+  /integrations/*                    | Third-party integration config
+  /admin/*                           | Admin-only operations
+
+
+================================================================================
+10. FRONTEND ARCHITECTURE
+================================================================================
+
+Next.js App Router Structure
+----------------------------
+
+src/
++-- app/
+|   +-- (auth)/
+|   |   +-- sign-in/page.tsx
+|   |   +-- sign-up/page.tsx
+|   |   +-- forgot-password/page.tsx
+|   +-- (dashboard)/
+|   |   +-- workspaces/[workspaceId]/
+|   |   |   +-- page.tsx
+|   |   |   +-- settings/page.tsx
+|   |   |   +-- members/page.tsx
+|   |   |   +-- projects/[projectId]/
+|   |   |       +-- board/page.tsx
+|   |   |       +-- backlog/page.tsx
+|   |   |       +-- roadmap/page.tsx
+|   |   |       +-- reports/page.tsx
+|   |   |       +-- settings/page.tsx
+|   |   |       +-- issues/[issueId]/page.tsx
+|   |   +-- my-tasks/page.tsx
+|   +-- page.tsx                     (Landing page)
++-- components/
+|   +-- ui/                          (shadcn/ui primitives)
+|   +-- board/                       (Kanban board components)
+|   +-- backlog/                     (Backlog view components)
+|   +-- roadmap/                     (Timeline/Gantt components)
+|   +-- issue/                       (Issue card, detail, form)
+|   +-- sprint/                      (Sprint components)
+|   +-- dashboard/                   (Dashboard & gadgets)
+|   +-- editor/                      (TipTap rich text editor)
++-- features/
+|   +-- auth/          +-- workspaces/    +-- projects/
+|   +-- tasks/         +-- sprints/       +-- comments/
+|   +-- notifications/
++-- lib/
+|   +-- api-client.ts  +-- queryClient.ts +-- socket.ts  +-- utils.ts
++-- stores/
+|   +-- use-board-store.ts
+|   +-- use-notification-store.ts
+|   +-- use-ui-store.ts
++-- validations/
+    +-- task.ts        +-- project.ts     +-- sprint.ts
+
+State Management Strategy
+--------------------------
+  State Type              | Solution          | Reason
+  ------------------------+-------------------+-----------------------------
+  Server data (API)       | TanStack Query v5 | Caching, invalidation
+  UI state (modals, etc.) | Zustand           | Lightweight, no boilerplate
+  Form state              | React Hook Form   | Performance, validation
+  Board DnD state         | Local React state | Co-located with board
+  Real-time updates       | Socket.io -> RQ   | Minimal complexity
+
+Component Design Rules
+----------------------
+  1. All components are functional with hooks — no class components
+  2. Compound component pattern for complex UI (Board -> Column -> Card)
+  3. Optimistic updates on all mutations (UI before API confirms)
+  4. Skeleton loaders for all data-fetched components (no blank screens)
+  5. Error boundaries on each major section
+
+
+================================================================================
+11. BACKEND ARCHITECTURE
+================================================================================
+
+Backend Directory Structure
+----------------------------
+
+src/
++-- app.ts                           (Hono app factory)
++-- server.ts                        (HTTP server entry point)
++-- modules/
+|   +-- auth/
+|   |   +-- auth.routes.ts  auth.service.ts  auth.middleware.ts  auth.schema.ts
+|   +-- workspaces/     +-- projects/    +-- tasks/
+|   +-- sprints/        +-- comments/    +-- notifications/
+|   +-- search/         +-- automation/  +-- webhooks/
+|   +-- integrations/
++-- shared/
+|   +-- middleware/
+|   |   +-- authenticate.ts          (JWT validation)
+|   |   +-- authorize.ts             (Permission checks via usp_Permission_Check)
+|   |   +-- rate-limit.ts
+|   |   +-- error-handler.ts
+|   +-- lib/
+|   |   +-- db.ts                    (node-mssql connection pool)
+|   |   +-- sqlClient.ts             (execSp / execSpOne wrappers)
+|   |   +-- redis.ts
+|   |   +-- s3.ts
+|   |   +-- mailer.ts
+|   |   +-- logger.ts
+|   +-- events/
+|       +-- event-bus.ts             (Internal Redis Pub/Sub event bus)
+|       +-- event-types.ts
++-- jobs/                            (BullMQ background jobs)
+|   +-- notification.job.ts
+|   +-- automation.job.ts
+|   +-- webhook.job.ts
+|   +-- email.job.ts
++-- realtime/
+    +-- socket.ts                    (Socket.io server setup)
+    +-- handlers/
+        +-- board.handler.ts
+        +-- presence.handler.ts
+
+Service Layer Pattern
+---------------------
+
+  export class TaskService {
+    constructor(
+      private repo: TaskRepository,
+      private eventBus: EventBus
+    ) {}
+
+    async createTask(input: CreateTaskInput, actorId: string): Promise<Task> {
+      const task = await this.repo.create(input);
+      await this.eventBus.emit('task.created', { task, actorId });
+      return task;
+    }
+
+    async updateTask(id: string, input: UpdateTaskInput, actorId: string) {
+      const task = await this.repo.update(id, input);
+      await this.eventBus.emit('task.updated', { task, changes: input, actorId });
+      return task;
+    }
+  }
+
+Internal Event Bus — App Event Types
+--------------------------------------
+  "task.created"       -> { task: Task; actorId: string }
+  "task.updated"       -> { task: Task; changes: Partial<Task>; actorId: string }
+  "task.deleted"       -> { taskId: string; actorId: string }
+  "sprint.started"     -> { sprint: Sprint; actorId: string }
+  "sprint.completed"   -> { sprint: Sprint; actorId: string }
+  "comment.created"    -> { comment: Comment; actorId: string }
+  "member.invited"     -> { member: WorkspaceMember; invitedBy: string }
+
+
+================================================================================
+12. DEVOPS & CI/CD PIPELINE
+================================================================================
+
+Local Development Setup
+-----------------------
+
+  # 1. Clone repository
+  git clone https://github.com/yourorg/projectflow.git
+  cd projectflow
+
+  # 2. Start SQL Server + Redis + MinIO
+  docker-compose up -d sqlserver redis minio
+
+  # 3. Run T-SQL migrations (not Prisma)
+  npm run db:migrate       # applies /infra/sql/migrations/*.sql in order
+  npm run db:deploy-sps    # idempotent CREATE OR ALTER for all SPs
+  npm run db:seed          # optional dev seed data
+
+  # 4. Backend
+  cd apps/api && cp .env.example .env && npm install && npm run dev
+
+  # 5. Frontend
+  cd apps/web && cp .env.example .env && npm install && npm run dev
+
+Docker Compose (Development)
+-----------------------------
+
+  version: "3.9"
+  services:
+    sqlserver:
+      image: mcr.microsoft.com/mssql/server:2022-latest
+      environment:
+        SA_PASSWORD: "YourStrong@Passw0rd"
+        ACCEPT_EULA: "Y"
+      ports: ["1433:1433"]
+      volumes: ["sqldata:/var/opt/mssql"]
+
+    redis:
+      image: redis:7-alpine
+      ports: ["6379:6379"]
+
+    minio:
+      image: minio/minio
+      command: server /data --console-address ":9001"
+      ports: ["9000:9000", "9001:9001"]
+      environment:
+        MINIO_ROOT_USER: minioadmin
+        MINIO_ROOT_PASSWORD: minioadmin
+
+  volumes:
+    sqldata:
+
+DB Migration Strategy (No ORM)
+--------------------------------
+  - Migrations: numbered T-SQL files in /infra/sql/migrations/
+    e.g., 0001_init_tables.sql, 0002_add_sprints.sql
+  - A MigrationHistory table tracks which scripts have been applied
+  - npm run db:migrate reads migrations/ and applies unapplied scripts in order
+  - Stored Procedures: stored in /infra/sql/procedures/
+  - npm run db:deploy-sps applies all SP files using CREATE OR ALTER PROCEDURE
+
+GitHub Actions CI/CD (key steps)
+---------------------------------
+  - test-api job: start SQL Server container, run db:migrate + db:deploy-sps,
+    run lint + unit tests + integration tests
+  - e2e job: docker-compose up, run Playwright tests
+  - deploy job (main branch only): build Docker image, push to registry,
+    kubectl set image to rolling update
+
+Production Kubernetes Layout
+------------------------------
+  Namespace: projectflow-prod
+  - Deployment: web       (2 replicas min, HPA up to 10)
+  - Deployment: api       (3 replicas min, HPA up to 20)
+  - Deployment: socket    (2 replicas, sticky sessions)
+  - Deployment: worker    (2 replicas — BullMQ)
+  - StatefulSet: redis    (or managed ElastiCache)
+  - External: Azure SQL / SQL Server RDS
+  - Ingress: Nginx + cert-manager (TLS)
+
+
+================================================================================
+13. SECURITY PLAN
+================================================================================
+
+Authentication Security
+-----------------------
+  - Passwords hashed with bcrypt (cost factor 12)
+  - JWT secret: 256-bit random, rotated every 90 days
+  - Refresh tokens stored in httpOnly, Secure, SameSite=Strict cookies
+  - Rate limiting on auth endpoints: 10 req/15min per IP
+  - Account lockout after 5 failed login attempts (15-minute lockout)
+  - Email verification required before accessing workspace features
+
+SQL Injection Prevention
+------------------------
+  Because all database interactions go through Stored Procedures with
+  parameterized inputs via node-mssql, SQL injection is architecturally
+  prevented. The application NEVER constructs dynamic SQL strings — all
+  @Parameters are passed through the SQL Server parameter binding layer.
+
+Authorization & Data Isolation
+--------------------------------
+  - All endpoints require authentication by default (Hono middleware)
+  - Permission checks at service layer via usp_Permission_Check SP
+  - Row-level isolation: WorkspaceId validated in every SP
+  - No cross-workspace data leakage
+
+Data Security
+-------------
+  - Data at rest: SQL Server TDE (Transparent Data Encryption)
+  - TLS 1.3 enforced for all traffic (Nginx + SQL Server encrypt=true)
+  - Signed URLs for files (15-minute expiry) — no public storage access
+  - Sensitive fields (MfaSecret, PasswordHash) excluded from all API responses
+  - XSS prevented by React default escaping + Content Security Policy headers
+
+Security Headers (Nginx)
+------------------------
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=()
+  Content-Security-Policy: default-src 'self'; ...
+
+Audit Logging
+-------------
+  - All write operations logged: userId, timestamp, resource, old/new values
+  - Logs in append-only table + shipped to external SIEM
+  - Admin access to full audit trail per entity
+
+
+================================================================================
+14. TESTING STRATEGY
+================================================================================
+
+Testing Pyramid
+---------------
+  Level               | % | Type                              | Tools
+  --------------------+---+-----------------------------------+-------------------
+  Unit Tests          |70%| Service functions (mocked         | Vitest, RTL, MSW
+                      |   | SqlClient); React components      |
+  Integration Tests   |25%| HTTP -> SP -> SQL Server (test DB)| Vitest + supertest
+  E2E Tests           | 5%| Full browser user journeys        | Playwright
+
+Coverage Target: >= 80% on unit tests
+
+Key E2E Test Flows
+------------------
+  - User registration -> workspace -> project creation
+  - Create epic -> stories -> drag to sprint -> start sprint
+  - Board drag-and-drop -> issue status transitions
+  - PQL search returning filtered results
+  - Automation rule creation and trigger firing
+  - Sprint complete -> incomplete tasks moved to backlog
+
+Performance Tests
+-----------------
+  - Load testing: k6 — 1,000 concurrent users; p95 target <= 200ms
+  - Stress testing: gradual ramp to 10,000 users
+  - SP execution plan analysis in SQL Server Management Studio (SSMS)
+  - Query Store monitoring for regression detection
+
+
+================================================================================
+15. PROJECT PHASES & MILESTONES
+================================================================================
+
+Phase 1 — Foundation (Weeks 1–6)
+----------------------------------
+  Week 1: Monorepo setup, Docker (SQL Server+Redis), CI/CD, migration tooling
+  Week 2: Auth module: register, login, JWT, OAuth (usp_User_*, usp_RefreshToken_*)
+  Week 3: Workspace & Project CRUD + member management SPs
+  Week 4: Task/Issue CRUD + workflow statuses (usp_Task_Create, usp_Task_Transition)
+  Week 5: Kanban Board UI (static columns, drag-and-drop via @dnd-kit)
+  Week 6: Backlog view + Sprint creation (usp_Sprint_Create, usp_Sprint_Start)
+
+Phase 2 — Core Features (Weeks 7–14)
+--------------------------------------
+  Week 7:  Sprint start/complete + Burndown chart (usp_Sprint_Complete)
+  Week 8:  Comments (TipTap, @mentions, reactions) + usp_Comment_* SPs
+  Week 9:  File attachments (Azure Blob / MinIO, usp_Attachment_* SPs)
+  Week 10: Notifications (in-app WebSocket + email via BullMQ)
+  Week 11: Advanced search: PQL parser + usp_Task_Search_PQL
+  Week 12: Roadmap / Timeline (Gantt view)
+  Week 13: Custom workflows (editor + transition validation SPs)
+  Week 14: Dashboards: reports, Recharts gadget grid layout
+
+Phase 3 — Advanced Features (Weeks 15–22)
+-------------------------------------------
+  Week 15: Automation engine (BullMQ trigger/condition/action processor)
+  Week 16: Time tracking + work logs (usp_WorkLog_* SPs)
+  Week 17: Versions, Epics, Components, Labels with full SP coverage
+  Week 18: GitHub / GitLab integration (webhooks, PR linking)
+  Week 19: Slack + Microsoft Teams integration
+  Week 20: Outgoing webhooks + Public REST API v1 hardening
+  Week 21: GraphQL API (Pothos schema builder)
+  Week 22: Admin panel + audit log viewer
+
+Phase 4 — Polish & Launch (Weeks 23–26)
+-----------------------------------------
+  Week 23: Mobile responsive audit + accessibility (WCAG 2.1 AA) fixes
+  Week 24: Performance: SP execution plan tuning, Redis cache expansion
+  Week 25: Security audit + penetration testing + fix cycle
+  Week 26: Docs site, public launch announcement, v1.0 release tag
+
+
+================================================================================
+16. FOLDER & FILE STRUCTURE
+================================================================================
+
+Monorepo Structure (Turborepo)
+-------------------------------
+
+projectflow/
++-- apps/
+|   +-- web/                         (Next.js 14 Frontend)
+|   +-- api/                         (Hono.js Backend)
++-- packages/
+|   +-- types/                       (Shared TypeScript interfaces)
+|   +-- validations/                 (Shared Zod schemas)
+|   +-- utils/                       (Shared utility functions)
+|   +-- ui/                          (Shared React design system components)
++-- infra/
+|   +-- docker/                      (Dockerfiles for api, web)
+|   +-- k8s/                         (Kubernetes manifests)
+|   +-- terraform/                   (IaC — cloud resources)
+|   +-- sql/
+|       +-- migrations/              (0001_init.sql, 0002_add_versions.sql ...)
+|       +-- procedures/              (usp_Task_Create.sql, usp_Sprint_Complete.sql ...)
+|       +-- indexes/                 (create-indexes.sql)
+|       +-- seed/                    (seed-dev-data.sql)
++-- docs/                            (Docusaurus developer & API documentation)
++-- scripts/
+|   +-- db-migrate.ts                (Migration runner)
+|   +-- db-deploy-sps.ts             (Idempotent SP deployer)
+|   +-- db-seed.ts
++-- .github/
+|   +-- workflows/                   (ci.yml, deploy-prod.yml)
++-- docker-compose.yml
++-- turbo.json
++-- package.json
++-- README.md
+
+
+================================================================================
+17. ENVIRONMENT CONFIGURATION
+================================================================================
+
+Backend .env
+------------
+
+  # App
+  NODE_ENV=development
+  PORT=3001
+  APP_URL=http://localhost:3001
+
+  # MS SQL Server
+  DB_SERVER=localhost
+  DB_PORT=1433
+  DB_NAME=ProjectFlow
+  DB_USER=sa
+  DB_PASSWORD=YourStrong@Passw0rd
+  DB_ENCRYPT=false                   # true for Azure SQL / production
+  DB_TRUST_SERVER_CERTIFICATE=true   # false in production
+
+  # Redis
+  REDIS_URL=redis://localhost:6379
+
+  # Auth
+  JWT_SECRET=your-256-bit-secret-here
+  JWT_EXPIRES_IN=15m
+  REFRESH_TOKEN_SECRET=another-256-bit-secret
+  REFRESH_TOKEN_EXPIRES_IN=7d
+
+  # OAuth
+  GOOGLE_CLIENT_ID=...
+  GOOGLE_CLIENT_SECRET=...
+  GITHUB_CLIENT_ID=...
+  GITHUB_CLIENT_SECRET=...
+
+  # Storage — Azure Blob OR MinIO
+  STORAGE_ACCOUNT_NAME=projectflowstorage
+  STORAGE_ACCOUNT_KEY=...
+  STORAGE_CONTAINER_NAME=projectflow-files
+  # -- MinIO (self-hosted):
+  MINIO_ENDPOINT=http://localhost:9000
+  MINIO_ACCESS_KEY=minioadmin
+  MINIO_SECRET_KEY=minioadmin
+  MINIO_BUCKET=projectflow-files
+
+  # Email
+  RESEND_API_KEY=re_...
+  EMAIL_FROM=noreply@projectflow.app
+
+  # Frontend
+  FRONTEND_URL=http://localhost:3000
+
+  # Sentry (optional)
+  SENTRY_DSN=https://...
+
+Frontend .env.local
+-------------------
+
+  NEXT_PUBLIC_API_URL=http://localhost:3001/api/v1
+  NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+  NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+
+================================================================================
+18. GLOSSARY
+================================================================================
+
+  Term              | Definition
+  ------------------+-----------------------------------------------------------
+  Backlog           | Ordered list of all issues not assigned to an active sprint
+  Board             | Visual Kanban/Scrum board showing issues in status columns
+  Epic              | Large body of work broken into stories and tasks
+  Issue             | Generic term for any work item (story, bug, task, epic)
+  Sprint            | Time-boxed iteration (1-4 weeks) in Scrum methodology
+  Story Points      | Unit of estimation for issue complexity/effort
+  Workflow          | Set of statuses and allowed transitions for issues
+  WIP Limit         | Maximum number of issues allowed in a Kanban column
+  PQL               | ProjectFlow Query Language — JQL-inspired issue search
+  Swimlane          | Horizontal card grouping on a board (assignee, epic, etc.)
+  Version           | Named release of a software project
+  Component         | Sub-section of a project (e.g., "Frontend", "Database")
+  SP                | Stored Procedure — all DB ops use SPs exclusively
+  usp_*             | Naming prefix for User Stored Procedures (usp_Domain_Action)
+  node-mssql        | Official MS SQL Server client for Node.js (npm: mssql)
+  execSp            | Internal wrapper that calls a named SP with typed params
+  TVP               | Table-Valued Parameter — used for bulk SP operations
+  NEWID()           | SQL Server function generating a UNIQUEIDENTIFIER (UUID)
+  TDE               | Transparent Data Encryption — SQL Server data-at-rest enc.
+  UNIQUEIDENTIFIER  | SQL Server UUID data type (used as primary keys)
+  DATETIME2         | High-precision datetime type used for all timestamps
+  DnD               | Drag and Drop — used on board and backlog for reordering
+  JWT               | JSON Web Token — used for API authentication
+  RBAC              | Role-Based Access Control — the permission system
+  BullMQ            | Redis-based job queue for background tasks
+  TipTap            | Rich text editor for issue descriptions and comments
+  SSR               | Server-Side Rendering (Next.js feature)
+  DDD               | Domain-Driven Design — code organized by business domain
+  HMAC-SHA256       | Hash-based message authentication used for webhook secrets
+
+
+================================================================================
+  NOTE FOR AI MODELS
+================================================================================
+
+  This document is the authoritative specification for building ProjectFlow.
+  When generating code, strictly adhere to the following rules:
+
+  1. ALL database operations MUST call a named Stored Procedure via the
+     execSp / execSpOne wrappers — NEVER write inline SQL in application code.
+
+  2. Use node-mssql (NOT Prisma, NOT TypeORM, NOT Drizzle, NOT Sequelize)
+     as the database driver.
+
+  3. Use Microsoft SQL Server 2022 DDL syntax:
+       UNIQUEIDENTIFIER, NVARCHAR, DATETIME2, GETUTCDATE(), BIT, FLOAT
+
+  4. Follow the usp_Domain_Action naming convention for all Stored Procedures.
+
+  5. Use CREATE OR ALTER PROCEDURE for all SP definitions (idempotent).
+
+  6. Resolve any ambiguity by defaulting to the most Jira-faithful,
+     MS SQL Server-native interpretation.
+
+  7. All SP parameters must be typed with sql.UniqueIdentifier, sql.NVarChar,
+     sql.Int, sql.Float, sql.Bit, sql.DateTime2, sql.Date — no raw strings.
+
+================================================================================
+  END OF DOCUMENTATION — ProjectFlow v1.0
+  (MS SQL Server + Stored Procedures Edition)
+================================================================================

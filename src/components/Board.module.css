@@ -1,0 +1,20 @@
+.boardContainer {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--spacing-lg);
+  align-items: flex-start;
+}
+
+.columns {
+  display: flex;
+  gap: var(--spacing-lg);
+  height: 100%;
+}
+
+.dragOverlay {
+  transform: rotate(3deg);
+  cursor: grabbing;
+}

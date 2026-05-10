@@ -1,0 +1,7 @@
+CREATE OR ALTER PROCEDURE dbo.usp_Webhook_Delete
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM dbo.Webhooks WHERE Id = @Id;
+END;

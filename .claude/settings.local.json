@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p projectflow/{apps/{web,api},packages/{types,validations,utils,ui},infra/{docker,k8s,terraform,sql/{migrations,procedures,indexes,seed}},docs,scripts,.github/workflows})"
+    ],
+    "deny": []
+  }
+}

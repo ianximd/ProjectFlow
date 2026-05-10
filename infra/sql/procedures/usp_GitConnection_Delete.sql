@@ -1,0 +1,8 @@
+CREATE OR ALTER PROCEDURE dbo.usp_GitConnection_Delete
+  @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  DELETE FROM dbo.GitConnections WHERE Id = @Id;
+END;
+GO

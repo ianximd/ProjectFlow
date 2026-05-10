@@ -1,0 +1,37 @@
+{
+  "name": "projectflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ProjectFlow - A Full-Featured Jira Clone",
+  "license": "MIT",
+  "author": "ProjectFlow Team",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "clean": "turbo run clean",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:migrate": "tsx scripts/db-migrate.ts",
+    "db:deploy-sps": "tsx scripts/db-deploy-sps.ts",
+    "db:seed": "tsx scripts/db-seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.4",
+    "turbo": "^1.11.3",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@10.2.5"
+}

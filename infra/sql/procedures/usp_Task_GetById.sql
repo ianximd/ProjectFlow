@@ -1,0 +1,9 @@
+CREATE OR ALTER PROCEDURE usp_Task_GetById
+    @TaskId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT *
+    FROM Tasks
+    WHERE Id = @TaskId AND DeletedAt IS NULL;
+END;

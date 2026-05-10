@@ -1,0 +1,7 @@
+CREATE OR ALTER PROCEDURE usp_Workspace_GetById
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT * FROM Workspaces WHERE Id = @Id;
+END;

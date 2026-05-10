@@ -1,0 +1,24 @@
+import { Queue } from 'bullmq';
+
+const connection = {
+  host: process.env.REDIS_HOST ?? 'localhost',
+  port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+};
+
+export interface AutomationJobData {
+  ruleId:    string;
+  projectId: string;
+  eventType: string;
+  /** Serialised payload (task, sprint, etc.) */
+  payload:   Record<string, unknown>;
+}
+
+export const automationQueue = new Queue<AutomationJobData>('automation', {
+  connection,
+  defaultJobOptions: {
+    attempts:    3,
+    backoff:     { type: 'exponential', delay: 2000 },
+    removeOnComplete: { count: 200 },
+    removeOnFail:     { count: 100 },
+  },
+});

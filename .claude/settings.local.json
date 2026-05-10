@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir -p projectflow/{apps/{web,api},packages/{types,validations,utils,ui},infra/{docker,k8s,terraform,sql/{migrations,procedures,indexes,seed}},docs,scripts,.github/workflows})"
+      "Bash(mkdir -p projectflow/{apps/{web,api},packages/{types,validations,utils,ui},infra/{docker,k8s,terraform,sql/{migrations,procedures,indexes,seed}},docs,scripts,.github/workflows})",
+      "Bash(curl -s http://localhost:3000/ -o /dev/null -w \"HTTP %{http_code}\\\\n\")"
     ],
     "deny": []
   }

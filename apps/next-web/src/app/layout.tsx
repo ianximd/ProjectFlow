@@ -1,36 +1,47 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import { Suspense, type ReactNode } from 'react';
+import { ThemeProvider } from 'next-themes';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Toaster } from '@/components/ui/sonner';
+import { cn } from '@/lib/utils';
+import { Providers } from './providers';
+import './globals.css';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: "ProjectFlow",
-  description: "Modern project management for engineering teams",
+  title: {
+    template: '%s | ProjectFlow',
+    default: 'ProjectFlow',
+  },
+  description: 'Modern project management for engineering teams',
 };
 
-import { Providers } from './providers';
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+    <html lang="en" className="h-full" suppressHydrationWarning>
+      <body
+        className={cn(
+          'antialiased flex h-full text-base text-foreground bg-background',
+          inter.className,
+        )}
+      >
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          storageKey="projectflow-theme"
+          enableSystem
+          disableTransitionOnChange
+          enableColorScheme
+        >
+          <TooltipProvider delayDuration={0}>
+            <Providers>
+              <Suspense>{children}</Suspense>
+            </Providers>
+            <Toaster />
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

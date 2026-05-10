@@ -33,13 +33,23 @@ async function main() {
 
   const auth = { Authorization: `Bearer ${token}` };
 
+  // Fetch Workspace
+  const wsList = await request({ ...base, path: '/api/v1/workspaces', method: 'GET', headers: auth });
+  const workspaceId = wsList.body?.data?.[0]?.Id;
+  if (!workspaceId) { console.error('No workspace found! Run test-phase1.js first.'); process.exit(1); }
+
+  // Fetch Project
+  const projList = await request({ ...base, path: `/api/v1/projects?workspaceId=${workspaceId}`, method: 'GET', headers: auth });
+  const projectId = projList.body?.data?.[0]?.Id;
+  if (!projectId) { console.error('No project found! Run test-phase1.js first.'); process.exit(1); }
+
   // 2. Create a task in "In Progress" column
   const create = await request({ ...base, path: '/api/v1/tasks', method: 'POST',
     headers: auth }, {
     title: 'Test task from full-stack',
     status: 'In Progress',
-    projectId: '00000000-0000-0000-0000-000000000000',
-    workspaceId: '00000000-0000-0000-0000-000000000000',
+    projectId: projectId,
+    workspaceId: workspaceId,
   });
   console.log('Create:', create.status, JSON.stringify(create.body?.data?.Title || create.body?.error));
   const taskId = create.body?.data?.Id;
@@ -47,7 +57,7 @@ async function main() {
   if (!taskId) { console.error('Create failed!'); process.exit(1); }
 
   // 3. List tasks
-  const list = await request({ ...base, path: '/api/v1/tasks?projectId=00000000-0000-0000-0000-000000000000',
+  const list = await request({ ...base, path: `/api/v1/tasks?projectId=${projectId}`,
     method: 'GET', headers: auth });
   console.log('List count:', list.body?.data?.length, '| Status:', list.status);
 

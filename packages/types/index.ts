@@ -700,3 +700,61 @@ export interface AdminWorkspace {
   createdAt:    string;
   deletedAt:    string | null;
 }
+
+// ─── RBAC ────────────────────────────────────────────────────────────────────
+
+export type RoleScope = 'SYSTEM' | 'WORKSPACE';
+
+export interface Permission {
+  id:          string;
+  resource:    string;
+  action:      string;
+  slug:        string;          // resource.action
+  scope:       RoleScope;
+  description: string | null;
+  createdAt:   string;
+}
+
+export interface Role {
+  id:          string;
+  name:        string;
+  slug:        string;
+  description: string | null;
+  scope:       RoleScope;
+  isSystem:    boolean;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+export interface RoleWithCounts extends Role {
+  permissionCount: number;
+  memberCount:     number;
+}
+
+export interface RoleWithPermissions extends Role {
+  permissions: Permission[];
+}
+
+export interface UserRoleAssignment {
+  userId:        string;
+  roleId:        string;
+  roleSlug:      string;
+  roleName:      string;
+  roleScope:     RoleScope;
+  roleIsSystem:  boolean;
+  workspaceId:   string | null;
+  workspaceName: string | null;
+  assignedBy:    string | null;
+  assignedAt:    string;
+}
+
+export interface RoleMember {
+  userId:        string;
+  email:         string;
+  name:          string;
+  avatarUrl:     string | null;
+  workspaceId:   string | null;
+  workspaceName: string | null;
+  assignedBy:    string | null;
+  assignedAt:    string;
+}

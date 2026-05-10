@@ -3,6 +3,7 @@ import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { AuthRepository } from './auth.repository.js';
 import { AuthService } from './auth.service.js';
 import { authMiddleware } from './auth.middleware.js';
+import { roleService } from '../roles/role.service.js';
 
 const authRepo = new AuthRepository();
 const authService = new AuthService(authRepo);
@@ -70,6 +71,28 @@ authRoutes.get('/me', authMiddleware, async (c) => {
   const user = await authService.getMe(jwtPayload.userId);
   if (!user) return c.json({ error: { message: 'User not found' } }, 404);
   return c.json({ data: user });
+});
+
+// GET /api/v1/auth/me/permissions?workspaceId=  (protected)
+// Returns the current user's effective permission slugs (system + given workspace).
+// Drives the frontend <PermissionGate> component.
+authRoutes.get('/me/permissions', authMiddleware, async (c) => {
+  const jwtPayload = (c as any).get('user') as any;
+  const wsId = c.req.query('workspaceId') || null;
+  const slugs = await roleService.getUserPermissionSlugs(jwtPayload.userId, wsId);
+  const roles = await roleService.listUserRoles(jwtPayload.userId, wsId);
+  return c.json({
+    data: {
+      workspaceId: wsId,
+      permissions: Array.from(slugs),
+      roles: roles.map((r) => ({
+        slug:        r.roleSlug,
+        name:        r.roleName,
+        scope:       r.roleScope,
+        workspaceId: r.workspaceId,
+      })),
+    },
+  });
 });
 
 // POST /api/v1/auth/refresh

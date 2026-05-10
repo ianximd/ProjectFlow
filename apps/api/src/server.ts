@@ -34,6 +34,7 @@ import { responseCache } from './shared/middleware/responseCache.middleware.js';
 import { securityHeaders } from './shared/middleware/securityHeaders.middleware.js';
 import { TTL, cachePing } from './shared/lib/cache.js';
 import { getPool } from './shared/lib/db.js';
+import { ensureEnvAdminsPromoted } from './shared/lib/envAdminBootstrap.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { ensureBucket } from './shared/lib/storage.js';
 import { yoga } from './graphql/yoga.js';
@@ -178,6 +179,11 @@ app.all('/graphql', async (c) => yoga.handle(c.req.raw, c));
 
 // Ensure MinIO bucket exists
 ensureBucket().catch((err) => console.warn('MinIO bucket init failed (will retry on first request):', err?.message));
+
+// Promote any users listed in ADMIN_USER_IDS to the super-admin role
+ensureEnvAdminsPromoted().catch((err) =>
+  console.warn('[env-admin-bootstrap] failed:', err?.message),
+);
 
 // Start automation job worker
 startAutomationWorker();

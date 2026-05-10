@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useStore } from '@/store/useStore';
 import styles from './page.module.css';
 import type { AdminStats, AdminUser, AdminWorkspace, AuditLogEntry } from '@projectflow/types';
+import { RolesTab } from '@/components/admin/RolesTab';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -22,7 +23,7 @@ async function apiFetch(path: string, token: string | null, opts?: RequestInit) 
   return json;
 }
 
-type Tab = 'stats' | 'users' | 'workspaces' | 'audit';
+type Tab = 'stats' | 'users' | 'workspaces' | 'audit' | 'roles';
 
 // ─── Action colours ───────────────────────────────────────────────────────────
 const ACTION_BADGE: Record<string, string> = {
@@ -126,7 +127,7 @@ export default function AdminPage() {
 
       {/* Tabs */}
       <div className={styles.tabs} role="tablist" aria-label="Admin sections">
-        {(['stats', 'users', 'workspaces', 'audit'] as Tab[]).map((t) => (
+        {(['stats', 'users', 'workspaces', 'audit', 'roles'] as Tab[]).map((t) => (
           <button
             key={t}
             role="tab"
@@ -136,7 +137,7 @@ export default function AdminPage() {
             className={`${styles.tab} ${tab === t ? styles.tabActive : ''}`}
             onClick={() => setTab(t)}
           >
-            {{ stats: 'Overview', users: 'Users', workspaces: 'Workspaces', audit: 'Audit Log' }[t]}
+            {{ stats: 'Overview', users: 'Users', workspaces: 'Workspaces', audit: 'Audit Log', roles: 'Roles & Permissions' }[t]}
           </button>
         ))}
       </div>
@@ -418,6 +419,13 @@ export default function AdminPage() {
             onPrev={() => setAuditPage((p) => Math.max(1, p - 1))}
             onNext={() => setAuditPage((p) => p + 1)}
           />
+        </div>
+      )}
+
+      {/* ── Roles & Permissions ── */}
+      {tab === 'roles' && (
+        <div id="panel-roles" role="tabpanel" aria-labelledby="tab-roles">
+          <RolesTab />
         </div>
       )}
     </div>

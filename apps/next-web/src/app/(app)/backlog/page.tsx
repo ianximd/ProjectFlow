@@ -110,8 +110,10 @@ export default function BacklogPage() {
   const qc          = useQueryClient();
   const accessToken = useStore((s) => s.accessToken);
 
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [projectId,   setProjectId]   = useState<string | null>(null);
+  const currentWorkspaceId  = useStore((s) => s.currentWorkspaceId);
+  const currentProjectId    = useStore((s) => s.currentProjectId);
+  const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
+  const setCurrentProject   = useStore((s) => s.setCurrentProject);
   const [search,      setSearch]      = useState('');
   const [typeFilter,  setTypeFilter]  = useState<string>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
@@ -130,7 +132,7 @@ export default function BacklogPage() {
       return wss;
     },
   });
-  const activeWorkspaceId = workspaceId ?? workspaces?.[0]?.Id ?? null;
+  const activeWorkspaceId = currentWorkspaceId ?? workspaces?.[0]?.Id ?? null;
 
   const { data: projects, isLoading: isLoadingProj } = useQuery<any[]>({
     queryKey: ['projects', activeWorkspaceId, accessToken],
@@ -140,7 +142,7 @@ export default function BacklogPage() {
       return ok ? (json.data ?? []) : [];
     },
   });
-  const activeProjectId = projectId ?? projects?.[0]?.Id ?? null;
+  const activeProjectId = currentProjectId ?? projects?.[0]?.Id ?? null;
   const activeProject   = projects?.find((p: any) => p.Id === activeProjectId) ?? projects?.[0];
 
   // ── Tasks + sprints ────────────────────────────────────────────────────────
@@ -292,7 +294,7 @@ export default function BacklogPage() {
           {workspaces && workspaces.length > 1 && (
             <Select
               value={activeWorkspaceId ?? undefined}
-              onValueChange={(v) => { setWorkspaceId(v); setProjectId(null); }}
+              onValueChange={(v) => setCurrentWorkspace(v)}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
                 <SelectValue placeholder="Workspace" />
@@ -305,7 +307,7 @@ export default function BacklogPage() {
             </Select>
           )}
           {projects && projects.length > 1 && (
-            <Select value={activeProjectId ?? undefined} onValueChange={(v) => setProjectId(v)}>
+            <Select value={activeProjectId ?? undefined} onValueChange={(v) => setCurrentProject(v)}>
               <SelectTrigger className="h-8 w-[200px] text-xs">
                 <SelectValue placeholder="Project" />
               </SelectTrigger>

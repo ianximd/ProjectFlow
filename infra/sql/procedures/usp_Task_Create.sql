@@ -11,7 +11,9 @@ CREATE OR ALTER PROCEDURE usp_Task_Create
     @EpicId       UNIQUEIDENTIFIER = NULL,
     @ParentTaskId UNIQUEIDENTIFIER = NULL,
     @StoryPoints  FLOAT            = NULL,
-    @DueDate      DATE             = NULL
+    -- Migration 0024 widened Tasks.DueDate from DATE to DATETIME2 so the
+    -- board can set a time-of-day deadline. Param type follows suit.
+    @DueDate      DATETIME2        = NULL
 AS
 BEGIN
     SET NOCOUNT ON;

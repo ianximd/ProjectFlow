@@ -24,7 +24,9 @@ export class TaskRepository {
       { name: 'ReporterId',  type: sql.UniqueIdentifier, value: input.reporterId },
       { name: 'SprintId',    type: sql.UniqueIdentifier, value: input.sprintId ?? null },
       { name: 'StoryPoints', type: sql.Float,            value: input.storyPoints ?? null },
-      { name: 'DueDate',     type: sql.Date,             value: input.dueDate ?? null },
+      // DATETIME2 now (migration 0024) so the API can pass a full ISO timestamp
+      // and store hour/minute precision for the deadline.
+      { name: 'DueDate',     type: sql.DateTime2,        value: input.dueDate ?? null },
     ]);
     return rows[0];
   }
@@ -125,7 +127,9 @@ export class TaskRepository {
       { name: 'SprintId',    type: sql.UniqueIdentifier,  value: input.sprintId ?? null },
       { name: 'EpicId',      type: sql.UniqueIdentifier,  value: input.epicId ?? null },
       { name: 'StoryPoints', type: sql.Float,             value: input.storyPoints ?? null },
-      { name: 'DueDate',     type: sql.Date,              value: input.dueDate ?? null },
+      // DATETIME2 since migration 0024 — keeps time precision when the
+      // drawer's datetime-local input PATCHes a new deadline.
+      { name: 'DueDate',     type: sql.DateTime2,         value: input.dueDate ?? null },
     ]);
     return rows[0] ?? null;
   }

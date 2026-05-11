@@ -149,7 +149,10 @@ workspaceRoutes.patch(
   },
 );
 
-// DELETE /api/v1/workspaces/:id
+// DELETE /api/v1/workspaces/:id — soft-delete the workspace.
+// Physical delete is impossible without ON DELETE CASCADE on every Workspace
+// FK (Projects, Sprints, Tasks, …); the SP stamps DeletedAt instead and
+// cascade soft-deletes child projects.
 workspaceRoutes.delete(
   '/:id',
   requirePermission(['workspace.delete', 'admin.workspaces.delete'], { workspaceParam: 'id' }),
@@ -158,6 +161,10 @@ workspaceRoutes.delete(
       await workspaceService.delete(c.req.param('id')!);
       return c.body(null, 204);
     } catch (err: any) {
+      if (err.number === 51060) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      console.error('[workspaceRoutes] delete failed:', err);
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },

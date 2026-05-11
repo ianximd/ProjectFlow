@@ -7,7 +7,11 @@ CREATE OR ALTER PROCEDURE usp_Task_Update
     @SprintId     UNIQUEIDENTIFIER = NULL,
     @EpicId       UNIQUEIDENTIFIER = NULL,
     @StoryPoints  FLOAT            = NULL,
-    @DueDate      DATE             = NULL
+    -- Migration 0024 widened DueDate to DATETIME2 so deadlines can carry a
+    -- time of day. ISNULL-merge semantics stay the same — pass NULL to
+    -- leave the field as-is, use usp_Task_UpdateDates(@ClearDueDate=1) to
+    -- explicitly clear.
+    @DueDate      DATETIME2        = NULL
 AS
 BEGIN
     SET NOCOUNT ON;

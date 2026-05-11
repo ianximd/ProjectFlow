@@ -57,7 +57,8 @@ export class RoadmapRepository {
       { name: 'TaskId',         type: sql.UniqueIdentifier, value: taskId },
       { name: 'RequesterId',    type: sql.UniqueIdentifier, value: requesterId },
       { name: 'StartDate',      type: sql.Date,             value: startDate ?? null },
-      { name: 'DueDate',        type: sql.Date,             value: dueDate   ?? null },
+      // DueDate is DATETIME2 since migration 0024 — the SP param widened too.
+      { name: 'DueDate',        type: sql.DateTime2,        value: dueDate   ?? null },
       { name: 'ClearStartDate', type: sql.Bit,              value: clearStartDate ? 1 : 0 },
       { name: 'ClearDueDate',   type: sql.Bit,              value: clearDueDate   ? 1 : 0 },
     ]);

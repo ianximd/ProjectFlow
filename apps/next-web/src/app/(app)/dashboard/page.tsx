@@ -51,8 +51,10 @@ export default function DashboardPage() {
   const router      = useRouter();
   const accessToken = useStore((s) => s.accessToken);
 
-  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-  const [projectId,   setProjectId]   = useState<string | null>(null);
+  const currentWorkspaceId  = useStore((s) => s.currentWorkspaceId);
+  const currentProjectId    = useStore((s) => s.currentProjectId);
+  const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
+  const setCurrentProject   = useStore((s) => s.setCurrentProject);
   const [sprintId,    setSprintId]    = useState<string | null>(null);
 
   // ── Workspace / project / sprint queries ──────────────────────────────────
@@ -66,7 +68,7 @@ export default function DashboardPage() {
       return wss;
     },
   });
-  const activeWorkspaceId = workspaceId ?? workspaces?.[0]?.Id ?? null;
+  const activeWorkspaceId = currentWorkspaceId ?? workspaces?.[0]?.Id ?? null;
 
   const { data: projects, isLoading: isLoadingProj } = useQuery<any[]>({
     queryKey: ['projects', activeWorkspaceId, accessToken],
@@ -76,7 +78,7 @@ export default function DashboardPage() {
       return ok ? (json.data ?? []) : [];
     },
   });
-  const activeProjectId = projectId ?? projects?.[0]?.Id ?? null;
+  const activeProjectId = currentProjectId ?? projects?.[0]?.Id ?? null;
   const activeProject   = projects?.find((p: any) => p.Id === activeProjectId) ?? projects?.[0];
 
   const { data: sprints } = useQuery<any[]>({
@@ -95,12 +97,17 @@ export default function DashboardPage() {
   const selectedSprint = sprints?.find((s: any) => s.Id === activeSprintId) ?? null;
 
   // ── Tasks (powers the KPI tiles — single fetch, derive on the client) ─────
+  // Distinct key from the board's ['tasks', projectId, …] cache because the
+  // board stores a {tasks, assigneesByTaskId} object and we want a flat array.
+  // Sharing a key was crashing this page with "all.filter is not a function"
+  // when the board had run first.
   const { data: tasks, isLoading: isLoadingTasks } = useQuery<any[]>({
-    queryKey: ['tasks', activeProjectId, accessToken],
+    queryKey: ['dashboard-tasks', activeProjectId, accessToken],
     enabled: !!activeProjectId,
     queryFn: async () => {
       const { ok, json } = await api(`/tasks?projectId=${activeProjectId}&pageSize=500`, accessToken);
-      return ok ? (json.data ?? []) : [];
+      const arr = ok ? (json.data ?? []) : [];
+      return Array.isArray(arr) ? arr : [];
     },
   });
 
@@ -139,8 +146,10 @@ export default function DashboardPage() {
   const kpi = useMemo(() => {
     // Buckets are derived once from the full task list rather than via five
     // separate /tasks?status=... fetches — the list payload is small (≤500
-    // rows) and the page already shows the user the whole project.
-    const all = tasks ?? [];
+    // rows) and the page already shows the user the whole project. Belt-and-
+    // -braces: confirm we got an array before .filter()ing, in case a stale
+    // cache from another page (shaped differently) bleeds in.
+    const all: any[] = Array.isArray(tasks) ? tasks : [];
     const now = Date.now();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
@@ -204,7 +213,7 @@ export default function DashboardPage() {
           {workspaces && workspaces.length > 1 && (
             <Select
               value={activeWorkspaceId ?? undefined}
-              onValueChange={(v) => { setWorkspaceId(v); setProjectId(null); setSprintId(null); }}
+              onValueChange={(v) => { setCurrentWorkspace(v); setSprintId(null); }}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
                 <SelectValue placeholder="Workspace" />
@@ -219,7 +228,7 @@ export default function DashboardPage() {
           {projects && projects.length > 1 && (
             <Select
               value={activeProjectId ?? undefined}
-              onValueChange={(v) => { setProjectId(v); setSprintId(null); }}
+              onValueChange={(v) => { setCurrentProject(v); setSprintId(null); }}
             >
               <SelectTrigger className="h-8 w-[200px] text-xs">
                 <SelectValue placeholder="Project" />

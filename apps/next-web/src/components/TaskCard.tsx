@@ -13,6 +13,7 @@ import {
   FlaskConical,
   GripVertical,
   X,
+  Clock,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -110,6 +111,47 @@ function getPriorityMeta(p: string | undefined) {
   return PRIORITY_META[(p ?? '').toUpperCase()] ?? PRIORITY_META.MEDIUM!;
 }
 
+// Smart deadline chip. Returns null when the task has no DueDate, otherwise
+// classifies into: overdue (past) / due soon (≤24h) / due today / due-this-week
+// / scheduled. The label includes time-of-day only when the deadline isn't at
+// midnight UTC — most users will want to see "Tue, 5:00 PM" but a card with
+// just a date should stay tidy.
+function formatDeadline(dueIso: string): { label: string; cls: string; title: string } | null {
+  const t = new Date(dueIso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const now = Date.now();
+  const diffMin = Math.round((t - now) / 60_000);
+  const due = new Date(t);
+
+  const hasTime = due.getHours() !== 0 || due.getMinutes() !== 0;
+  const dateLabel = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const timeLabel = due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const fullLabel = hasTime ? `${dateLabel}, ${timeLabel}` : dateLabel;
+  const tooltip = `Due ${due.toLocaleString()}`;
+
+  // Buckets in order of severity:
+  if (diffMin < 0) {
+    const overdueMin = -diffMin;
+    const short = overdueMin < 60   ? `${overdueMin}m overdue`
+                : overdueMin < 1440 ? `${Math.round(overdueMin / 60)}h overdue`
+                                    : `${Math.round(overdueMin / 1440)}d overdue`;
+    return { label: short, cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', title: tooltip };
+  }
+  if (diffMin <= 24 * 60) {
+    return { label: hasTime ? `Due ${timeLabel}` : 'Due today',
+             cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+             title: tooltip };
+  }
+  if (diffMin <= 7 * 24 * 60) {
+    return { label: `Due ${fullLabel}`,
+             cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+             title: tooltip };
+  }
+  return { label: fullLabel,
+           cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+           title: tooltip };
+}
+
 export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
   const taskId   = String(task.Id ?? task.id ?? '');
   const title    = task.Title ?? task.title ?? task.content ?? '';
@@ -117,6 +159,8 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
   const type     = (task.Type ?? task.type ?? 'TASK').toString();
   const priority = (task.Priority ?? task.priority ?? 'MEDIUM').toString();
   const points   = task.StoryPoints ?? task.storyPoints ?? null;
+  const dueDate  = (task.DueDate ?? task.dueDate) as string | null | undefined;
+  const deadline = dueDate ? formatDeadline(dueDate) : null;
 
   const typeMeta     = getTypeMeta(type);
   const priorityMeta = getPriorityMeta(priority);
@@ -193,6 +237,21 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
       <div className="text-sm font-medium leading-snug text-foreground line-clamp-2">
         {title || <span className="italic text-muted-foreground">(untitled)</span>}
       </div>
+
+      {/* Deadline chip — only rendered when a due date is set. Colours mean:
+          red = overdue, amber = within 24h / 7d, neutral = scheduled later. */}
+      {deadline && (
+        <span
+          className={cn(
+            'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold w-fit',
+            deadline.cls,
+          )}
+          title={deadline.title}
+          aria-label={deadline.title}
+        >
+          <Clock className="size-3" /> {deadline.label}
+        </span>
+      )}
 
       {/* Bottom row: issue key + assignees + priority + story points + drag handle */}
       <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">

@@ -9,4 +9,11 @@ export const workspaceService = {
   addMember: (workspaceId: string, userId: string, role?: string) => repo.addMember(workspaceId, userId, role),
   update: (id: string, fields: { name?: string; slug?: string; avatarUrl?: string | null }) => repo.update(id, fields),
   delete: (id: string) => repo.softDelete(id),
+  listMembers:    (workspaceId: string) => repo.listMembers(workspaceId),
+  addMemberByEmail: (workspaceId: string, email: string, role?: string) =>
+    repo.addMemberByEmail(workspaceId, email, role),
+  removeMember:   (workspaceId: string, userId: string) =>
+    repo.removeMember(workspaceId, userId),
+  setMemberRole:  (workspaceId: string, userId: string, role: string) =>
+    repo.setMemberRole(workspaceId, userId, role),
 };

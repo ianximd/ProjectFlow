@@ -2,6 +2,19 @@ import { Hono }    from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z }          from 'zod';
 import { webhookOutgoingService } from './webhook-outgoing.service.js';
+import { WebhookOutgoingRepository } from './webhook-outgoing.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+
+const webhookRepoForLookup = new WebhookOutgoingRepository();
+const resolveWebhookWorkspace = (c: any) => webhookRepoForLookup.getWorkspaceId(c.req.param('id'));
+async function resolveWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.workspaceId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const VALID_EVENTS = [
   'issue.created',
@@ -34,15 +47,23 @@ webhookOutgoingRoutes.get('/', async (c) => {
 });
 
 // POST /api/v1/outgoing-webhooks
-webhookOutgoingRoutes.post('/', zValidator('json', createSchema), async (c) => {
+webhookOutgoingRoutes.post(
+  '/',
+  zValidator('json', createSchema),
+  requirePermission('webhook.manage', { resolveWorkspace: resolveWorkspaceFromBody }),
+  async (c) => {
   const body = c.req.valid('json');
   const webhook = await webhookOutgoingService.create(body);
   return c.json({ data: webhook }, 201);
-});
+  },
+);
 
 // DELETE /api/v1/outgoing-webhooks/:id
-webhookOutgoingRoutes.delete('/:id', async (c) => {
-  const id = c.req.param('id');
+webhookOutgoingRoutes.delete(
+  '/:id',
+  requirePermission('webhook.manage', { resolveWorkspace: resolveWebhookWorkspace }),
+  async (c) => {
+  const id = c.req.param('id')!;
   await webhookOutgoingService.delete(id);
   return c.json({ data: { deleted: true } });
 });
@@ -55,8 +76,11 @@ webhookOutgoingRoutes.get('/:id/deliveries', async (c) => {
 });
 
 // POST /api/v1/outgoing-webhooks/:id/ping
-webhookOutgoingRoutes.post('/:id/ping', async (c) => {
-  const id          = c.req.param('id');
+webhookOutgoingRoutes.post(
+  '/:id/ping',
+  requirePermission('webhook.manage', { resolveWorkspace: resolveWebhookWorkspace }),
+  async (c) => {
+  const id          = c.req.param('id')!;
   const workspaceId = c.req.query('workspaceId') ?? '';
   try {
     const result = await webhookOutgoingService.sendTestPing(id, workspaceId);

@@ -87,6 +87,13 @@ export class GitRepository {
     ]);
   }
 
+  async getConnectionWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_GitConnection_GetWorkspaceId', [
+      { name: 'ConnectionId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
+
   async getConnectionByRepo(
     provider: string,
     repoOwner: string,

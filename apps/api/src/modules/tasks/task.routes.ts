@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { TaskRepository } from './task.repository.js';
 import { TaskService } from './task.service.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 // ── Input schemas ───────────────────────────────────────────────────────────────────
 
@@ -36,8 +37,22 @@ const transitionSchema = z.object({
   status: z.string().min(1).max(100),
 });
 
+const assigneesSchema = z.object({
+  userIds: z.array(z.string().uuid()).max(50),
+});
+
+const positionSchema = z.object({
+  position: z.number().finite(),
+  status:   z.string().min(1).max(100).optional(),
+});
+
 const taskRepo = new TaskRepository();
 const taskService = new TaskService(taskRepo);
+
+// Resolve the task's workspace from its id so resource-keyed routes can be
+// permission-gated. Returns null when the task is missing/deleted, which the
+// middleware translates into a 404.
+const resolveTaskWorkspace = (c: any) => taskRepo.getWorkspaceId(c.req.param('id'));
 
 export const taskRoutes = new Hono();
 
@@ -50,17 +65,24 @@ taskRoutes.get('/:id', async (c) => {
 });
 
 // POST /api/v1/tasks
-taskRoutes.post('/', zValidator('json', createSchema), async (c) => {
-  const body = c.req.valid('json');
-  const user = (c as any).get('user') as any;
-  const actorId = user.userId;
+taskRoutes.post(
+  '/',
+  zValidator('json', createSchema),
+  requirePermission('task.create', {
+    resolveWorkspace: async (c) => (c.req.valid('json' as never) as { workspaceId?: string })?.workspaceId ?? null,
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    const user = (c as any).get('user') as any;
+    const actorId = user.userId;
 
-  const task = await taskService.createTask(
-    { ...body, reporterId: actorId },
-    actorId
-  );
-  return c.json({ data: task }, 201);
-});
+    const task = await taskService.createTask(
+      { ...body, reporterId: actorId },
+      actorId
+    );
+    return c.json({ data: task }, 201);
+  },
+);
 
 // GET /api/v1/tasks
 taskRoutes.get('/', async (c) => {
@@ -74,11 +96,62 @@ taskRoutes.get('/', async (c) => {
   };
 
   const result = await taskService.listTasks(filters);
-  return c.json({ data: result.tasks, meta: { total: result.total } });
+  return c.json({
+    data: result.tasks,
+    meta: { total: result.total, assigneesByTaskId: result.assigneesByTaskId },
+  });
 });
 
+// PUT /api/v1/tasks/:id/assignees — replace the full assignee set.
+// Empty array clears all assignees. SP filters out non-workspace members.
+taskRoutes.put(
+  '/:id/assignees',
+  requirePermission('task.assign', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', assigneesSchema),
+  async (c) => {
+    const id = c.req.param('id')!;
+    const { userIds } = c.req.valid('json');
+    const user = (c as any).get('user') as any;
+    try {
+      const assignees = await taskService.setAssignees(id, userIds, user.userId);
+      return c.json({ data: assignees });
+    } catch (err: any) {
+      if (err.number === 51030) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      console.error('[taskRoutes] setAssignees failed:', err);
+      return c.json({ error: { message: 'Internal Server Error' } }, 500);
+    }
+  },
+);
+
+// PATCH /api/v1/tasks/:id/position — drag-end persistence. Optional status
+// is set when a card is dropped into a different column so the board can
+// commit the cross-column move in a single round-trip.
+taskRoutes.patch(
+  '/:id/position',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', positionSchema),
+  async (c) => {
+    const id = c.req.param('id')!;
+    const { position, status } = c.req.valid('json');
+    try {
+      const task = await taskService.setPosition(id, position, status ?? null);
+      if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      return c.json({ data: task });
+    } catch (err: any) {
+      console.error('[taskRoutes] setPosition failed:', err);
+      return c.json({ error: { message: 'Internal Server Error' } }, 500);
+    }
+  },
+);
+
 // PATCH /api/v1/tasks/:id  (full field update — must be before /:id/transition)
-taskRoutes.patch('/:id', zValidator('json', updateSchema), async (c) => {
+taskRoutes.patch(
+  '/:id',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', updateSchema),
+  async (c) => {
   const id = c.req.param('id');
   const body = c.req.valid('json');
   const user = (c as any).get('user') as any;
@@ -97,7 +170,11 @@ taskRoutes.patch('/:id', zValidator('json', updateSchema), async (c) => {
 });
 
 // PATCH /api/v1/tasks/:id/transition
-taskRoutes.patch('/:id/transition', zValidator('json', transitionSchema), async (c) => {
+taskRoutes.patch(
+  '/:id/transition',
+  requirePermission('task.transition', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', transitionSchema),
+  async (c) => {
   const id = c.req.param('id');
   const { status } = c.req.valid('json');
   const user = (c as any).get('user') as any;
@@ -116,8 +193,11 @@ taskRoutes.patch('/:id/transition', zValidator('json', transitionSchema), async 
 });
 
 // DELETE /api/v1/tasks/:id
-taskRoutes.delete('/:id', async (c) => {
-  const id = c.req.param('id');
+taskRoutes.delete(
+  '/:id',
+  requirePermission('task.delete', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+  const id = c.req.param('id')!;
   const user = (c as any).get('user') as any;
   const actorId = user.userId;
   

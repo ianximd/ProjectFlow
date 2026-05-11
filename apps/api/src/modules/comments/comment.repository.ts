@@ -57,6 +57,14 @@ export class CommentRepository {
     }
   }
 
+  async getContext(id: string): Promise<{ workspaceId: string; ownerId: string } | null> {
+    const rows = await execSpOne<{ WorkspaceId: string; OwnerId: string }>('usp_Comment_GetContext', [
+      { name: 'CommentId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    const r = rows[0];
+    return r ? { workspaceId: r.WorkspaceId, ownerId: r.OwnerId } : null;
+  }
+
   async react(commentId: string, userId: string, emoji: string) {
     const rows = await execSpOne<{ Emoji: string; Count: number }>('usp_Comment_React', [
       { name: 'CommentId', type: sql.UniqueIdentifier, value: commentId },

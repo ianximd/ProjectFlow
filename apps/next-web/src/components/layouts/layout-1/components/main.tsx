@@ -60,7 +60,7 @@ export function Main({ children }: { children: React.ReactNode }) {
       <div className="wrapper flex grow flex-col">
         <Header />
 
-        <main className="grow px-5 lg:px-6 py-5" role="content">
+        <main id="main-content" tabIndex={-1} className="grow px-5 lg:px-6 py-5">
           <div className="mb-5">
             <h1 className="text-xl lg:text-2xl font-semibold tracking-tight text-foreground">
               {pageTitle}

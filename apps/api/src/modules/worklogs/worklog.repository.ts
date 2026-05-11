@@ -84,6 +84,14 @@ export class WorkLogRepository {
     return rows[0] ? rowToLog(rows[0]) : null;
   }
 
+  async getContext(id: string): Promise<{ workspaceId: string; ownerId: string } | null> {
+    const rows = await execSpOne<{ WorkspaceId: string; OwnerId: string }>('usp_WorkLog_GetContext', [
+      { name: 'WorkLogId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    const r = rows[0];
+    return r ? { workspaceId: r.WorkspaceId, ownerId: r.OwnerId } : null;
+  }
+
   async delete(id: string, userId: string): Promise<void> {
     await execSpOne('usp_WorkLog_Delete', [
       { name: 'Id',     type: sql.UniqueIdentifier, value: id },

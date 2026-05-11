@@ -2,7 +2,23 @@ import { Hono }        from 'hono';
 import { zValidator }  from '@hono/zod-validator';
 import { z }           from 'zod';
 import { VersionService } from './version.service.js';
+import { VersionRepository } from './version.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+
+// Resolvers for the RBAC middleware.
+const versionRepoForLookup = new VersionRepository();
+const projectRepoForLookup = new ProjectRepository();
+const resolveVersionWorkspace = (c: any) => versionRepoForLookup.getWorkspaceId(c.req.param('id'));
+async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
+  } catch {
+    return null;
+  }
+}
 
 function invalidateVersionCache(projectId: string): void {
   cacheDelPattern(`http:*:/api/v1/versions?projectId=${projectId}*`).catch(() => {});
@@ -40,6 +56,7 @@ versionRoutes.get('/', async (c) => {
 versionRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requirePermission('version.create', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
   async (c) => {
     const { projectId, name, description, startDate, releaseDate } = c.req.valid('json');
     const version = await svc.create(
@@ -56,6 +73,7 @@ versionRoutes.post(
 // PATCH /versions/:id
 versionRoutes.patch(
   '/:id',
+  requirePermission('version.update', { resolveWorkspace: resolveVersionWorkspace }),
   zValidator('json', updateSchema),
   async (c) => {
     const id      = c.req.param('id');
@@ -68,16 +86,22 @@ versionRoutes.patch(
 );
 
 // POST /versions/:id/release  — shortcut to set status = RELEASED
-versionRoutes.post('/:id/release', async (c) => {
-  const version = await svc.update(c.req.param('id'), { status: 'RELEASED' });
+versionRoutes.post(
+  '/:id/release',
+  requirePermission('version.update', { resolveWorkspace: resolveVersionWorkspace }),
+  async (c) => {
+  const version = await svc.update(c.req.param('id')!, { status: 'RELEASED' });
   if (!version) return c.json({ error: 'Not found' }, 404);
   invalidateVersionCache(version.projectId);
   return c.json({ version });
 });
 
 // POST /versions/:id/archive  — shortcut to set status = ARCHIVED
-versionRoutes.post('/:id/archive', async (c) => {
-  const version = await svc.update(c.req.param('id'), { status: 'ARCHIVED' });
+versionRoutes.post(
+  '/:id/archive',
+  requirePermission('version.update', { resolveWorkspace: resolveVersionWorkspace }),
+  async (c) => {
+  const version = await svc.update(c.req.param('id')!, { status: 'ARCHIVED' });
   if (!version) return c.json({ error: 'Not found' }, 404);
   invalidateVersionCache(version.projectId);
   return c.json({ version });
@@ -85,9 +109,12 @@ versionRoutes.post('/:id/archive', async (c) => {
 
 // DELETE /versions/:id
 // projectId query param is optional but enables immediate cache invalidation.
-versionRoutes.delete('/:id', async (c) => {
+versionRoutes.delete(
+  '/:id',
+  requirePermission('version.delete', { resolveWorkspace: resolveVersionWorkspace }),
+  async (c) => {
   const projectId = c.req.query('projectId');
-  await svc.delete(c.req.param('id'));
+  await svc.delete(c.req.param('id')!);
   if (projectId) invalidateVersionCache(projectId);
   return c.json({ ok: true });
 });

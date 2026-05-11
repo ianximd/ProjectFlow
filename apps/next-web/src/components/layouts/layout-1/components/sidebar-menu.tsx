@@ -86,6 +86,7 @@ export function SidebarMenu() {
           <Link
             href={item.path || '#'}
             className="flex items-center justify-start gap-2 grow"
+            aria-current={item.path && matchPath(item.path) ? 'page' : undefined}
           >
             {item.icon && <item.icon data-slot="accordion-menu-icon" />}
             <span data-slot="accordion-menu-title">{item.title}</span>
@@ -180,7 +181,12 @@ export function SidebarMenu() {
           value={item.path || ''}
           className="text-[13px]"
         >
-          <Link href={item.path || '#'}>{item.title}</Link>
+          <Link
+            href={item.path || '#'}
+            aria-current={item.path && matchPath(item.path) ? 'page' : undefined}
+          >
+            {item.title}
+          </Link>
         </AccordionMenuItem>
       );
     }

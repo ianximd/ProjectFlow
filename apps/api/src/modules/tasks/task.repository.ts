@@ -2,6 +2,14 @@ import sql from 'mssql';
 import { execSpOne, execSp } from '../../shared/lib/sqlClient.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
 
+export interface AssigneeRow {
+  TaskId:    string;
+  UserId:    string;
+  Email:     string;
+  Name:      string;
+  AvatarUrl: string | null;
+}
+
 export class TaskRepository {
 
   async create(input: CreateTaskInput): Promise<Task> {
@@ -28,7 +36,20 @@ export class TaskRepository {
     return rows[0] ?? null;
   }
 
-  async list(filters: TaskFilters): Promise<{ tasks: Task[]; total: number }> {
+  async getWorkspaceId(taskId: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Task_GetWorkspaceId', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
+
+  async list(
+    filters: TaskFilters,
+  ): Promise<{
+    tasks: Task[];
+    total: number;
+    assigneesByTaskId: Record<string, AssigneeRow[]>;
+  }> {
     const sets = await execSp('usp_Task_List', [
       { name: 'ProjectId',  type: sql.UniqueIdentifier, value: filters.projectId },
       { name: 'Status',     type: sql.NVarChar(100),    value: filters.status ?? null },
@@ -38,7 +59,41 @@ export class TaskRepository {
       { name: 'Page',       type: sql.Int,              value: filters.page ?? 1 },
       { name: 'PageSize',   type: sql.Int,              value: filters.pageSize ?? 25 },
     ]);
-    return { tasks: sets[0] as Task[], total: (sets[1]?.[0] as any)?.Total ?? 0 };
+
+    // Group result-set 3 (assignees) by TaskId so the API can return a single
+    // map-keyed payload — saves the client from having to do the bucketing.
+    const assigneesByTaskId: Record<string, AssigneeRow[]> = {};
+    for (const row of (sets[2] ?? []) as AssigneeRow[]) {
+      const list = assigneesByTaskId[row.TaskId] ?? (assigneesByTaskId[row.TaskId] = []);
+      list.push(row);
+    }
+
+    return {
+      tasks: sets[0] as Task[],
+      total: (sets[1]?.[0] as any)?.Total ?? 0,
+      assigneesByTaskId,
+    };
+  }
+
+  async setAssignees(taskId: string, userIds: string[]): Promise<AssigneeRow[]> {
+    const rows = await execSpOne<AssigneeRow>('usp_Task_SetAssignees', [
+      { name: 'TaskId',  type: sql.UniqueIdentifier,  value: taskId },
+      { name: 'UserIds', type: sql.NVarChar(sql.MAX), value: userIds.join(',') },
+    ]);
+    return Array.from(rows);
+  }
+
+  async setPosition(
+    taskId: string,
+    position: number,
+    newStatus: string | null,
+  ): Promise<Task | null> {
+    const rows = await execSpOne<Task>('usp_Task_UpdatePosition', [
+      { name: 'TaskId',    type: sql.UniqueIdentifier, value: taskId },
+      { name: 'Position',  type: sql.Float,            value: position },
+      { name: 'NewStatus', type: sql.NVarChar(100),    value: newStatus ?? null },
+    ]);
+    return rows[0] ?? null;
   }
 
   async transition(taskId: string, newStatus: string, actorId: string): Promise<Task> {

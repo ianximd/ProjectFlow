@@ -60,9 +60,63 @@ authRoutes.post('/login', async (c) => {
     return c.json({ error: { message: 'Invalid credentials' } }, 401);
   }
 
+  if (result.kind === 'mfa-required') {
+    // Step one done — client must POST the TOTP/recovery code to /auth/mfa/challenge.
+    return c.json({ data: { mfaRequired: true, mfaToken: result.mfaToken } });
+  }
+
   // Refresh token is delivered via httpOnly cookie — never exposed in the response body
   setRefreshCookie(c, result.refreshToken);
   return c.json({ data: { user: result.user, token: result.accessToken } });
+});
+
+// POST /api/v1/auth/mfa/challenge
+// Step two of MFA login. Body: { mfaToken, code? , recoveryCode? }
+authRoutes.post('/mfa/challenge', async (c) => {
+  const { mfaToken, code, recoveryCode } = await c.req.json();
+  if (!mfaToken || (!code && !recoveryCode)) {
+    return c.json({ error: { message: 'mfaToken and code (or recoveryCode) are required' } }, 400);
+  }
+  const result = await authService.mfaChallenge(mfaToken, { code, recoveryCode });
+  if (result === 'invalid-token') return c.json({ error: { message: 'Invalid or expired MFA challenge' } }, 401);
+  if (result === 'invalid-code')  return c.json({ error: { message: 'Invalid MFA code' } }, 401);
+
+  setRefreshCookie(c, result.refreshToken);
+  return c.json({ data: { user: result.user, token: result.accessToken } });
+});
+
+// POST /api/v1/auth/mfa/setup  (protected) — generates pending TOTP secret + otpauth URI
+authRoutes.post('/mfa/setup', authMiddleware, async (c) => {
+  const jwtPayload = (c as any).get('user') as any;
+  try {
+    const { secret, otpauthUri } = await authService.setupMfa(jwtPayload.userId, jwtPayload.email);
+    return c.json({ data: { secret, otpauthUri } });
+  } catch (err: any) {
+    // SP raises 51020 when MFA is already enabled
+    if (err.number === 51020) return c.json({ error: { message: err.message } }, 409);
+    return c.json({ error: { message: 'Internal Server Error' } }, 500);
+  }
+});
+
+// POST /api/v1/auth/mfa/verify-setup  (protected) — { code }; on success returns recoveryCodes (one-time view)
+authRoutes.post('/mfa/verify-setup', authMiddleware, async (c) => {
+  const { code } = await c.req.json();
+  if (!code) return c.json({ error: { message: 'code is required' } }, 400);
+  const jwtPayload = (c as any).get('user') as any;
+  const result = await authService.verifyMfaSetup(jwtPayload.userId, code);
+  if (!result) return c.json({ error: { message: 'Invalid setup code or no pending enrolment' } }, 400);
+  return c.json({ data: { enabled: true, recoveryCodes: result.recoveryCodes } });
+});
+
+// POST /api/v1/auth/mfa/disable  (protected) — { password, code } (TOTP or recovery)
+authRoutes.post('/mfa/disable', authMiddleware, async (c) => {
+  const { password, code } = await c.req.json();
+  if (!password || !code) return c.json({ error: { message: 'password and code are required' } }, 400);
+  const jwtPayload = (c as any).get('user') as any;
+  const result = await authService.disableMfa(jwtPayload.userId, password, code);
+  if (result === 'invalid-password') return c.json({ error: { message: 'Invalid password' } }, 401);
+  if (result === 'invalid-code')     return c.json({ error: { message: 'Invalid MFA code' } }, 401);
+  return c.json({ data: { enabled: false } });
 });
 
 // GET /api/v1/auth/me  (protected)

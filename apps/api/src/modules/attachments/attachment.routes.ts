@@ -1,7 +1,38 @@
 import { Hono } from 'hono';
 import { attachmentService } from './attachment.service.js';
+import { AttachmentRepository } from './attachment.repository.js';
+import { TaskRepository } from '../tasks/task.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 export const attachmentRoutes = new Hono();
+
+// RBAC resolvers
+const attachmentRepoForLookup = new AttachmentRepository();
+const taskRepoForLookup       = new TaskRepository();
+
+async function loadAttachmentContext(c: any): Promise<{ workspaceId: string; ownerId: string } | null> {
+  const cached = c.get('attachmentContext') as { workspaceId: string; ownerId: string } | null | undefined;
+  if (cached !== undefined) return cached;
+  const ctx = await attachmentRepoForLookup.getContext(c.req.param('id')!);
+  c.set('attachmentContext', ctx);
+  return ctx;
+}
+const resolveAttachmentWorkspace = async (c: any) => (await loadAttachmentContext(c))?.workspaceId ?? null;
+const resolveAttachmentOwner     = async (c: any) => (await loadAttachmentContext(c))?.ownerId ?? null;
+
+// POST /attachments — multipart. Parse the body once, cache it on the
+// context, and let both the resolver and the handler read from there so we
+// don't try to read the multipart stream twice.
+async function resolveTaskWorkspaceFromMultipart(c: any): Promise<string | null> {
+  let body = c.get('parsedMultipart') as Record<string, any> | undefined;
+  if (!body) {
+    try { body = await c.req.parseBody(); }
+    catch { return null; }
+    c.set('parsedMultipart', body);
+  }
+  const taskId = body!['taskId'] as string | undefined;
+  return taskId ? await taskRepoForLookup.getWorkspaceId(taskId) : null;
+}
 
 // GET /api/v1/attachments?taskId=
 attachmentRoutes.get('/', async (c) => {
@@ -13,14 +44,20 @@ attachmentRoutes.get('/', async (c) => {
 });
 
 // POST /api/v1/attachments  (multipart/form-data: file + taskId)
-attachmentRoutes.post('/', async (c) => {
+attachmentRoutes.post(
+  '/',
+  requirePermission('attachment.create', { resolveWorkspace: resolveTaskWorkspaceFromMultipart }),
+  async (c) => {
   const user = (c as any).get('user') as any;
 
-  let body: Record<string, any>;
-  try {
-    body = await c.req.parseBody();
-  } catch {
-    return c.json({ error: { message: 'Invalid multipart body' } }, 400);
+  // The RBAC middleware already parsed the body; reuse it if present.
+  let body = (c as any).get('parsedMultipart') as Record<string, any> | undefined;
+  if (!body) {
+    try {
+      body = await c.req.parseBody();
+    } catch {
+      return c.json({ error: { message: 'Invalid multipart body' } }, 400);
+    }
   }
 
   const taskId = body['taskId'] as string | undefined;
@@ -61,10 +98,16 @@ attachmentRoutes.get('/:id/download', async (c) => {
   return c.redirect(url, 302);
 });
 
-// DELETE /api/v1/attachments/:id
-attachmentRoutes.delete('/:id', async (c) => {
+// DELETE /api/v1/attachments/:id  — admins (.any) or the uploader (.own)
+attachmentRoutes.delete(
+  '/:id',
+  requirePermission('attachment.delete.any', {
+    resolveWorkspace: resolveAttachmentWorkspace,
+    ownerFallback: { slug: 'attachment.delete.own', resolveOwner: resolveAttachmentOwner },
+  }),
+  async (c) => {
   const user    = (c as any).get('user') as any;
-  const deleted = await attachmentService.delete(c.req.param('id'), user.userId);
+  const deleted = await attachmentService.delete(c.req.param('id')!, user.userId);
   if (!deleted) return c.json({ error: { message: 'Attachment not found or not yours' } }, 404);
   return c.body(null, 204);
 });

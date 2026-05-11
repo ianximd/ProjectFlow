@@ -2,8 +2,34 @@ import { Hono }        from 'hono';
 import { zValidator }  from '@hono/zod-validator';
 import { z }           from 'zod';
 import { WorkLogService } from './worklog.service.js';
+import { WorkLogRepository } from './worklog.repository.js';
+import { TaskRepository } from '../tasks/task.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 const svc = new WorkLogService();
+
+// RBAC resolvers
+const worklogRepoForLookup = new WorkLogRepository();
+const taskRepoForLookup    = new TaskRepository();
+
+async function loadWorklogContext(c: any): Promise<{ workspaceId: string; ownerId: string } | null> {
+  const cached = c.get('worklogContext') as { workspaceId: string; ownerId: string } | null | undefined;
+  if (cached !== undefined) return cached;
+  const ctx = await worklogRepoForLookup.getContext(c.req.param('id')!);
+  c.set('worklogContext', ctx);
+  return ctx;
+}
+const resolveWorklogWorkspace = async (c: any) => (await loadWorklogContext(c))?.workspaceId ?? null;
+const resolveWorklogOwner     = async (c: any) => (await loadWorklogContext(c))?.ownerId ?? null;
+
+async function resolveTaskWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.taskId ? await taskRepoForLookup.getWorkspaceId(body.taskId) : null;
+  } catch {
+    return null;
+  }
+}
 
 const createSchema = z.object({
   taskId:           z.string().uuid(),
@@ -32,6 +58,7 @@ worklogRoutes.get('/', async (c) => {
 worklogRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requirePermission('worklog.create', { resolveWorkspace: resolveTaskWorkspaceFromBody }),
   async (c) => {
     const user = (c as any).get('user') as any;
     const userId = user.userId as string;
@@ -41,9 +68,13 @@ worklogRoutes.post(
   },
 );
 
-// PATCH /worklogs/:id
+// PATCH /worklogs/:id  — owner-only
 worklogRoutes.patch(
   '/:id',
+  requirePermission('worklog.update.own', {
+    resolveWorkspace: resolveWorklogWorkspace,
+    ownerOnly: resolveWorklogOwner,
+  }),
   zValidator('json', updateSchema),
   async (c) => {
     const id     = c.req.param('id');
@@ -56,9 +87,15 @@ worklogRoutes.patch(
   },
 );
 
-// DELETE /worklogs/:id
-worklogRoutes.delete('/:id', async (c) => {
-  const id     = c.req.param('id');
+// DELETE /worklogs/:id  — admins (.any) or the author (.own)
+worklogRoutes.delete(
+  '/:id',
+  requirePermission('worklog.delete.any', {
+    resolveWorkspace: resolveWorklogWorkspace,
+    ownerFallback: { slug: 'worklog.delete.own', resolveOwner: resolveWorklogOwner },
+  }),
+  async (c) => {
+  const id     = c.req.param('id')!;
   const user   = (c as any).get('user') as any;
   const userId = user.userId as string;
   await svc.delete(id, userId);

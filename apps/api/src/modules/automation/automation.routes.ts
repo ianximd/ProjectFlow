@@ -2,9 +2,24 @@ import { Hono }             from 'hono';
 import { zValidator }       from '@hono/zod-validator';
 import { z }                from 'zod';
 import { AutomationService } from './automation.service.js';
+import { AutomationRepository } from './automation.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 import type { Variables }    from '../../server.js';
 
 const svc = new AutomationService();
+
+const automationRepoForLookup = new AutomationRepository();
+const projectRepoForLookup    = new ProjectRepository();
+const resolveAutomationWorkspace = (c: any) => automationRepoForLookup.getWorkspaceId(c.req.param('id'));
+async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
+  } catch {
+    return null;
+  }
+}
 
 const triggerSchema = z.object({
   type:           z.string().min(1),
@@ -59,6 +74,7 @@ automationRoutes.get('/', async (c) => {
 automationRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requirePermission('automation.create', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
   async (c) => {
     const { projectId, name, trigger, conditions, actions } = c.req.valid('json');
     const rule = await svc.create(projectId, name, trigger as any, conditions as any, actions as any);
@@ -69,6 +85,7 @@ automationRoutes.post(
 // PATCH /automations/:id
 automationRoutes.patch(
   '/:id',
+  requirePermission('automation.update', { resolveWorkspace: resolveAutomationWorkspace }),
   zValidator('json', updateSchema),
   async (c) => {
     const id   = c.req.param('id');
@@ -80,8 +97,11 @@ automationRoutes.patch(
 );
 
 // POST /automations/:id/toggle  — enable / disable
-automationRoutes.post('/:id/toggle', async (c) => {
-  const id   = c.req.param('id');
+automationRoutes.post(
+  '/:id/toggle',
+  requirePermission('automation.update', { resolveWorkspace: resolveAutomationWorkspace }),
+  async (c) => {
+  const id   = c.req.param('id')!;
   const body = await c.req.json<{ isEnabled: boolean }>();
   const rule  = await svc.update(id, { isEnabled: Boolean(body.isEnabled) });
   if (!rule) return c.json({ error: 'Not found' }, 404);
@@ -89,8 +109,11 @@ automationRoutes.post('/:id/toggle', async (c) => {
 });
 
 // DELETE /automations/:id
-automationRoutes.delete('/:id', async (c) => {
-  const id = c.req.param('id');
+automationRoutes.delete(
+  '/:id',
+  requirePermission('automation.delete', { resolveWorkspace: resolveAutomationWorkspace }),
+  async (c) => {
+  const id = c.req.param('id')!;
   await svc.delete(id);
   return c.json({ ok: true });
 });

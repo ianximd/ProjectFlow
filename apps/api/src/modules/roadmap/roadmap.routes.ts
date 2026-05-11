@@ -1,8 +1,24 @@
 import { Hono } from 'hono';
 import { RoadmapService } from './roadmap.service.js';
+import { TaskRepository } from '../tasks/task.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 const svc    = new RoadmapService();
 export const roadmapRoutes = new Hono();
+
+// Roadmap operations are all task mutations (date changes, dependency edges),
+// so we reuse the task.update permission and look up workspace from the task.
+const taskRepoForLookup = new TaskRepository();
+const resolveTaskWorkspaceFromParam   = (c: any) => taskRepoForLookup.getWorkspaceId(c.req.param('id'));
+const resolveTaskWorkspaceFromTaskParam = (c: any) => taskRepoForLookup.getWorkspaceId(c.req.param('taskId'));
+async function resolveTaskWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.taskId ? await taskRepoForLookup.getWorkspaceId(body.taskId) : null;
+  } catch {
+    return null;
+  }
+}
 
 // GET /roadmap?projectId=...&workspaceId=...&from=...&to=...
 roadmapRoutes.get('/', async (c) => {
@@ -26,8 +42,11 @@ roadmapRoutes.get('/', async (c) => {
 });
 
 // PATCH /roadmap/tasks/:id/dates
-roadmapRoutes.patch('/tasks/:id/dates', async (c) => {
-  const taskId     = c.req.param('id');
+roadmapRoutes.patch(
+  '/tasks/:id/dates',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspaceFromParam }),
+  async (c) => {
+  const taskId     = c.req.param('id')!;
   const user       = (c as any).get('user') as any;
   const body       = await c.req.json().catch(() => ({}));
 
@@ -55,7 +74,10 @@ roadmapRoutes.patch('/tasks/:id/dates', async (c) => {
 });
 
 // POST /roadmap/dependencies
-roadmapRoutes.post('/dependencies', async (c) => {
+roadmapRoutes.post(
+  '/dependencies',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspaceFromBody }),
+  async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const { taskId, dependsOn, type } = body as {
     taskId: string;
@@ -77,7 +99,10 @@ roadmapRoutes.post('/dependencies', async (c) => {
 });
 
 // DELETE /roadmap/dependencies/:taskId/:dependsOn
-roadmapRoutes.delete('/dependencies/:taskId/:dependsOn', async (c) => {
+roadmapRoutes.delete(
+  '/dependencies/:taskId/:dependsOn',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspaceFromTaskParam }),
+  async (c) => {
   const { taskId, dependsOn } = c.req.param();
   await svc.removeDependency(taskId, dependsOn);
   return c.body(null, 204);

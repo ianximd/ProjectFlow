@@ -25,6 +25,92 @@ function requireAuth(ctx: { user: unknown }): asserts ctx is { user: NonNullable
 }
 
 // ─────────────────────────────────────────
+// GraphQL output shapes
+//
+// The DB row shapes in @projectflow/types include fields we deliberately don't
+// expose over GraphQL (PasswordHash, MfaSecret, etc.) and use stricter unions
+// than the SP results return at runtime. We declare loose shapes here that
+// match the resolver expectations — `Date | string` accommodates both raw SP
+// rows and already-serialised payloads (e.g. cached results).
+// ─────────────────────────────────────────
+type IsoOrDate = Date | string;
+
+interface UserShape {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+  isEmailVerified?: boolean;
+  createdAt: IsoOrDate;
+}
+
+interface WorkspaceShape {
+  id: string;
+  name: string;
+  slug: string;
+  avatarUrl?: string | null;
+  ownerId: string;
+  createdAt: IsoOrDate;
+}
+
+interface ProjectShape {
+  id: string;
+  workspaceId: string;
+  name: string;
+  key: string;
+  description?: string | null;
+  type: string;
+  status?: string;
+  createdAt: IsoOrDate;
+}
+
+interface SprintShape {
+  id: string;
+  projectId: string;
+  name: string;
+  goal?: string | null;
+  status: string;
+  startDate?: IsoOrDate | null;
+  endDate?: IsoOrDate | null;
+  createdAt: IsoOrDate;
+}
+
+interface TaskShape {
+  id: string;
+  projectId: string;
+  workspaceId: string;
+  issueKey: string;
+  title: string;
+  description?: string | null;
+  type: string;
+  status: string;
+  priority: string;
+  storyPoints?: number | null;
+  sprintId?: string | null;
+  reporterId: string;
+  dueDate?: IsoOrDate | null;
+  createdAt: IsoOrDate;
+  updatedAt: IsoOrDate;
+}
+
+interface CommentShape {
+  id: string;
+  taskId: string;
+  authorId: string;
+  body: string;
+  createdAt: IsoOrDate;
+  updatedAt?: IsoOrDate | null;
+}
+
+interface NotificationShape {
+  id: string;
+  userId: string;
+  type: string;
+  isRead: boolean;
+  createdAt: IsoOrDate;
+}
+
+// ─────────────────────────────────────────
 // Scalars
 // ─────────────────────────────────────────
 const DateScalar = new GraphQLScalarType({
@@ -38,101 +124,111 @@ const DateScalar = new GraphQLScalarType({
 builder.addScalarType('Date', DateScalar, {});
 
 // ─────────────────────────────────────────
-// Object Types
+// Object Types — registered as typed refs first, then implemented. Using
+// objectRef<Shape>(name) avoids the `'Name' as never` cast and gives proper
+// inference to every t.field({ type: …Type }) reference downstream.
 // ─────────────────────────────────────────
-const UserType = builder.objectType('User' as never, {
+const UserType         = builder.objectRef<UserShape>('User');
+const WorkspaceType    = builder.objectRef<WorkspaceShape>('Workspace');
+const ProjectType      = builder.objectRef<ProjectShape>('Project');
+const SprintType       = builder.objectRef<SprintShape>('Sprint');
+const TaskType         = builder.objectRef<TaskShape>('Task');
+const CommentType      = builder.objectRef<CommentShape>('Comment');
+const NotificationType = builder.objectRef<NotificationShape>('Notification');
+
+UserType.implement({
   description: 'A ProjectFlow user account',
   fields: (t) => ({
-    id:              t.string({ resolve: (u: any) => u.id }),
-    email:           t.string({ resolve: (u: any) => u.email }),
-    name:            t.string({ resolve: (u: any) => u.name }),
-    avatarUrl:       t.string({ nullable: true, resolve: (u: any) => u.avatarUrl ?? null }),
-    isEmailVerified: t.boolean({ resolve: (u: any) => Boolean(u.isEmailVerified) }),
-    createdAt:       t.field({ type: 'Date', resolve: (u: any) => new Date(u.createdAt) }),
+    id:              t.exposeString('id'),
+    email:           t.exposeString('email'),
+    name:            t.exposeString('name'),
+    avatarUrl:       t.string({ nullable: true, resolve: (u) => u.avatarUrl ?? null }),
+    isEmailVerified: t.boolean({ resolve: (u) => Boolean(u.isEmailVerified) }),
+    createdAt:       t.field({ type: 'Date', resolve: (u) => new Date(u.createdAt) }),
   }),
 });
 
-const WorkspaceType = builder.objectType('Workspace' as never, {
+WorkspaceType.implement({
   description: 'A collaborative workspace',
   fields: (t) => ({
-    id:        t.string({ resolve: (w: any) => w.id }),
-    name:      t.string({ resolve: (w: any) => w.name }),
-    slug:      t.string({ resolve: (w: any) => w.slug }),
-    avatarUrl: t.string({ nullable: true, resolve: (w: any) => w.avatarUrl ?? null }),
-    ownerId:   t.string({ resolve: (w: any) => w.ownerId }),
-    createdAt: t.field({ type: 'Date', resolve: (w: any) => new Date(w.createdAt) }),
+    id:        t.exposeString('id'),
+    name:      t.exposeString('name'),
+    slug:      t.exposeString('slug'),
+    avatarUrl: t.string({ nullable: true, resolve: (w) => w.avatarUrl ?? null }),
+    ownerId:   t.exposeString('ownerId'),
+    createdAt: t.field({ type: 'Date', resolve: (w) => new Date(w.createdAt) }),
   }),
 });
 
-const ProjectType = builder.objectType('Project' as never, {
+ProjectType.implement({
   description: 'A project inside a workspace',
   fields: (t) => ({
-    id:          t.string({ resolve: (p: any) => p.id }),
-    workspaceId: t.string({ resolve: (p: any) => p.workspaceId }),
-    name:        t.string({ resolve: (p: any) => p.name }),
-    key:         t.string({ resolve: (p: any) => p.key }),
-    description: t.string({ nullable: true, resolve: (p: any) => p.description ?? null }),
-    type:        t.string({ resolve: (p: any) => p.type }),
-    status:      t.string({ resolve: (p: any) => p.status ?? 'ACTIVE' }),
-    createdAt:   t.field({ type: 'Date', resolve: (p: any) => new Date(p.createdAt) }),
+    id:          t.exposeString('id'),
+    workspaceId: t.exposeString('workspaceId'),
+    name:        t.exposeString('name'),
+    key:         t.exposeString('key'),
+    description: t.string({ nullable: true, resolve: (p) => p.description ?? null }),
+    type:        t.exposeString('type'),
+    status:      t.string({ resolve: (p) => p.status ?? 'ACTIVE' }),
+    createdAt:   t.field({ type: 'Date', resolve: (p) => new Date(p.createdAt) }),
   }),
 });
 
-const SprintType = builder.objectType('Sprint' as never, {
+SprintType.implement({
   description: 'A sprint inside a project',
   fields: (t) => ({
-    id:        t.string({ resolve: (s: any) => s.id }),
-    projectId: t.string({ resolve: (s: any) => s.projectId }),
-    name:      t.string({ resolve: (s: any) => s.name }),
-    goal:      t.string({ nullable: true, resolve: (s: any) => s.goal ?? null }),
-    status:    t.string({ resolve: (s: any) => s.status }),
-    startDate: t.field({ type: 'Date', nullable: true, resolve: (s: any) => s.startDate ? new Date(s.startDate) : null }),
-    endDate:   t.field({ type: 'Date', nullable: true, resolve: (s: any) => s.endDate   ? new Date(s.endDate)   : null }),
-    createdAt: t.field({ type: 'Date', resolve: (s: any) => new Date(s.createdAt) }),
+    id:        t.exposeString('id'),
+    projectId: t.exposeString('projectId'),
+    name:      t.exposeString('name'),
+    goal:      t.string({ nullable: true, resolve: (s) => s.goal ?? null }),
+    status:    t.exposeString('status'),
+    startDate: t.field({ type: 'Date', nullable: true, resolve: (s) => s.startDate ? new Date(s.startDate) : null }),
+    endDate:   t.field({ type: 'Date', nullable: true, resolve: (s) => s.endDate   ? new Date(s.endDate)   : null }),
+    createdAt: t.field({ type: 'Date', resolve: (s) => new Date(s.createdAt) }),
   }),
 });
 
-const TaskType = builder.objectType('Task' as never, {
+TaskType.implement({
   description: 'A task / issue',
   fields: (t) => ({
-    id:          t.string({ resolve: (tk: any) => tk.id }),
-    projectId:   t.string({ resolve: (tk: any) => tk.projectId }),
-    workspaceId: t.string({ resolve: (tk: any) => tk.workspaceId }),
-    issueKey:    t.string({ resolve: (tk: any) => tk.issueKey }),
-    title:       t.string({ resolve: (tk: any) => tk.title }),
-    description: t.string({ nullable: true, resolve: (tk: any) => tk.description ?? null }),
-    type:        t.string({ resolve: (tk: any) => tk.type }),
-    status:      t.string({ resolve: (tk: any) => tk.status }),
-    priority:    t.string({ resolve: (tk: any) => tk.priority }),
-    storyPoints: t.int({ nullable: true, resolve: (tk: any) => tk.storyPoints ?? null }),
-    sprintId:    t.string({ nullable: true, resolve: (tk: any) => tk.sprintId ?? null }),
-    reporterId:  t.string({ resolve: (tk: any) => tk.reporterId }),
-    dueDate:     t.field({ type: 'Date', nullable: true, resolve: (tk: any) => tk.dueDate ? new Date(tk.dueDate) : null }),
-    createdAt:   t.field({ type: 'Date', resolve: (tk: any) => new Date(tk.createdAt) }),
-    updatedAt:   t.field({ type: 'Date', resolve: (tk: any) => new Date(tk.updatedAt) }),
+    id:          t.exposeString('id'),
+    projectId:   t.exposeString('projectId'),
+    workspaceId: t.exposeString('workspaceId'),
+    issueKey:    t.exposeString('issueKey'),
+    title:       t.exposeString('title'),
+    description: t.string({ nullable: true, resolve: (tk) => tk.description ?? null }),
+    type:        t.exposeString('type'),
+    status:      t.exposeString('status'),
+    priority:    t.exposeString('priority'),
+    storyPoints: t.int({ nullable: true, resolve: (tk) => tk.storyPoints ?? null }),
+    sprintId:    t.string({ nullable: true, resolve: (tk) => tk.sprintId ?? null }),
+    reporterId:  t.exposeString('reporterId'),
+    dueDate:     t.field({ type: 'Date', nullable: true, resolve: (tk) => tk.dueDate ? new Date(tk.dueDate) : null }),
+    createdAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.createdAt) }),
+    updatedAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.updatedAt) }),
   }),
 });
 
-const CommentType = builder.objectType('Comment' as never, {
+CommentType.implement({
   description: 'A comment on a task',
   fields: (t) => ({
-    id:        t.string({ resolve: (c: any) => c.id }),
-    taskId:    t.string({ resolve: (c: any) => c.taskId }),
-    authorId:  t.string({ resolve: (c: any) => c.authorId }),
-    body:      t.string({ resolve: (c: any) => c.body }),
-    createdAt: t.field({ type: 'Date', resolve: (c: any) => new Date(c.createdAt) }),
-    updatedAt: t.field({ type: 'Date', nullable: true, resolve: (c: any) => c.updatedAt ? new Date(c.updatedAt) : null }),
+    id:        t.exposeString('id'),
+    taskId:    t.exposeString('taskId'),
+    authorId:  t.exposeString('authorId'),
+    body:      t.exposeString('body'),
+    createdAt: t.field({ type: 'Date', resolve: (c) => new Date(c.createdAt) }),
+    updatedAt: t.field({ type: 'Date', nullable: true, resolve: (c) => c.updatedAt ? new Date(c.updatedAt) : null }),
   }),
 });
 
-const NotificationType = builder.objectType('Notification' as never, {
+NotificationType.implement({
   description: 'An in-app notification',
   fields: (t) => ({
-    id:        t.string({ resolve: (n: any) => n.id }),
-    userId:    t.string({ resolve: (n: any) => n.userId }),
-    type:      t.string({ resolve: (n: any) => n.type }),
-    isRead:    t.boolean({ resolve: (n: any) => Boolean(n.isRead) }),
-    createdAt: t.field({ type: 'Date', resolve: (n: any) => new Date(n.createdAt) }),
+    id:        t.exposeString('id'),
+    userId:    t.exposeString('userId'),
+    type:      t.exposeString('type'),
+    isRead:    t.boolean({ resolve: (n) => Boolean(n.isRead) }),
+    createdAt: t.field({ type: 'Date', resolve: (n) => new Date(n.createdAt) }),
   }),
 });
 
@@ -171,7 +267,7 @@ builder.queryType({
   fields: (t) => ({
     /** Currently-authenticated user */
     me: t.field({
-      type:    'User' as never,
+      type:    UserType,
       nullable: true,
       resolve: (_, __, ctx) => {
         if (!ctx.user) return null;
@@ -181,58 +277,58 @@ builder.queryType({
 
     /** Workspaces the authenticated user belongs to */
     workspaces: t.field({
-      type:    ['Workspace' as never],
+      type:    [WorkspaceType],
       resolve: async (_, __, ctx) => {
         requireAuth(ctx);
-        return workspaceService.list((ctx.user as any).userId);
+        return (await workspaceService.list((ctx.user as any).userId)) as unknown as WorkspaceShape[];
       },
     }),
 
     /** Single workspace by ID */
     workspace: t.field({
-      type:     'Workspace' as never,
+      type:     WorkspaceType,
       nullable: true,
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
-        return workspaceService.getById(id);
+        return (await workspaceService.getById(id)) as WorkspaceShape | null;
       },
     }),
 
     /** Projects in a workspace */
     projects: t.field({
-      type:    ['Project' as never],
+      type:    [ProjectType],
       args: { workspaceId: t.arg.string({ required: true }) },
       resolve: async (_, { workspaceId }, ctx) => {
         requireAuth(ctx);
-        return projectService.list(workspaceId);
+        return (await projectService.list(workspaceId)) as unknown as ProjectShape[];
       },
     }),
 
     /** Single project by ID */
     project: t.field({
-      type:     'Project' as never,
+      type:     ProjectType,
       nullable: true,
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
-        return projectService.getById(id);
+        return (await projectService.getById(id)) as ProjectShape | null;
       },
     }),
 
     /** Sprints in a project */
     sprints: t.field({
-      type:    ['Sprint' as never],
+      type:    [SprintType],
       args: { projectId: t.arg.string({ required: true }) },
       resolve: async (_, { projectId }, ctx) => {
         requireAuth(ctx);
-        return sprintService.list(projectId);
+        return (await sprintService.list(projectId)) as unknown as SprintShape[];
       },
     }),
 
     /** Paginated task list */
     tasks: t.field({
-      type:    ['Task' as never],
+      type:    [TaskType],
       args: {
         projectId: t.arg.string({ required: true }),
         status:    t.arg.string({ required: false }),
@@ -255,7 +351,7 @@ builder.queryType({
 
     /** Single task by ID */
     task: t.field({
-      type:     'Task' as never,
+      type:     TaskType,
       nullable: true,
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_, { id }, ctx) => {
@@ -266,7 +362,7 @@ builder.queryType({
 
     /** Comments on a task */
     comments: t.field({
-      type:    ['Comment' as never],
+      type:    [CommentType],
       args: { taskId: t.arg.string({ required: true }) },
       resolve: async (_, { taskId }, ctx) => {
         requireAuth(ctx);
@@ -276,7 +372,7 @@ builder.queryType({
 
     /** Notifications for the authenticated user */
     notifications: t.field({
-      type:    ['Notification' as never],
+      type:    [NotificationType],
       args: {
         page:      t.arg.int({ required: false }),
         pageSize:  t.arg.int({ required: false }),
@@ -303,7 +399,7 @@ builder.mutationType({
   fields: (t) => ({
     /** Create a new task */
     createTask: t.field({
-      type:    'Task' as never,
+      type:    TaskType,
       args:    { input: t.arg({ type: CreateTaskInput, required: true }) },
       resolve: async (_, { input }, ctx) => {
         requireAuth(ctx);
@@ -317,7 +413,7 @@ builder.mutationType({
 
     /** Partial update of task fields */
     updateTask: t.field({
-      type:     'Task' as never,
+      type:     TaskType,
       nullable: true,
       args: {
         id:    t.arg.string({ required: true }),
@@ -336,7 +432,7 @@ builder.mutationType({
 
     /** Transition a task to a new status */
     transitionTask: t.field({
-      type:    'Task' as never,
+      type:    TaskType,
       args: {
         id:     t.arg.string({ required: true }),
         status: t.arg.string({ required: true }),
@@ -352,7 +448,7 @@ builder.mutationType({
 
     /** Delete a task */
     deleteTask: t.field({
-      type:    'Boolean' as never,
+      type:    'Boolean',
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
@@ -364,7 +460,7 @@ builder.mutationType({
 
     /** Add a comment to a task */
     createComment: t.field({
-      type:    'Comment' as never,
+      type:    CommentType,
       args: {
         taskId: t.arg.string({ required: true }),
         body:   t.arg.string({ required: true }),
@@ -380,7 +476,7 @@ builder.mutationType({
 
     /** Mark a single notification as read */
     markNotificationRead: t.field({
-      type:    'Boolean' as never,
+      type:    'Boolean',
       args: { id: t.arg.string({ required: true }) },
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
@@ -391,7 +487,7 @@ builder.mutationType({
 
     /** Mark all notifications read for the authenticated user */
     markAllNotificationsRead: t.field({
-      type:    'Int' as never,
+      type:    'Int',
       resolve: async (_, __, ctx) => {
         requireAuth(ctx);
         return notificationService.markAllRead((ctx.user as any).userId);
@@ -410,7 +506,7 @@ builder.subscriptionType({
      * updated, or transitioned.
      */
     taskUpdated: t.field({
-      type:    'Task' as never,
+      type:    TaskType,
       args: {
         projectId: t.arg.string({ required: true }),
       },
@@ -423,7 +519,7 @@ builder.subscriptionType({
 
     /** Emitted whenever a comment is posted on the given task */
     commentAdded: t.field({
-      type:    'Comment' as never,
+      type:    CommentType,
       args: {
         taskId: t.arg.string({ required: true }),
       },

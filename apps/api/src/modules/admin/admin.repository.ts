@@ -138,6 +138,75 @@ export class AdminRepository {
     return { workspaces, total };
   }
 
+  // ─── Admin user CRUD + recovery ─────────────────────────────────────────────
+
+  async createUser(email: string, name: string, passwordHash: string, isEmailVerified = true): Promise<AdminUser> {
+    const rows = await execSpOne<any>('dbo.usp_Admin_User_Create', [
+      { name: 'Email',           type: sql.NVarChar(255), value: email },
+      { name: 'Name',            type: sql.NVarChar(255), value: name },
+      { name: 'PasswordHash',    type: sql.NVarChar(255), value: passwordHash },
+      { name: 'IsEmailVerified', type: sql.Bit,           value: isEmailVerified ? 1 : 0 },
+    ]);
+    const r = rows[0]!;
+    return {
+      id:              r.Id,
+      email:           r.Email,
+      name:            r.Name,
+      avatarUrl:       r.AvatarUrl ?? null,
+      isEmailVerified: Boolean(r.IsEmailVerified),
+      mfaEnabled:      Boolean(r.MfaEnabled),
+      workspaceCount:  r.WorkspaceCount ?? 0,
+      createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
+      deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
+    };
+  }
+
+  async updateUser(id: string, fields: { email?: string; name?: string }): Promise<AdminUser | null> {
+    const rows = await execSpOne<any>('dbo.usp_Admin_User_Update', [
+      { name: 'Id',    type: sql.UniqueIdentifier, value: id },
+      { name: 'Email', type: sql.NVarChar(255),    value: fields.email ?? null },
+      { name: 'Name',  type: sql.NVarChar(255),    value: fields.name  ?? null },
+    ]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id:              r.Id,
+      email:           r.Email,
+      name:            r.Name,
+      avatarUrl:       r.AvatarUrl ?? null,
+      isEmailVerified: Boolean(r.IsEmailVerified),
+      mfaEnabled:      Boolean(r.MfaEnabled),
+      workspaceCount:  r.WorkspaceCount ?? 0,
+      createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
+      deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
+    };
+  }
+
+  async hardDeleteUser(id: string): Promise<void> {
+    await execSpOne('dbo.usp_Admin_User_HardDelete', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+  }
+
+  async setPassword(id: string, passwordHash: string): Promise<void> {
+    await execSpOne('dbo.usp_Admin_User_SetPassword', [
+      { name: 'Id',           type: sql.UniqueIdentifier, value: id },
+      { name: 'PasswordHash', type: sql.NVarChar(255),    value: passwordHash },
+    ]);
+  }
+
+  async disableMfa(id: string): Promise<void> {
+    await execSpOne('dbo.usp_Admin_User_DisableMfa', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+  }
+
+  async unlockUser(id: string): Promise<void> {
+    await execSpOne('dbo.usp_Admin_User_Unlock', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+  }
+
   async toggleUserActive(userId: string, suspend: boolean): Promise<AdminUser | null> {
     const rows = await execSpOne<any>('dbo.usp_Admin_ToggleUserActive', [
       { name: 'UserId',  type: sql.NVarChar(255), value: userId },

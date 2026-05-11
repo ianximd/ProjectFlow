@@ -2,7 +2,22 @@ import { Hono }        from 'hono';
 import { zValidator }  from '@hono/zod-validator';
 import { z }           from 'zod';
 import { ComponentService } from './component.service.js';
+import { ComponentRepository } from './component.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+
+const componentRepoForLookup = new ComponentRepository();
+const projectRepoForLookup   = new ProjectRepository();
+const resolveComponentWorkspace = (c: any) => componentRepoForLookup.getWorkspaceId(c.req.param('id'));
+async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
+  } catch {
+    return null;
+  }
+}
 
 function invalidateComponentCache(projectId: string): void {
   cacheDelPattern(`http:*:/api/v1/components?projectId=${projectId}*`).catch(() => {});
@@ -37,6 +52,7 @@ componentRoutes.get('/', async (c) => {
 componentRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requirePermission('component.manage', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
   async (c) => {
     const { projectId, name, description, leadUserId } = c.req.valid('json');
     const component = await svc.create(
@@ -52,6 +68,7 @@ componentRoutes.post(
 // PATCH /components/:id
 componentRoutes.patch(
   '/:id',
+  requirePermission('component.manage', { resolveWorkspace: resolveComponentWorkspace }),
   zValidator('json', updateSchema),
   async (c) => {
     const id        = c.req.param('id');
@@ -65,9 +82,12 @@ componentRoutes.patch(
 
 // DELETE /components/:id
 // projectId query param is optional but enables immediate cache invalidation.
-componentRoutes.delete('/:id', async (c) => {
+componentRoutes.delete(
+  '/:id',
+  requirePermission('component.manage', { resolveWorkspace: resolveComponentWorkspace }),
+  async (c) => {
   const projectId = c.req.query('projectId');
-  await svc.delete(c.req.param('id'));
+  await svc.delete(c.req.param('id')!);
   if (projectId) invalidateComponentCache(projectId);
   return c.json({ ok: true });
 });

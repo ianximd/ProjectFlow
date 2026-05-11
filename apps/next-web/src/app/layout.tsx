@@ -36,6 +36,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           enableColorScheme
         >
           <TooltipProvider delayDuration={0}>
+            <a href="#main-content" className="skip-link">
+              Skip to main content
+            </a>
             <Providers>
               <Suspense>{children}</Suspense>
             </Providers>

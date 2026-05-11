@@ -53,6 +53,14 @@ export class AttachmentRepository {
     return rows[0] ?? null;
   }
 
+  async getContext(id: string): Promise<{ workspaceId: string; ownerId: string } | null> {
+    const rows = await execSpOne<{ WorkspaceId: string; OwnerId: string }>('usp_Attachment_GetContext', [
+      { name: 'AttachmentId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    const r = rows[0];
+    return r ? { workspaceId: r.WorkspaceId, ownerId: r.OwnerId } : null;
+  }
+
   async softDelete(id: string, requesterId: string): Promise<{ storageKey: string; bucketName: string } | null> {
     try {
       const rows = await execSpOne<{ StorageKey: string; BucketName: string }>('usp_Attachment_Delete', [

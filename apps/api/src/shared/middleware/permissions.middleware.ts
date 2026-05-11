@@ -1,20 +1,6 @@
 import type { Context, Next } from 'hono';
 import { roleService } from '../../modules/roles/role.service.js';
 
-// ─── Legacy env-var fallback (super-admin) ───────────────────────────────────
-//
-// Once the Phase-2 startup hook auto-promotes ADMIN_USER_IDS, this fallback
-// becomes a safety net. It allows users still listed in the env var to keep
-// system access if their DB assignment is somehow missing, and warns so we
-// can spot the drift. Slated for removal after the next release.
-
-const LEGACY_ADMIN_IDS: Set<string> = new Set(
-  (process.env.ADMIN_USER_IDS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
-
 // ─── Cache key ───────────────────────────────────────────────────────────────
 
 function cacheKey(workspaceId?: string | null): string {
@@ -58,41 +44,106 @@ export interface RequirePermissionOptions {
   workspaceParam?: string;
   /** Explicit workspace id (overrides workspaceParam). */
   workspaceId?: string;
+  /**
+   * Async resolver for routes where the workspace must be derived from a
+   * resource (e.g. /tasks/:id → look up Task.WorkspaceId). Wins over
+   * workspaceParam/workspaceId when provided. Return null to fail-closed.
+   *
+   * Note: the resolver is awaited inside the middleware, so it should be a
+   * single SP call. Result is reused across all permission gates on the same
+   * request via the per-context cache below.
+   */
+  resolveWorkspace?: (c: Context) => Promise<string | null>;
+  /**
+   * Tighten the primary check: even if the user holds the required slug, deny
+   * unless they are also the resource owner. Use for `*.own`-only permissions
+   * (e.g. PATCH /comments/:id requires `comment.update.own` AND ownership).
+   * Resolver should return the owner userId, or null when the resource is
+   * missing (treated as 404).
+   */
+  ownerOnly?: (c: Context) => Promise<string | null>;
+  /**
+   * Widen the primary check: if the user lacks the required slug, allow when
+   * they hold `slug` AND are the resource owner. Use to express
+   * "DELETE my own comment" alongside "DELETE any comment".
+   */
+  ownerFallback?: {
+    slug: string;
+    resolveOwner: (c: Context) => Promise<string | null>;
+  };
 }
 
 /**
- * Hono middleware that gates a route on a permission slug.
+ * Hono middleware that gates a route on a permission slug. Pass a string[] to
+ * require ANY-OF — useful when a system-scoped admin permission should also
+ * satisfy a workspace-scoped check (e.g. super-admin can delete any workspace).
  *
  *   adminRoutes.get('/users', requirePermission('admin.users.read'), handler);
- *   workspaceRoutes.delete('/:id', requirePermission('workspace.delete', { workspaceParam: 'id' }), handler);
+ *   workspaceRoutes.delete(
+ *     '/:id',
+ *     requirePermission(['workspace.delete', 'admin.workspaces.delete'], { workspaceParam: 'id' }),
+ *     handler,
+ *   );
  */
 export function requirePermission(
-  slug: string,
+  slug: string | string[],
   opts: RequirePermissionOptions = {},
 ) {
+  const slugs = Array.isArray(slug) ? slug : [slug];
+
   return async (c: Context, next: Next) => {
     const userId = getUserId(c);
     if (!userId) {
       return c.json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required', statusCode: 401 } }, 401);
     }
 
-    const workspaceId =
-      opts.workspaceId ??
-      (opts.workspaceParam ? c.req.param(opts.workspaceParam) ?? c.req.query(opts.workspaceParam) : null);
+    let workspaceId: string | null | undefined;
+    if (opts.resolveWorkspace) {
+      // Cache the resolved id on the context so multi-gate routes don't re-query.
+      const cached = (c as any).get('resolvedWorkspaceId') as string | null | undefined;
+      workspaceId = cached !== undefined ? cached : await opts.resolveWorkspace(c);
+      (c as any).set('resolvedWorkspaceId', workspaceId);
+      if (!workspaceId) {
+        return c.json(
+          { error: { code: 'NOT_FOUND', message: 'Resource not found', statusCode: 404 } },
+          404,
+        );
+      }
+    } else {
+      workspaceId =
+        opts.workspaceId ??
+        (opts.workspaceParam ? c.req.param(opts.workspaceParam) ?? c.req.query(opts.workspaceParam) : null);
+    }
 
     const permissions = await loadPermissions(c, workspaceId ?? null);
 
-    if (permissions.has(slug)) {
-      await next();
-      return;
+    let allowed = slugs.some((s) => permissions.has(s));
+
+    // ownerOnly: tighten — must also be the resource owner.
+    if (allowed && opts.ownerOnly) {
+      const ownerId = await opts.ownerOnly(c);
+      if (ownerId === null) {
+        return c.json(
+          { error: { code: 'NOT_FOUND', message: 'Resource not found', statusCode: 404 } },
+          404,
+        );
+      }
+      if (ownerId !== userId) allowed = false;
     }
 
-    // Legacy env-var fallback for system-scope checks only.
-    if (!workspaceId && LEGACY_ADMIN_IDS.has(userId)) {
-      console.warn(
-        `[permissions] Falling back to legacy ADMIN_USER_IDS for user ${userId}; ` +
-        `assign super-admin role in DB to remove this warning.`,
-      );
+    // ownerFallback: widen — owner with the fallback slug counts.
+    if (!allowed && opts.ownerFallback && permissions.has(opts.ownerFallback.slug)) {
+      const ownerId = await opts.ownerFallback.resolveOwner(c);
+      if (ownerId === null) {
+        return c.json(
+          { error: { code: 'NOT_FOUND', message: 'Resource not found', statusCode: 404 } },
+          404,
+        );
+      }
+      if (ownerId === userId) allowed = true;
+    }
+
+    if (allowed) {
       await next();
       return;
     }
@@ -101,7 +152,9 @@ export function requirePermission(
       {
         error: {
           code:       'FORBIDDEN',
-          message:    `Permission '${slug}' required`,
+          message:    slugs.length > 1
+            ? `Permission required (any of: ${slugs.join(', ')})`
+            : `Permission '${slugs[0]}' required`,
           statusCode: 403,
         },
       },

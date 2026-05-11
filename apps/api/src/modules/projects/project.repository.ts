@@ -28,6 +28,13 @@ export class ProjectRepository {
     return rows[0] ?? null;
   }
 
+  async getWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Project_GetWorkspaceId', [
+      { name: 'ProjectId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
+
   async update(id: string, fields: {
     name?: string;
     description?: string | null;

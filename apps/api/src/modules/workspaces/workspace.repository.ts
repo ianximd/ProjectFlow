@@ -49,4 +49,47 @@ export class WorkspaceRepository {
       { name: 'Id', type: sql.UniqueIdentifier, value: id },
     ]);
   }
+
+  async listMembers(workspaceId: string) {
+    const rows = await execSpOne<{
+      Id: string;
+      Email: string;
+      Name: string;
+      AvatarUrl: string | null;
+      JoinedAt: string;
+      RoleSlugs: string | null;
+      IsOwner: boolean;
+    }>('usp_Workspace_ListMembers', [
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+    ]);
+    return rows;
+  }
+
+  async addMemberByEmail(workspaceId: string, email: string, role = 'MEMBER') {
+    const rows = await execSpOne('usp_WorkspaceMember_AddByEmail', [
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+      { name: 'Email',       type: sql.NVarChar(255),    value: email },
+      { name: 'Role',        type: sql.NVarChar(20),     value: role },
+    ]);
+    return rows[0] ?? null;
+  }
+
+  async removeMember(workspaceId: string, userId: string): Promise<void> {
+    await execSpOne('usp_WorkspaceMember_Remove', [
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+      { name: 'UserId',      type: sql.UniqueIdentifier, value: userId },
+    ]);
+  }
+
+  async setMemberRole(workspaceId: string, userId: string, role: string) {
+    const rows = await execSpOne<{ UserId: string; RoleSlug: string }>(
+      'usp_WorkspaceMember_SetRole',
+      [
+        { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+        { name: 'UserId',      type: sql.UniqueIdentifier, value: userId },
+        { name: 'Role',        type: sql.NVarChar(20),     value: role },
+      ],
+    );
+    return rows[0] ?? null;
+  }
 }

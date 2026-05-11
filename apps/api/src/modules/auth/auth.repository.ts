@@ -81,4 +81,55 @@ export class AuthRepository {
       { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
     ]);
   }
+
+  // ── MFA ────────────────────────────────────────────────────────────────────
+
+  async getMfaState(userId: string): Promise<{ enabled: boolean; secret: string | null; enabledAt: Date | null } | null> {
+    const rows = await execSpOne<{ MfaEnabled: boolean; MfaSecret: string | null; MfaEnabledAt: Date | null }>(
+      'usp_User_GetMfaState',
+      [{ name: 'UserId', type: sql.UniqueIdentifier, value: userId }],
+    );
+    const r = rows[0];
+    return r ? { enabled: Boolean(r.MfaEnabled), secret: r.MfaSecret, enabledAt: r.MfaEnabledAt } : null;
+  }
+
+  async setMfaPending(userId: string, secret: string): Promise<void> {
+    await execSpOne('usp_User_SetMfaPending', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+      { name: 'Secret', type: sql.NVarChar(255),    value: secret },
+    ]);
+  }
+
+  async enableMfa(userId: string): Promise<void> {
+    await execSpOne('usp_User_EnableMfa', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+  }
+
+  async disableMfa(userId: string): Promise<void> {
+    await execSpOne('usp_User_DisableMfa', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+  }
+
+  async createRecoveryCodes(userId: string, hashes: string[]): Promise<void> {
+    await execSpOne('usp_MfaRecovery_CreateBatch', [
+      { name: 'UserId',     type: sql.UniqueIdentifier, value: userId },
+      { name: 'CodeHashes', type: sql.NVarChar(sql.MAX), value: hashes.join('\n') },
+    ]);
+  }
+
+  async listRecoveryHashes(userId: string): Promise<{ id: string; hash: string }[]> {
+    const rows = await execSpOne<{ Id: string; CodeHash: string }>('usp_MfaRecovery_ListHashes', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+    return Array.from(rows).map((r) => ({ id: r.Id, hash: r.CodeHash }));
+  }
+
+  async consumeRecoveryCode(codeId: string): Promise<boolean> {
+    const rows = await execSpOne<{ RowsDeleted: number }>('usp_MfaRecovery_Consume', [
+      { name: 'CodeId', type: sql.UniqueIdentifier, value: codeId },
+    ]);
+    return (rows[0]?.RowsDeleted ?? 0) > 0;
+  }
 }

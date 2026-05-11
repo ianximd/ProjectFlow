@@ -53,7 +53,7 @@ export function SprintSummaryWidget({ data }: Props) {
             outerRadius={80}
             paddingAngle={2}
             dataKey="value"
-            label={({ name, percent }) => `${name} (${Math.round(percent * 100)}%)`}
+            label={({ name, percent }) => `${name} (${Math.round((percent ?? 0) * 100)}%)`}
             labelLine={false}
           >
             {pieData.map((_, i) => (

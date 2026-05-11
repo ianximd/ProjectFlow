@@ -1,8 +1,24 @@
 import { Hono } from 'hono';
 import { WorkflowService } from './workflow.service.js';
+import { WorkflowRepository } from './workflow.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 const svc = new WorkflowService();
 export const workflowRoutes = new Hono();
+
+const workflowRepoForLookup = new WorkflowRepository();
+const projectRepoForLookup  = new ProjectRepository();
+const resolveWorkflowWorkspace      = (c: any) => workflowRepoForLookup.getWorkspaceId(c.req.param('wfId'));
+const resolveWorkflowStatusWorkspace = (c: any) => workflowRepoForLookup.getWorkspaceIdByStatus(c.req.param('statusId'));
+async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
+  } catch {
+    return null;
+  }
+}
 
 // GET /workflows?projectId=...
 workflowRoutes.get('/', async (c) => {
@@ -18,7 +34,10 @@ workflowRoutes.get('/', async (c) => {
 });
 
 // POST /workflows  { projectId, name, template }
-workflowRoutes.post('/', async (c) => {
+workflowRoutes.post(
+  '/',
+  requirePermission('workflow.update', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
+  async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const { projectId, name, template } = body as {
     projectId: string;
@@ -39,8 +58,11 @@ workflowRoutes.post('/', async (c) => {
 });
 
 // POST /workflows/:wfId/statuses  { name, category, color }
-workflowRoutes.post('/:wfId/statuses', async (c) => {
-  const wfId = c.req.param('wfId');
+workflowRoutes.post(
+  '/:wfId/statuses',
+  requirePermission('workflow.update', { resolveWorkspace: resolveWorkflowWorkspace }),
+  async (c) => {
+  const wfId = c.req.param('wfId')!;
   const body = await c.req.json().catch(() => ({}));
   const { name, category = 'TODO', color = '#6b7280' } = body as {
     name: string;
@@ -60,8 +82,11 @@ workflowRoutes.post('/:wfId/statuses', async (c) => {
 });
 
 // PATCH /workflows/statuses/:statusId  { name?, category?, color?, position? }
-workflowRoutes.patch('/statuses/:statusId', async (c) => {
-  const statusId = c.req.param('statusId');
+workflowRoutes.patch(
+  '/statuses/:statusId',
+  requirePermission('workflow.update', { resolveWorkspace: resolveWorkflowStatusWorkspace }),
+  async (c) => {
+  const statusId = c.req.param('statusId')!;
   const body     = await c.req.json().catch(() => ({}));
   const { name, category, color, position } = body as {
     name?: string;
@@ -79,8 +104,11 @@ workflowRoutes.patch('/statuses/:statusId', async (c) => {
 });
 
 // DELETE /workflows/statuses/:statusId
-workflowRoutes.delete('/statuses/:statusId', async (c) => {
-  const statusId = c.req.param('statusId');
+workflowRoutes.delete(
+  '/statuses/:statusId',
+  requirePermission('workflow.update', { resolveWorkspace: resolveWorkflowStatusWorkspace }),
+  async (c) => {
+  const statusId = c.req.param('statusId')!;
   try {
     await svc.deleteStatus(statusId);
     return c.body(null, 204);
@@ -91,8 +119,11 @@ workflowRoutes.delete('/statuses/:statusId', async (c) => {
 });
 
 // POST /workflows/:wfId/transitions  { fromStatus, toStatus, name? }
-workflowRoutes.post('/:wfId/transitions', async (c) => {
-  const wfId = c.req.param('wfId');
+workflowRoutes.post(
+  '/:wfId/transitions',
+  requirePermission('workflow.update', { resolveWorkspace: resolveWorkflowWorkspace }),
+  async (c) => {
+  const wfId = c.req.param('wfId')!;
   const body = await c.req.json().catch(() => ({}));
   const { fromStatus, toStatus, name } = body as {
     fromStatus: string;
@@ -114,8 +145,11 @@ workflowRoutes.post('/:wfId/transitions', async (c) => {
 });
 
 // DELETE /workflows/:wfId/transitions  { fromStatus, toStatus }
-workflowRoutes.delete('/:wfId/transitions', async (c) => {
-  const wfId = c.req.param('wfId');
+workflowRoutes.delete(
+  '/:wfId/transitions',
+  requirePermission('workflow.update', { resolveWorkspace: resolveWorkflowWorkspace }),
+  async (c) => {
+  const wfId = c.req.param('wfId')!;
   const body = await c.req.json().catch(() => ({}));
   const { fromStatus, toStatus } = body as { fromStatus: string; toStatus: string };
 

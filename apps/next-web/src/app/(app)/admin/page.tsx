@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useStore } from '@/store/useStore';
 import styles from './page.module.css';
@@ -76,6 +76,91 @@ export default function AdminPage() {
       apiFetch(`/admin/users/${userId}/restore`, token, { method: 'POST' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
   });
+
+  // ── Admin user CRUD + recovery ─────────────────────────────────────────────
+
+  const [createOpen,   setCreateOpen]   = useState(false);
+  const [editingUser,  setEditingUser]  = useState<AdminUser | null>(null);
+  // After a successful create OR reset-password, we surface the temp password
+  // in a one-shot reveal dialog. The admin must capture it then; we never
+  // display it again.
+  const [tempPassword, setTempPassword] = useState<{ email: string; password: string } | null>(null);
+  // userId-keyed selection for bulk actions.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const createMutation = useMutation({
+    mutationFn: (input: { email: string; name: string; password?: string; isEmailVerified: boolean }) =>
+      apiFetch('/admin/users', token, { method: 'POST', body: JSON.stringify(input) }),
+    onSuccess: (json, vars) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      if (json.meta?.tempPassword) {
+        setTempPassword({ email: vars.email, password: json.meta.tempPassword });
+      }
+      setCreateOpen(false);
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...fields }: { id: string; email?: string; name?: string }) =>
+      apiFetch(`/admin/users/${id}`, token, { method: 'PATCH', body: JSON.stringify(fields) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      setEditingUser(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/users/${id}`, token, { method: 'DELETE' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      setSelected(new Set());
+    },
+  });
+
+  const resetPwMutation = useMutation({
+    mutationFn: ({ id }: { id: string; email: string }) =>
+      apiFetch(`/admin/users/${id}/reset-password`, token, { method: 'POST' }),
+    onSuccess: (json, vars) => {
+      if (json.data?.tempPassword) {
+        setTempPassword({ email: vars.email, password: json.data.tempPassword });
+      }
+    },
+  });
+
+  const disableMfaMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/users/${id}/disable-mfa`, token, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: (id: string) => apiFetch(`/admin/users/${id}/unlock`, token, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+
+  const bulkSuspendMutation = useMutation({
+    mutationFn: ({ userIds, suspend }: { userIds: string[]; suspend: boolean }) =>
+      apiFetch('/admin/users/bulk-suspend', token, {
+        method: 'POST',
+        body: JSON.stringify({ userIds, suspend }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      setSelected(new Set());
+    },
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = (ids: string[]) => {
+    setSelected((prev) =>
+      ids.every((i) => prev.has(i)) ? new Set() : new Set(ids),
+    );
+  };
 
   // ── Workspaces ─────────────────────────────────────────────────────────────
   const [wsPage, setWsPage] = useState(1);
@@ -174,11 +259,53 @@ export default function AdminPage() {
               value={userSearch}
               onChange={(e) => { setUserSearch(e.target.value); setUserPage(1); }}
             />
+            <div className={styles.filterBarRight}>
+              <button
+                className={styles.btnPrimary}
+                onClick={() => setCreateOpen(true)}
+                aria-label="Create new user"
+              >
+                + New user
+              </button>
+            </div>
           </div>
+
+          {selected.size > 0 && (
+            <div className={styles.bulkBar} role="region" aria-label="Bulk actions">
+              <strong>{selected.size}</strong> selected
+              <button
+                className={styles.btnSecondary}
+                onClick={() => bulkSuspendMutation.mutate({ userIds: [...selected], suspend: true })}
+                disabled={bulkSuspendMutation.isPending}
+              >Suspend</button>
+              <button
+                className={styles.btnSecondary}
+                onClick={() => bulkSuspendMutation.mutate({ userIds: [...selected], suspend: false })}
+                disabled={bulkSuspendMutation.isPending}
+              >Restore</button>
+              <button
+                className={styles.btnSecondary}
+                onClick={() => setSelected(new Set())}
+                style={{ marginLeft: 'auto' }}
+              >Clear</button>
+            </div>
+          )}
+
           <div className={styles.tableWrap}>
             <table className={styles.table} aria-label="Users">
               <thead>
                 <tr>
+                  <th scope="col" className={styles.checkCol}>
+                    <input
+                      type="checkbox"
+                      aria-label="Select all on this page"
+                      checked={
+                        (usersData?.users?.length ?? 0) > 0 &&
+                        (usersData?.users ?? []).every((u) => selected.has(u.id))
+                      }
+                      onChange={() => toggleSelectAll((usersData?.users ?? []).map((u) => u.id))}
+                    />
+                  </th>
                   <th scope="col">Email</th>
                   <th scope="col">Name</th>
                   <th scope="col">Verified</th>
@@ -191,10 +318,18 @@ export default function AdminPage() {
               </thead>
               <tbody>
                 {(usersData?.users ?? []).length === 0 && (
-                  <tr><td colSpan={8} className={styles.empty}>No users found</td></tr>
+                  <tr><td colSpan={9} className={styles.empty}>No users found</td></tr>
                 )}
                 {(usersData?.users ?? []).map((u) => (
                   <tr key={u.id}>
+                    <td className={styles.checkCol}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${u.email}`}
+                        checked={selected.has(u.id)}
+                        onChange={() => toggleSelect(u.id)}
+                      />
+                    </td>
                     <td className={styles.mono}>{u.email}</td>
                     <td>{u.name}</td>
                     <td>
@@ -215,19 +350,66 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td>
-                      {u.deletedAt ? (
+                      <div className={styles.actionRow}>
                         <button
-                          className={`${styles.actionBtn} ${styles.btnRestore}`}
-                          aria-label={`Restore ${u.email}`}
-                          onClick={() => restoreMutation.mutate(u.id)}
-                        >Restore</button>
-                      ) : (
+                          className={`${styles.actionBtn} ${styles.btnEdit}`}
+                          onClick={() => setEditingUser(u)}
+                          aria-label={`Edit ${u.email}`}
+                        >Edit</button>
+
+                        {u.deletedAt ? (
+                          <button
+                            className={`${styles.actionBtn} ${styles.btnRestore}`}
+                            onClick={() => restoreMutation.mutate(u.id)}
+                            aria-label={`Restore ${u.email}`}
+                          >Restore</button>
+                        ) : (
+                          <button
+                            className={`${styles.actionBtn} ${styles.btnSuspend}`}
+                            onClick={() => suspendMutation.mutate(u.id)}
+                            aria-label={`Suspend ${u.email}`}
+                          >Suspend</button>
+                        )}
+
                         <button
-                          className={`${styles.actionBtn} ${styles.btnSuspend}`}
-                          aria-label={`Suspend ${u.email}`}
-                          onClick={() => suspendMutation.mutate(u.id)}
-                        >Suspend</button>
-                      )}
+                          className={`${styles.actionBtn} ${styles.btnRecover}`}
+                          onClick={() => {
+                            if (window.confirm(`Generate a new temporary password for ${u.email}?\n\nThe current password will stop working immediately.`)) {
+                              resetPwMutation.mutate({ id: u.id, email: u.email });
+                            }
+                          }}
+                          aria-label={`Reset password for ${u.email}`}
+                        >Reset PW</button>
+
+                        {u.mfaEnabled && (
+                          <button
+                            className={`${styles.actionBtn} ${styles.btnRecover}`}
+                            onClick={() => {
+                              if (window.confirm(`Disable MFA for ${u.email}?\n\nThe user will be able to sign in with just their password.`)) {
+                                disableMfaMutation.mutate(u.id);
+                              }
+                            }}
+                            aria-label={`Disable MFA for ${u.email}`}
+                          >Disable MFA</button>
+                        )}
+
+                        <button
+                          className={`${styles.actionBtn} ${styles.btnRecover}`}
+                          onClick={() => unlockMutation.mutate(u.id)}
+                          aria-label={`Unlock ${u.email}`}
+                          title="Clear failed-login lockout"
+                        >Unlock</button>
+
+                        <button
+                          className={`${styles.actionBtn} ${styles.btnDelete}`}
+                          onClick={() => {
+                            if (window.confirm(`Permanently delete ${u.email}?\n\nThis cannot be undone. The action will be refused if the user owns workspaces, has reported tasks, comments, attachments, or work logs — suspend them and reassign their work first.`)) {
+                              deleteMutation.mutate(u.id);
+                            }
+                          }}
+                          aria-label={`Delete ${u.email}`}
+                        >Delete</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -240,6 +422,28 @@ export default function AdminPage() {
             pageSize={PAGE_SIZE}
             onPrev={() => setUserPage((p) => Math.max(1, p - 1))}
             onNext={() => setUserPage((p) => p + 1)}
+          />
+
+          {/* ── Dialogs ── */}
+          <CreateUserDialog
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            onSubmit={(input) => createMutation.mutate(input)}
+            isPending={createMutation.isPending}
+            error={(createMutation.error as Error | null)?.message ?? null}
+          />
+
+          <EditUserDialog
+            user={editingUser}
+            onClose={() => setEditingUser(null)}
+            onSubmit={(fields) => editingUser && updateMutation.mutate({ id: editingUser.id, ...fields })}
+            isPending={updateMutation.isPending}
+            error={(updateMutation.error as Error | null)?.message ?? null}
+          />
+
+          <TempPasswordDialog
+            data={tempPassword}
+            onClose={() => setTempPassword(null)}
           />
         </div>
       )}
@@ -447,5 +651,214 @@ function Pagination({
       <button className={styles.pageBtn} disabled={page <= 1} onClick={onPrev}>← Prev</button>
       <button className={styles.pageBtn} disabled={page >= totalPages} onClick={onNext}>Next →</button>
     </div>
+  );
+}
+
+// ─── Native <dialog> shell ────────────────────────────────────────────────────
+// Wraps HTMLDialogElement so React can drive open/close declaratively. The
+// browser handles focus trapping + Esc-to-close for free.
+function Dialog({
+  open, onClose, title, children,
+}: {
+  open: boolean; onClose: () => void; title: string; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDialogElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    else if (!open && el.open) el.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      className={styles.dialog}
+      onClose={onClose}
+      onCancel={onClose}
+      aria-labelledby="dialog-title"
+    >
+      <div id="dialog-title" className={styles.dialogHeader}>{title}</div>
+      {children}
+    </dialog>
+  );
+}
+
+// ─── Create user dialog ───────────────────────────────────────────────────────
+function CreateUserDialog({
+  open, onClose, onSubmit, isPending, error,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (input: { email: string; name: string; password?: string; isEmailVerified: boolean }) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const [email,           setEmail]           = useState('');
+  const [name,            setName]            = useState('');
+  const [password,        setPassword]        = useState('');
+  const [isEmailVerified, setIsEmailVerified] = useState(true);
+
+  // Reset on close so the next open starts fresh.
+  useEffect(() => {
+    if (!open) { setEmail(''); setName(''); setPassword(''); setIsEmailVerified(true); }
+  }, [open]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      email: email.trim(),
+      name:  name.trim(),
+      password: password.trim() ? password : undefined,
+      isEmailVerified,
+    });
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Create new user">
+      <form onSubmit={submit}>
+        <div className={styles.dialogBody}>
+          <div className={styles.dialogField}>
+            <label htmlFor="cu-email">Email</label>
+            <input id="cu-email" type="email" required value={email}
+              onChange={(e) => setEmail(e.target.value)} autoFocus />
+          </div>
+          <div className={styles.dialogField}>
+            <label htmlFor="cu-name">Name</label>
+            <input id="cu-name" required value={name}
+              onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className={styles.dialogField}>
+            <label htmlFor="cu-password">Password (optional)</label>
+            <input id="cu-password" type="text" value={password} placeholder="Leave blank to auto-generate"
+              onChange={(e) => setPassword(e.target.value)} />
+            <span className={styles.dialogHint}>
+              If blank, a temporary password is generated and shown once after submit.
+            </span>
+          </div>
+          <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem', color: '#475569' }}>
+            <input type="checkbox" checked={isEmailVerified}
+              onChange={(e) => setIsEmailVerified(e.target.checked)} />
+            Mark email as verified (skip verification flow)
+          </label>
+          {error && <div className={styles.dialogWarn}>{error}</div>}
+        </div>
+        <div className={styles.dialogFooter}>
+          <button type="button" className={styles.btnSecondary} onClick={onClose} disabled={isPending}>
+            Cancel
+          </button>
+          <button type="submit" className={styles.btnPrimary} disabled={isPending || !email || !name}>
+            {isPending ? 'Creating…' : 'Create user'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+// ─── Edit user dialog ─────────────────────────────────────────────────────────
+function EditUserDialog({
+  user, onClose, onSubmit, isPending, error,
+}: {
+  user: AdminUser | null;
+  onClose: () => void;
+  onSubmit: (fields: { email?: string; name?: string }) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const [email, setEmail] = useState('');
+  const [name,  setName]  = useState('');
+
+  useEffect(() => {
+    if (user) { setEmail(user.email); setName(user.name); }
+  }, [user]);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    // Only send fields that actually changed — patch semantics.
+    const patch: { email?: string; name?: string } = {};
+    if (email.trim() !== user.email) patch.email = email.trim();
+    if (name.trim()  !== user.name)  patch.name  = name.trim();
+    if (Object.keys(patch).length === 0) { onClose(); return; }
+    onSubmit(patch);
+  };
+
+  return (
+    <Dialog open={user !== null} onClose={onClose} title={`Edit ${user?.email ?? ''}`}>
+      <form onSubmit={submit}>
+        <div className={styles.dialogBody}>
+          <div className={styles.dialogField}>
+            <label htmlFor="eu-email">Email</label>
+            <input id="eu-email" type="email" required value={email}
+              onChange={(e) => setEmail(e.target.value)} autoFocus />
+          </div>
+          <div className={styles.dialogField}>
+            <label htmlFor="eu-name">Name</label>
+            <input id="eu-name" required value={name}
+              onChange={(e) => setName(e.target.value)} />
+          </div>
+          {error && <div className={styles.dialogWarn}>{error}</div>}
+        </div>
+        <div className={styles.dialogFooter}>
+          <button type="button" className={styles.btnSecondary} onClick={onClose} disabled={isPending}>
+            Cancel
+          </button>
+          <button type="submit" className={styles.btnPrimary} disabled={isPending}>
+            {isPending ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+
+// ─── One-shot temporary-password reveal ───────────────────────────────────────
+// Shown after admin-create (when no password supplied) and after reset-password.
+// The plaintext only exists in this dialog — once dismissed it cannot be
+// retrieved. Includes a copy-to-clipboard for accuracy.
+function TempPasswordDialog({
+  data, onClose,
+}: {
+  data: { email: string; password: string } | null;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!data) setCopied(false);
+  }, [data]);
+
+  const copy = async () => {
+    if (!data) return;
+    try {
+      await navigator.clipboard.writeText(data.password);
+      setCopied(true);
+    } catch {
+      // Clipboard can be denied (e.g. insecure context). User can still
+      // select-all and copy manually — the box has user-select: all.
+    }
+  };
+
+  return (
+    <Dialog open={data !== null} onClose={onClose} title="Temporary password">
+      <div className={styles.dialogBody}>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569' }}>
+          For <strong>{data?.email}</strong>:
+        </p>
+        <div className={styles.tempPasswordBox}>{data?.password}</div>
+        <div className={styles.dialogWarn}>
+          This password is shown only once. Send it to the user through a secure channel and ask them to change it on first login.
+        </div>
+      </div>
+      <div className={styles.dialogFooter}>
+        <button type="button" className={styles.btnSecondary} onClick={copy}>
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+        <button type="button" className={styles.btnPrimary} onClick={onClose}>
+          I've saved it
+        </button>
+      </div>
+    </Dialog>
   );
 }

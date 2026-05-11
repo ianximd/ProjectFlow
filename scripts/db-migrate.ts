@@ -134,9 +134,16 @@ async function main() {
       await tx.commit();
       console.log('OK');
     } catch (err) {
-      await tx.rollback();
+      // Roll back if still possible — DDL errors often leave the txn in a
+      // doomed state, in which case rollback() throws TransactionError. Swallow
+      // that so the *original* SQL error is what the operator sees.
+      try { await tx.rollback(); } catch { /* already aborted */ }
       console.log('FAILED');
-      console.error(`\nError in ${file}:`, (err as Error).message);
+      const e = err as Error & { number?: number; lineNumber?: number; procName?: string };
+      console.error(`\nError in ${file}:`, e.message);
+      if (e.number)     console.error(`  SQL error number: ${e.number}`);
+      if (e.lineNumber) console.error(`  Batch line:       ${e.lineNumber}`);
+      if (e.procName)   console.error(`  Procedure:        ${e.procName}`);
       process.exitCode = 1;
       break;
     }

@@ -103,4 +103,18 @@ export class WorkflowRepository {
       { name: 'ToStatus',   type: sql.NVarChar(100),    value: toStatus },
     ]);
   }
+
+  async getWorkspaceId(workflowId: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Workflow_GetWorkspaceId', [
+      { name: 'WorkflowId', type: sql.UniqueIdentifier, value: workflowId },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
+
+  async getWorkspaceIdByStatus(statusId: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_WorkflowStatus_GetWorkspaceId', [
+      { name: 'StatusId', type: sql.UniqueIdentifier, value: statusId },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
 }

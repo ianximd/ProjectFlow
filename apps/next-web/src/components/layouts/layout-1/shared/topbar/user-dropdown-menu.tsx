@@ -15,6 +15,9 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { useStore } from '@/store/useStore';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,9 +65,26 @@ const I18N_LANGUAGES = [
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
   const currenLanguage = I18N_LANGUAGES[0];
   const { theme, setTheme } = useTheme();
+  const router    = useRouter();
+  const qc        = useQueryClient();
+  const clearAuth = useStore((s) => s.clearAuth);
 
   const handleThemeToggle = (checked: boolean) => {
     setTheme(checked ? 'dark' : 'light');
+  };
+
+  // Best-effort logout: hit the server (clears the refresh-token cookie),
+  // then drop in-memory auth + cached queries and bounce to /login. Server
+  // failure shouldn't strand the user — we always clear locally.
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // network failures are tolerated — local cleanup proceeds anyway
+    }
+    clearAuth();
+    qc.clear();
+    router.replace('/login');
   };
 
   return (
@@ -252,7 +272,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
           </div>
         </DropdownMenuItem>
         <div className="p-2 mt-1">
-          <Button variant="outline" size="sm" className="w-full">
+          <Button variant="outline" size="sm" className="w-full" onClick={handleLogout}>
             Logout
           </Button>
         </div>

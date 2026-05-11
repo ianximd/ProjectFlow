@@ -3,11 +3,22 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { GitRepository } from './git.repository.js';
 import { GitService } from './git.service.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 
 const gitRepo    = new GitRepository();
 const gitService = new GitService(gitRepo);
 
 export const gitRoutes = new Hono();
+
+const resolveConnectionWorkspace = (c: any) => gitRepo.getConnectionWorkspaceId(c.req.param('id'));
+async function resolveWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.workspaceId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const createSchema = z.object({
   workspaceId:   z.string().uuid(),
@@ -27,7 +38,11 @@ gitRoutes.get('/connections', async (c) => {
 });
 
 // POST /git/connections
-gitRoutes.post('/connections', zValidator('json', createSchema), async (c) => {
+gitRoutes.post(
+  '/connections',
+  zValidator('json', createSchema),
+  requirePermission('git.integration.manage', { resolveWorkspace: resolveWorkspaceFromBody }),
+  async (c) => {
   const body = c.req.valid('json');
   const connection = await gitService.createConnection(
     body.workspaceId, body.provider, body.repoOwner, body.repoName,
@@ -37,8 +52,11 @@ gitRoutes.post('/connections', zValidator('json', createSchema), async (c) => {
 });
 
 // DELETE /git/connections/:id
-gitRoutes.delete('/connections/:id', async (c) => {
-  const id = c.req.param('id');
+gitRoutes.delete(
+  '/connections/:id',
+  requirePermission('git.integration.manage', { resolveWorkspace: resolveConnectionWorkspace }),
+  async (c) => {
+  const id = c.req.param('id')!;
   await gitService.deleteConnection(id);
   return c.json({ ok: true });
 });

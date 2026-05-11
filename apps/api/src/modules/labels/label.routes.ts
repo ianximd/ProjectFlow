@@ -2,7 +2,22 @@ import { Hono }        from 'hono';
 import { zValidator }  from '@hono/zod-validator';
 import { z }           from 'zod';
 import { LabelService } from './label.service.js';
+import { LabelRepository } from './label.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+
+const labelRepoForLookup   = new LabelRepository();
+const projectRepoForLookup = new ProjectRepository();
+const resolveLabelWorkspace = (c: any) => labelRepoForLookup.getWorkspaceId(c.req.param('id'));
+async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+  try {
+    const body = await c.req.json();
+    return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
+  } catch {
+    return null;
+  }
+}
 
 function invalidateLabelCache(projectId: string): void {
   // Pattern matches all user-scoped cached GET responses for this project's labels.
@@ -37,6 +52,7 @@ labelRoutes.get('/', async (c) => {
 labelRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requirePermission('label.manage', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
   async (c) => {
     const { projectId, name, color } = c.req.valid('json');
     const label = await svc.create(projectId, name, color);
@@ -48,6 +64,7 @@ labelRoutes.post(
 // PATCH /labels/:id
 labelRoutes.patch(
   '/:id',
+  requirePermission('label.manage', { resolveWorkspace: resolveLabelWorkspace }),
   zValidator('json', updateSchema),
   async (c) => {
     const id    = c.req.param('id');
@@ -61,9 +78,12 @@ labelRoutes.patch(
 
 // DELETE /labels/:id
 // projectId query param is optional but enables immediate cache invalidation.
-labelRoutes.delete('/:id', async (c) => {
+labelRoutes.delete(
+  '/:id',
+  requirePermission('label.manage', { resolveWorkspace: resolveLabelWorkspace }),
+  async (c) => {
   const projectId = c.req.query('projectId');
-  await svc.delete(c.req.param('id'));
+  await svc.delete(c.req.param('id')!);
   if (projectId) invalidateLabelCache(projectId);
   return c.json({ ok: true });
 });

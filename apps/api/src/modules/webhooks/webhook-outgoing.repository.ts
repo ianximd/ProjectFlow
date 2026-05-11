@@ -79,6 +79,13 @@ export class WebhookOutgoingRepository {
     ]);
   }
 
+  async getWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Webhook_GetWorkspaceId', [
+      { name: 'WebhookId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
+
   async getActive(workspaceId: string, event: string): Promise<ActiveWebhook[]> {
     const rows = await execSpOne<RawActiveWebhook>('usp_Webhook_GetActive', [
       { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },

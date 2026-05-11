@@ -101,4 +101,11 @@ export class AutomationRepository {
       { name: 'Id', type: sql.UniqueIdentifier, value: id },
     ]);
   }
+
+  async getWorkspaceId(ruleId: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Automation_GetWorkspaceId', [
+      { name: 'RuleId', type: sql.UniqueIdentifier, value: ruleId },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
 }

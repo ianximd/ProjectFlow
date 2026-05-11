@@ -2,6 +2,7 @@ import {
   BarChart2,
   BookOpen,
   Braces,
+  Building2,
   GitBranch,
   GitPullRequest,
   Layers,
@@ -32,6 +33,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Git',           icon: GitPullRequest, path: '/project-settings?tab=git' },
 
   { heading: 'System' },
+  { title: 'Workspaces',    icon: Building2,      path: '/workspaces' },
   { title: 'Admin',         icon: ShieldCheck,    path: '/admin' },
   { title: 'GraphQL',       icon: Braces,         path: '/graphql-explorer' },
 ];

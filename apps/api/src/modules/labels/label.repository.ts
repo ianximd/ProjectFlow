@@ -7,6 +7,11 @@ export class LabelRepository {
     return rs.map(mapRow);
   }
 
+  async getWorkspaceId(id: string): Promise<string | null> {
+    const rs = await execSpOne<{ WorkspaceId: string }>('usp_Label_GetWorkspaceId', { LabelId: id });
+    return rs[0]?.WorkspaceId ?? null;
+  }
+
   async create(projectId: string, name: string, color: string): Promise<Label> {
     const rs = await execSpOne<any>('usp_Label_Create', {
       ProjectId: projectId,

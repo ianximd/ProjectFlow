@@ -7,6 +7,11 @@ export class VersionRepository {
     return rs.map(mapRow);
   }
 
+  async getWorkspaceId(id: string): Promise<string | null> {
+    const rs = await execSpOne<{ WorkspaceId: string }>('usp_Version_GetWorkspaceId', { VersionId: id });
+    return rs[0]?.WorkspaceId ?? null;
+  }
+
   async create(
     projectId: string,
     name: string,

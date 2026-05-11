@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 
-export type Id = string | number;
+// All ids in the app are UUID strings (tasks/projects/etc.) or string column
+// names ('To Do', 'In Progress', …). The original `string | number` union was
+// a leftover from pre-API local-only state — narrowing it to `string` removes
+// the contravariant callback type errors in Board.tsx.
+export type Id = string;
 
 export type Column = {
   id: Id;

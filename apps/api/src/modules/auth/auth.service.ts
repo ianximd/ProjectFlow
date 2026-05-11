@@ -2,16 +2,31 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { randomBytes, createHash } from 'crypto';
 import { AuthRepository } from './auth.repository.js';
+import { mfaService } from './mfa.service.js';
 import type { User } from '@projectflow/types';
 import { JWT_SECRET } from '../../shared/lib/jwtSecret.js';
 
 const REFRESH_TOKEN_EXPIRY_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
 const PASSWORD_RESET_EXPIRY_MS = 60 * 60 * 1000;           // 1 hour
+const MFA_CHALLENGE_EXPIRY_S   = 5 * 60;                   // 5 minutes
 
 // ── Security constants (per security plan) ───────────────────────────────────
 const BCRYPT_ROUNDS    = 12;  // cost factor 12 as per spec
 const MAX_LOGIN_FAILS  = 5;   // lock after 5 consecutive failures
 const LOCKOUT_MS       = 15 * 60 * 1000; // 15-minute lockout
+
+// ── MFA challenge token shape (separate JWT purpose) ─────────────────────────
+interface MfaChallengePayload {
+  purpose: 'mfa-challenge';
+  userId: string;
+  email: string;
+}
+
+export type LoginResult =
+  | 'locked'
+  | null
+  | { kind: 'tokens';       user: Partial<User>; accessToken: string; refreshToken: string }
+  | { kind: 'mfa-required'; mfaToken: string };
 
 function generateSecureToken(): { raw: string; hash: string } {
   const raw = randomBytes(40).toString('hex');
@@ -27,10 +42,7 @@ export class AuthService {
     return this.repo.createUser(email, name, hash);
   }
 
-  async login(
-    email: string,
-    passwordPlain: string,
-  ): Promise<{ user: Partial<User>; accessToken: string; refreshToken: string } | 'locked' | null> {
+  async login(email: string, passwordPlain: string): Promise<LoginResult> {
     const user = await this.repo.getUserByEmail(email);
     if (!user || !(user as any).PasswordHash) return null;
 
@@ -50,7 +62,66 @@ export class AuthService {
       return null;
     }
 
-    // ── Successful login: clear lockout state ────────────────────────────────
+    // ── MFA gate ─────────────────────────────────────────────────────────────
+    // If the user has TOTP enabled, the password check is only step one. We
+    // *don't* clear failed-login attempts yet — that happens after a successful
+    // mfaChallenge. Issuing a short-lived "MFA challenge" JWT prevents the
+    // client from having to re-send the password with the TOTP code.
+    if ((user as any).MfaEnabled) {
+      const mfaToken = jwt.sign(
+        { purpose: 'mfa-challenge', userId, email: (user as any).Email } satisfies MfaChallengePayload,
+        JWT_SECRET,
+        { expiresIn: MFA_CHALLENGE_EXPIRY_S },
+      );
+      return { kind: 'mfa-required', mfaToken };
+    }
+
+    // ── Successful login (no MFA): clear lockout state + issue tokens ────────
+    return this.issueSessionTokens(user);
+  }
+
+  /**
+   * Step two of MFA login: validate the TOTP code (or recovery code) against
+   * the short-lived mfa-challenge JWT and, on success, issue real session
+   * tokens. Used by POST /auth/mfa/challenge.
+   */
+  async mfaChallenge(
+    mfaToken: string,
+    submitted: { code?: string; recoveryCode?: string },
+  ): Promise<{ user: Partial<User>; accessToken: string; refreshToken: string } | 'invalid-token' | 'invalid-code'> {
+    let payload: MfaChallengePayload;
+    try {
+      payload = jwt.verify(mfaToken, JWT_SECRET) as MfaChallengePayload;
+    } catch {
+      return 'invalid-token';
+    }
+    if (payload?.purpose !== 'mfa-challenge' || !payload.userId) return 'invalid-token';
+
+    const state = await this.repo.getMfaState(payload.userId);
+    if (!state?.enabled || !state.secret) return 'invalid-token';
+
+    // Either a 6-digit TOTP or a recovery code is acceptable.
+    let ok = false;
+    if (submitted.code) {
+      ok = mfaService.verifyTotp(submitted.code, state.secret);
+    } else if (submitted.recoveryCode) {
+      const hashes = await this.repo.listRecoveryHashes(payload.userId);
+      const matchedId = await mfaService.findRecoveryCodeId(submitted.recoveryCode, hashes);
+      if (matchedId) {
+        ok = await this.repo.consumeRecoveryCode(matchedId);
+      }
+    }
+    if (!ok) return 'invalid-code';
+
+    const user = await this.repo.getUserById(payload.userId);
+    if (!user) return 'invalid-token';
+    return this.issueSessionTokens(user);
+  }
+
+  private async issueSessionTokens(
+    user: User,
+  ): Promise<{ kind: 'tokens'; user: Partial<User>; accessToken: string; refreshToken: string }> {
+    const userId = (user as any).Id as string;
     await this.repo.clearLoginAttempts(userId);
 
     const accessToken = jwt.sign(
@@ -64,7 +135,61 @@ export class AuthService {
     await this.repo.createRefreshToken(userId, hash, expiresAt);
 
     const { PasswordHash, MfaSecret, ...userSafe } = user as any;
-    return { user: userSafe, accessToken, refreshToken: raw };
+    return { kind: 'tokens', user: userSafe, accessToken, refreshToken: raw };
+  }
+
+  // ── MFA enrolment ────────────────────────────────────────────────────────
+
+  /** Generate a fresh secret + otpauth URI for the user. Doesn't enable MFA yet. */
+  async setupMfa(userId: string, email: string): Promise<{ secret: string; otpauthUri: string }> {
+    const secret = mfaService.generateSecret();
+    await this.repo.setMfaPending(userId, secret);
+    return { secret, otpauthUri: mfaService.otpauthUri(email, secret) };
+  }
+
+  /**
+   * Verify the first TOTP code against the pending secret. On success, flip
+   * MfaEnabled to 1 and issue a fresh batch of recovery codes.
+   * Returns the plaintext recovery codes (shown to the user once).
+   */
+  async verifyMfaSetup(userId: string, code: string): Promise<{ recoveryCodes: string[] } | null> {
+    const state = await this.repo.getMfaState(userId);
+    if (!state?.secret) return null;
+    if (!mfaService.verifyTotp(code, state.secret)) return null;
+
+    const { plaintext, hashes } = await mfaService.generateRecoveryCodes();
+    await this.repo.createRecoveryCodes(userId, hashes);
+    await this.repo.enableMfa(userId);
+    return { recoveryCodes: plaintext };
+  }
+
+  /**
+   * Disable MFA. Requires the user's current password AND a valid TOTP/recovery
+   * code so a stolen access token alone can't strip the second factor.
+   */
+  async disableMfa(
+    userId: string,
+    passwordPlain: string,
+    submittedCode: string,
+  ): Promise<'invalid-password' | 'invalid-code' | 'ok'> {
+    const user = await this.repo.getUserById(userId);
+    if (!user) return 'invalid-password';
+    if (!(await bcrypt.compare(passwordPlain, (user as any).PasswordHash))) return 'invalid-password';
+
+    const state = await this.repo.getMfaState(userId);
+    if (!state?.enabled || !state.secret) return 'ok'; // Already disabled — idempotent
+
+    let ok = mfaService.verifyTotp(submittedCode, state.secret);
+    if (!ok) {
+      // Allow a recovery code as the second factor too.
+      const hashes = await this.repo.listRecoveryHashes(userId);
+      const matched = await mfaService.findRecoveryCodeId(submittedCode, hashes);
+      if (matched) ok = await this.repo.consumeRecoveryCode(matched);
+    }
+    if (!ok) return 'invalid-code';
+
+    await this.repo.disableMfa(userId);
+    return 'ok';
   }
 
   async getMe(userId: string): Promise<Partial<User> | null> {

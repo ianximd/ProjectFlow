@@ -33,4 +33,11 @@ export class SprintRepository {
     ]);
     return rows[0];
   }
+
+  async getWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Sprint_GetWorkspaceId', [
+      { name: 'SprintId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
 }

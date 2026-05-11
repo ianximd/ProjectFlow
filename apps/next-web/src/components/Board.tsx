@@ -1,4 +1,5 @@
 'use client';
+
 import { useState, useEffect } from 'react';
 import {
   DndContext,
@@ -14,104 +15,168 @@ import type {
   DragOverEvent,
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { useStore } from '../store/useStore';
-import type { Task } from '../store/useStore';
-import { Column } from './Column';
-import { TaskCard } from './TaskCard';
-import styles from './Board.module.css';
+import { Column, type BoardColumn } from './Column';
+import { TaskCard, type AssigneeRow } from './TaskCard';
+
+type ApiTask = Record<string, any>;
 
 interface BoardProps {
-  initialTasks: any[];
-  onMoveTask: (taskId: string, newStatus: string) => void;
-  onAddTask: (columnId: string, content: string) => void;
+  /**
+   * Columns rendered left-to-right. Each column's `id` must match the
+   * `Status` field on tasks that belong in it (the workflow status name).
+   */
+  columns: BoardColumn[];
+  initialTasks: ApiTask[];
+  /** Pre-bucketed by TaskId — passed straight through to the cards. */
+  assigneesByTaskId?: Record<string, AssigneeRow[]>;
+  /**
+   * Persist the result of a drag. `position` is a fractional index between
+   * neighbours; `newStatus` is set when the card landed in a different column
+   * (the position SP applies status + position in a single round-trip).
+   */
+  onReorderTask: (taskId: string, position: number, newStatus: string | null) => void;
+  onAddTask:    (columnId: string, content: string) => void;
   onDeleteTask: (taskId: string) => void;
-  onOpenTask?: (task: any) => void;
+  onOpenTask?:  (task: ApiTask) => void;
 }
 
-export function Board({ initialTasks, onMoveTask, onAddTask, onDeleteTask, onOpenTask }: BoardProps) {
-  const { columns } = useStore();
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [activeTask, setActiveTask] = useState<any | null>(null);
+function getStatus(t: ApiTask): string {
+  return String(t.Status ?? t.status ?? '');
+}
+function getId(t: ApiTask): string {
+  return String(t.Id ?? t.id ?? '');
+}
+function getPosition(t: ApiTask): number {
+  const v = Number(t.Position ?? t.position);
+  return Number.isFinite(v) ? v : 0;
+}
 
-  // Sync with remote data
+// Fractional indexing: pick a number that sits strictly between the two
+// neighbours so we never have to renumber the whole column. Step constant
+// is generous so first inserts don't immediately collide.
+const STEP = 1024;
+function midpoint(prev: number | null, next: number | null): number {
+  if (prev == null && next == null) return STEP;
+  if (prev == null)                 return next! - STEP;
+  if (next == null)                 return prev + STEP;
+  return (prev + next) / 2;
+}
+
+export function Board({
+  columns,
+  initialTasks,
+  assigneesByTaskId,
+  onReorderTask,
+  onAddTask,
+  onDeleteTask,
+  onOpenTask,
+}: BoardProps) {
+  const [tasks,      setTasks]      = useState<ApiTask[]>([]);
+  const [activeTask, setActiveTask] = useState<ApiTask | null>(null);
+  // Track the dragged card's original status so we can detect cross-column
+  // moves at drag-end (onDragOver mutates the local Status optimistically).
+  const [dragOriginStatus, setDragOriginStatus] = useState<string | null>(null);
+
+  // Sync with remote data whenever the upstream query refreshes
   useEffect(() => {
-    if (initialTasks) {
-      setTasks(initialTasks);
-    }
+    if (initialTasks) setTasks(initialTasks);
   }, [initialTasks]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 3, // 3px drag start threshold
-      },
+      // 3px threshold avoids drag-firing on plain clicks (so the card stays clickable).
+      activationConstraint: { distance: 3 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
-    })
+    }),
   );
 
   const onDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const { data } = active;
-
-    if (data.current?.type === 'Task') {
-      setActiveTask(data.current.task);
+    if (event.active.data.current?.type === 'Task') {
+      const t = event.active.data.current.task as ApiTask;
+      setActiveTask(t);
+      setDragOriginStatus(getStatus(t));
     }
   };
 
+  // onDragOver only mutates local UI state; persistence is deferred to
+  // onDragEnd so the user can drag through several columns without firing
+  // a network round-trip on every cursor crossing.
   const onDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id;
-    const overId = over.id;
-
-    if (activeId === overId) return;
+    if (!over || active.id === over.id) return;
 
     const isActiveTask = active.data.current?.type === 'Task';
-    const isOverTask = over.data.current?.type === 'Task';
-    const isOverColumn = over.data.current?.type === 'Column';
-
     if (!isActiveTask) return;
 
-    if (isActiveTask && isOverTask) {
-      const activeIndex = tasks.findIndex((t) => t.Id === activeId || t.id === activeId);
-      const overIndex = tasks.findIndex((t) => t.Id === overId || t.id === overId);
+    const isOverTask   = over.data.current?.type === 'Task';
+    const isOverColumn = over.data.current?.type === 'Column';
 
-      const activeTaskData = tasks[activeIndex];
-      const overTaskData = tasks[overIndex];
+    if (isOverTask) {
+      const activeIndex = tasks.findIndex((t) => getId(t) === active.id);
+      const overIndex   = tasks.findIndex((t) => getId(t) === over.id);
+      if (activeIndex === -1 || overIndex === -1) return;
 
-      if (activeTaskData.Status !== overTaskData.Status) {
-        // Move across columns optimistically — use spread to avoid mutating state directly
-        const updatedTasks = tasks.map((t, i) =>
-          i === activeIndex ? { ...t, Status: overTaskData.Status, status: overTaskData.Status } : t
-        );
-        setTasks(arrayMove(updatedTasks, activeIndex, overIndex));
-        onMoveTask(activeId as string, overTaskData.Status);
-      } else {
-        // Same column reordering optimistically
-        setTasks(arrayMove(tasks, activeIndex, overIndex));
-      }
+      const overStatus = getStatus(tasks[overIndex]);
+      const updated = tasks.map((t, i) =>
+        i === activeIndex ? { ...t, Status: overStatus, status: overStatus } : t,
+      );
+      setTasks(arrayMove(updated, activeIndex, overIndex));
     }
 
-    if (isActiveTask && isOverColumn) {
-      const activeIndex = tasks.findIndex((t) => t.Id === activeId || t.id === activeId);
+    if (isOverColumn) {
+      const activeIndex = tasks.findIndex((t) => getId(t) === active.id);
       if (activeIndex === -1) return;
-      const updatedTasks = tasks.map((t, i) =>
-        i === activeIndex ? { ...t, Status: overId, status: overId } : t
+      const newStatus = String(over.id);
+      if (getStatus(tasks[activeIndex]) === newStatus) return;
+      const updated = tasks.map((t, i) =>
+        i === activeIndex ? { ...t, Status: newStatus, status: newStatus } : t,
       );
-      setTasks(updatedTasks);
-      onMoveTask(activeId as string, overId as string);
+      setTasks(updated);
     }
   };
 
   const onDragEnd = () => {
+    const dragged = activeTask;
     setActiveTask(null);
+    if (!dragged) { setDragOriginStatus(null); return; }
+
+    const taskId  = getId(dragged);
+    const idx     = tasks.findIndex((t) => getId(t) === taskId);
+    if (idx === -1) { setDragOriginStatus(null); return; }
+
+    const finalStatus = getStatus(tasks[idx]);
+    const movedColumn = dragOriginStatus !== null && finalStatus !== dragOriginStatus;
+
+    // Compute fractional position between same-column neighbours in the
+    // post-drag local order. arrayMove already rearranged `tasks` so the
+    // visual neighbours are also the source of truth here.
+    const colTasks = tasks.filter((t) => getStatus(t) === finalStatus);
+    const myIdx    = colTasks.findIndex((t) => getId(t) === taskId);
+    const prevPos  = myIdx > 0 ? getPosition(colTasks[myIdx - 1]!) : null;
+    const nextPos  = myIdx < colTasks.length - 1 ? getPosition(colTasks[myIdx + 1]!) : null;
+
+    // Skip the round-trip if nothing observable changed: same column, same
+    // neighbours, original Position is already strictly between them.
+    if (!movedColumn) {
+      const myPos = getPosition(tasks[idx]);
+      const stable =
+        (prevPos == null || myPos > prevPos) &&
+        (nextPos == null || myPos < nextPos);
+      if (stable) { setDragOriginStatus(null); return; }
+    }
+
+    onReorderTask(taskId, midpoint(prevPos, nextPos), movedColumn ? finalStatus : null);
+    setDragOriginStatus(null);
   };
 
   return (
-    <div className={styles.boardContainer} role="region" aria-label="Kanban board">
+    <div
+      className="flex h-full w-full flex-col"
+      role="region"
+      aria-label="Kanban board"
+    >
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -119,23 +184,34 @@ export function Board({ initialTasks, onMoveTask, onAddTask, onDeleteTask, onOpe
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
       >
-        <div className={styles.columns} role="list" aria-label="Board columns">
+        <div
+          className="flex flex-1 gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x md:snap-none"
+          role="list"
+          aria-label="Board columns"
+        >
           {columns.map((col) => (
-            <Column
-              key={col.id}
-              column={col}
-              tasks={tasks.filter((task) => task.Status === col.title || task.Status === col.id || task.columnId === col.id)}
-              addTask={onAddTask}
-              deleteTask={onDeleteTask}
-              onOpenTask={onOpenTask}
-            />
+            <div key={col.id} className="snap-start">
+              <Column
+                column={col}
+                tasks={tasks.filter((t) => getStatus(t) === col.id || getStatus(t) === col.title)}
+                assigneesByTaskId={assigneesByTaskId}
+                addTask={onAddTask}
+                deleteTask={onDeleteTask}
+                onOpenTask={onOpenTask}
+              />
+            </div>
           ))}
         </div>
 
         <DragOverlay>
           {activeTask ? (
-            <div className={styles.dragOverlay}>
-              <TaskCard task={activeTask} deleteTask={onDeleteTask} onOpen={onOpenTask} />
+            <div className="rotate-2 cursor-grabbing">
+              <TaskCard
+                task={activeTask}
+                assignees={assigneesByTaskId?.[getId(activeTask)]}
+                deleteTask={onDeleteTask}
+                onOpen={onOpenTask}
+              />
             </div>
           ) : null}
         </DragOverlay>

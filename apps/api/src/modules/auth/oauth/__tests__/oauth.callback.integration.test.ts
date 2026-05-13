@@ -185,3 +185,229 @@ describe('GET /auth/oauth/providers', () => {
     expect(body.data.map((p) => p.name)).toContain('fake');
   });
 });
+
+// ─── Phase 1.C: link / identities / unlink ─────────────────────────────────
+
+describe('OAuth link flow (Phase 1.C)', () => {
+  it('an authenticated user can link a new identity via /link → callback', async () => {
+    // Step 1: register + login a local password user.
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'linker@projectflow.test', name: 'Linker', password: 'PasswordX1!' },
+    });
+    const loginRes = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'linker@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await loginRes.json();
+
+    // Step 2: hit /link with the access token. Server stamps user id
+    // into state, then redirects to the (fake) provider.
+    registerFakeIdentity('code-link-1', {
+      subject: 'fake-link-sub-1', email: 'linker@projectflow.test',
+      emailVerified: true, name: 'Linker via OAuth', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/link', {
+      headers: { authorization: `Bearer ${token}` },
+      redirect: 'manual',
+    });
+    expect(start.status).toBe(302);
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+
+    // Step 3: callback links the identity. Returns 302 to the SPA's
+    // returnTo path WITHOUT setting a refresh cookie (user already
+    // has one).
+    const callback = await request(`/auth/oauth/fake/callback?code=code-link-1&state=${state}`, {
+      redirect: 'manual',
+    });
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toMatch(/\/settings\/connected-accounts/);
+    expect(callback.headers.get('set-cookie') ?? '').not.toMatch(/refresh_token=/);
+
+    // The identity was actually written.
+    const idsRes = await request('/auth/oauth/identities', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const ids = await idsRes.json() as { data: { provider: string; email: string | null }[] };
+    expect(ids.data.map((i) => i.provider)).toContain('fake');
+  });
+
+  it('/link without a session returns 401', async () => {
+    const res = await request('/auth/oauth/fake/link', { redirect: 'manual' });
+    expect(res.status).toBe(401);
+  });
+
+  it('callback rejects ALREADY_LINKED when the (provider, subject) is on a different user', async () => {
+    // First user: signs up via OAuth (anonymous flow).
+    registerFakeIdentity('code-owner', {
+      subject: 'shared-sub', email: 'owner@projectflow.test',
+      emailVerified: true, name: 'Owner', avatarUrl: null,
+    });
+    const owner = await request('/auth/oauth/fake/start', { redirect: 'manual' });
+    const ownerState = new URL(owner.headers.get('location')!).searchParams.get('state')!;
+    await request(`/auth/oauth/fake/callback?code=code-owner&state=${ownerState}`, { redirect: 'manual' });
+
+    // Second user: registered locally, then tries to link the SAME
+    // (provider, subject) the first user already has.
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'second@projectflow.test', name: 'Second', password: 'PasswordX1!' },
+    });
+    const login = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'second@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await login.json();
+
+    registerFakeIdentity('code-conflict', {
+      subject: 'shared-sub', email: 'second@projectflow.test',
+      emailVerified: true, name: 'Second', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/link', {
+      headers: { authorization: `Bearer ${token}` }, redirect: 'manual',
+    });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    const callback = await request(`/auth/oauth/fake/callback?code=code-conflict&state=${state}`, {
+      redirect: 'manual',
+    });
+    expect(callback.status).toBe(302);
+    expect(callback.headers.get('location')).toMatch(/\/oauth\/error\?reason=ALREADY_LINKED/);
+  });
+});
+
+describe('GET /auth/oauth/identities', () => {
+  it('returns 401 without a session', async () => {
+    const res = await request('/auth/oauth/identities');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns an empty array for a fresh user with no linked providers', async () => {
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'noids@projectflow.test', name: 'No IDs', password: 'PasswordX1!' },
+    });
+    const login = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'noids@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await login.json();
+
+    const res = await request('/auth/oauth/identities', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { data: unknown[] };
+    expect(body.data).toEqual([]);
+  });
+});
+
+describe('DELETE /auth/oauth/identities/:provider', () => {
+  it('an OAuth-only user with no other credential is blocked from removing their last identity (409 LAST_CREDENTIAL)', async () => {
+    // Sign up via OAuth — no password. The user's only credential is
+    // the linked identity.
+    registerFakeIdentity('code-only', {
+      subject: 'only-sub', email: 'only@projectflow.test',
+      emailVerified: true, name: 'Only Cred', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/start', { redirect: 'manual' });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    const cb    = await request(`/auth/oauth/fake/callback?code=code-only&state=${state}`, {
+      redirect: 'manual',
+    });
+    // Pull the access token from the refresh cookie path.
+    const cookie = cb.headers.get('set-cookie');
+    expect(cookie).toMatch(/refresh_token=/);
+    const refresh = /refresh_token=([^;]+)/.exec(cookie!)![1]!;
+    const refreshRes = await request('/auth/refresh', {
+      method:  'POST',
+      headers: { cookie: `refresh_token=${refresh}` },
+    });
+    const { data: { token } } = await refreshRes.json();
+
+    const del = await request('/auth/oauth/identities/fake', {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(del.status).toBe(409);
+    const body = await del.json();
+    expect((body as any).error?.code).toBe('LAST_CREDENTIAL');
+  });
+
+  it('a user with a password can remove their linked identity (204)', async () => {
+    // Local password user, then link a provider via auto-link path.
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'has-pwd@projectflow.test', name: 'Has Pwd', password: 'PasswordX1!' },
+    });
+    // The Users.IsEmailVerified is 0 by default after register, so the
+    // anonymous-callback collision path would 409 ACCOUNT_EXISTS. We
+    // instead use the explicit /link flow which bypasses that check.
+    const login = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'has-pwd@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await login.json();
+
+    registerFakeIdentity('code-link-pwd', {
+      subject: 'pwd-link-sub', email: 'has-pwd@projectflow.test',
+      emailVerified: true, name: 'Has Pwd', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/link', {
+      headers: { authorization: `Bearer ${token}` }, redirect: 'manual',
+    });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    await request(`/auth/oauth/fake/callback?code=code-link-pwd&state=${state}`, { redirect: 'manual' });
+
+    // Now disconnect — the password is the safety net.
+    const del = await request('/auth/oauth/identities/fake', {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(del.status).toBe(204);
+
+    // /identities now empty.
+    const after = await request('/auth/oauth/identities', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const body = await after.json() as { data: unknown[] };
+    expect(body.data).toEqual([]);
+  });
+});
+
+describe('OAuth callback — auto-link branch (Phase 1.C)', () => {
+  it('auto-links when the local account is verified and the provider asserts verified', async () => {
+    // Pre-create a verified local user. We have to flip the flag in
+    // SQL directly — register sets IsEmailVerified=0 and there's no
+    // public endpoint to verify in tests.
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'autolink@projectflow.test', name: 'Auto', password: 'PasswordX1!' },
+    });
+    const pool = await getPool();
+    await pool.request()
+      .input('Email', 'autolink@projectflow.test')
+      .query('UPDATE dbo.Users SET IsEmailVerified = 1 WHERE Email = @Email');
+
+    // Anonymous OAuth sign-in with the matching email.
+    registerFakeIdentity('code-autolink', {
+      subject: 'autolink-sub', email: 'autolink@projectflow.test',
+      emailVerified: true, name: 'Auto', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/start', { redirect: 'manual' });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    const cb = await request(`/auth/oauth/fake/callback?code=code-autolink&state=${state}`, {
+      redirect: 'manual',
+    });
+
+    // Should LOG IN (302 to /oauth/finish + cookie), not 302 to /oauth/error.
+    expect(cb.status).toBe(302);
+    expect(cb.headers.get('location')).toMatch(/\/oauth\/finish/);
+    expect(cb.headers.get('set-cookie')).toMatch(/refresh_token=/);
+
+    // Identity was attached to the existing user, not a new one.
+    const r = await pool.request()
+      .input('Email', 'autolink@projectflow.test')
+      .query('SELECT COUNT(*) AS c FROM dbo.Users WHERE Email = @Email');
+    expect(r.recordset[0]!.c).toBe(1);
+  });
+});

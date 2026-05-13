@@ -7,10 +7,17 @@
  *      `createUserWithIdentity`)
  *   4. `AuthService.issueSessionTokens` for the final refresh + access pair
  *
- * Phase 1.A scope: anonymous sign-in (existing identity → tokens, OR new
- * identity + new email → create user + identity + tokens). The link flow
- * (logged-in user adding a provider) and the email-collision auto-link
- * branch ship in Phase 1.C.
+ * Phase 1.A: anonymous sign-in (existing identity → tokens, new identity
+ * + fresh email → create user, email collision → ACCOUNT_EXISTS).
+ *
+ * Phase 1.C adds:
+ *   - Linking flow: `start({ linkUserId })` stamps the user's id into the
+ *     state payload, and `callback` calls `linkExisting` instead of
+ *     creating a user. Errors propagate as ALREADY_LINKED.
+ *   - Email-collision auto-link: when the provider asserts email
+ *     verification AND the existing local user already has a verified
+ *     email AND the address matches, link instead of refusing. Both
+ *     sides have proven email ownership.
  */
 
 import { OAuthRepository } from './repository.js';
@@ -28,7 +35,8 @@ import type { User } from '@projectflow/types';
 
 export type OAuthCallbackResult =
   | { kind: 'tokens';    user: Partial<User>; accessToken: string; refreshToken: string }
-  | { kind: 'error';     reason: 'INVALID_STATE' | 'PROVIDER_ERROR' | 'NO_EMAIL' | 'ACCOUNT_EXISTS'; message: string };
+  | { kind: 'linked';    userId: string }
+  | { kind: 'error';     reason: 'INVALID_STATE' | 'PROVIDER_ERROR' | 'NO_EMAIL' | 'ACCOUNT_EXISTS' | 'ALREADY_LINKED'; message: string };
 
 const RETURN_TO_ALLOW = /^\/[\w\-/?=&.#]*$/;
 
@@ -52,8 +60,17 @@ export class OAuthService {
   /**
    * Build the provider's authorization URL and persist the matching state
    * payload to Redis. The browser is then 302'd to the returned URL.
+   *
+   * Pass `linkUserId` to mark this as a link flow — the callback will
+   * attach the new identity to that user instead of creating a new one.
+   * The route handler is responsible for verifying the user's session
+   * before passing the id; the service trusts what it's given.
    */
-  async start(input: { provider: string; returnTo?: string }): Promise<{ url: string } | { error: 'UNKNOWN_PROVIDER' }> {
+  async start(input: {
+    provider:    string;
+    returnTo?:   string;
+    linkUserId?: string | null;
+  }): Promise<{ url: string } | { error: 'UNKNOWN_PROVIDER' }> {
     const provider = getProvider(input.provider);
     if (!provider) return { error: 'UNKNOWN_PROVIDER' };
 
@@ -64,6 +81,7 @@ export class OAuthService {
       nonce,
       pkceVerifier,
       returnTo:     safeReturnTo(input.returnTo),
+      linkUserId:   input.linkUserId ?? null,
     });
 
     const url = provider.getAuthorizationUrl({
@@ -118,6 +136,34 @@ export class OAuthService {
       };
     }
 
+    // ── Link flow ───────────────────────────────────────────────────────
+    // The state payload carries linkUserId when the user clicked Connect
+    // from settings. Attach the new identity to that user and return
+    // `linked` — no new session tokens are issued (the user is already
+    // signed in via the access-token they used to hit /link).
+    if (payload.linkUserId) {
+      try {
+        await this.repo.linkExisting({
+          userId:   payload.linkUserId,
+          provider: provider.name,
+          subject:  info.subject,
+          email:    info.email,
+        });
+        return { kind: 'linked', userId: payload.linkUserId, returnTo: payload.returnTo };
+      } catch (err: any) {
+        // 51030 — (Provider, Subject) is already linked to a DIFFERENT user.
+        if (err?.number === 51030) {
+          return {
+            kind:    'error',
+            reason:  'ALREADY_LINKED',
+            message: `This ${provider.name} account is already linked to a different ProjectFlow user.`,
+          };
+        }
+        return { kind: 'error', reason: 'PROVIDER_ERROR', message: (err as Error).message };
+      }
+    }
+
+    // ── Anonymous sign-in flow ──────────────────────────────────────────
     // Existing identity → log in directly.
     const existing = await this.repo.findByProviderSubject(provider.name, info.subject);
     if (existing) {
@@ -129,16 +175,48 @@ export class OAuthService {
       return { ...session, returnTo: payload.returnTo };
     }
 
-    // No existing identity. Phase 1.A: refuse if the email collides with
-    // an existing local account — the safe-link path is Phase 1.C. Until
-    // then, the user must sign in with their password and link from
-    // settings (also Phase 1.C; for now they'd contact support).
+    // No existing identity. Check for email collision against an
+    // existing local account.
     const collision = await this.authRepo.getUserByEmail(info.email);
     if (collision) {
+      // Auto-link: BOTH sides have proven email ownership. The provider
+      // asserts emailVerified, AND the local account has IsEmailVerified.
+      // Safe to attach the new identity without a password challenge —
+      // the user could prove either credential alone, and they match.
+      const collisionVerified = (collision as any).IsEmailVerified === true
+        || (collision as any).IsEmailVerified === 1;
+      if (info.emailVerified && collisionVerified) {
+        try {
+          await this.repo.linkExisting({
+            userId:   (collision as any).Id,
+            provider: provider.name,
+            subject:  info.subject,
+            email:    info.email,
+          });
+          const session = await this.authService.issueSessionTokens(collision as User);
+          return { ...session, returnTo: payload.returnTo };
+        } catch (err: any) {
+          // Race: someone else linked this (provider, subject) between
+          // our findByProviderSubject above and the linkExisting here.
+          // Fall through to ACCOUNT_EXISTS rather than guess.
+          if (err?.number === 51030) {
+            return {
+              kind:    'error',
+              reason:  'ALREADY_LINKED',
+              message: `This ${provider.name} account is already linked to a different ProjectFlow user.`,
+            };
+          }
+          return { kind: 'error', reason: 'PROVIDER_ERROR', message: (err as Error).message };
+        }
+      }
+
+      // Either side unverified → refuse. The user must sign in with
+      // their password and link from settings — that path also proves
+      // ownership of the local account.
       return {
         kind:    'error',
         reason:  'ACCOUNT_EXISTS',
-        message: `An account with ${info.email} already exists. Sign in with your password.`,
+        message: `An account with ${info.email} already exists. Sign in with your password and link from settings.`,
       };
     }
 
@@ -153,5 +231,27 @@ export class OAuthService {
 
     const session = await this.authService.issueSessionTokens(newUser);
     return { ...session, returnTo: payload.returnTo };
+  }
+
+  // ── Identity management (Phase 1.C) ────────────────────────────────────
+
+  async listIdentitiesForUser(userId: string) {
+    return this.repo.listForUser(userId);
+  }
+
+  /**
+   * Unlink a provider from the user. Surfaces 51031 ("last credential")
+   * as a typed result the route handler maps to 409.
+   */
+  async unlink(userId: string, provider: string): Promise<{ ok: true } | { ok: false; reason: 'LAST_CREDENTIAL' }> {
+    try {
+      await this.repo.unlink(userId, provider);
+      return { ok: true };
+    } catch (err: any) {
+      if (err?.number === 51031) {
+        return { ok: false, reason: 'LAST_CREDENTIAL' };
+      }
+      throw err;
+    }
   }
 }

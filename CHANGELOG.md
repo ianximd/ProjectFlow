@@ -10,6 +10,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 39 — OAuth: linking, identities, unlink, email-collision auto-link)
+- `OAuthService.start({ linkUserId })` — when called from an authenticated user's link flow, the user id is stamped into the Redis state payload. The callback then attaches the new identity to that user instead of creating one
+- `OAuthService.callback` gains a third return shape `{ kind: 'linked', userId }` (no session tokens issued — the user is already signed in). The route bounces them straight back to settings instead of going through `/oauth/finish`
+- **Email-collision auto-link**: when an anonymous OAuth callback's email matches an existing local account, AND both the provider asserts `emailVerified` AND the local account has `IsEmailVerified = 1`, the new identity is attached to the existing user and tokens are issued. Both sides have proven email ownership; no additional challenge required. When either side is unverified, the call still rejects with `ACCOUNT_EXISTS` so the user must sign in with their password and link from settings
+- New REST endpoints (all auth-required except where noted):
+  - `GET /api/v1/auth/oauth/identities` — returns the user's linked providers (drives Connected accounts UI)
+  - `GET /api/v1/auth/oauth/:provider/link?returnTo=` — same redirect-to-provider dance as `/start` but stamps the user id into state. Returns 404 when the provider is not configured, 401 without a session
+  - `DELETE /api/v1/auth/oauth/identities/:provider` — unlinks. Returns 409 with `error.code = 'LAST_CREDENTIAL'` when removing this would leave the user with no password and no other linked provider — the SP guard from migration 0025 (`THROW 51031`) is mapped through the service layer. Returns 204 on success
+- Race protection: even the auto-link branch checks for SP error 51030 (provider+subject already linked to a *different* user) and surfaces it as `ALREADY_LINKED`. Catches the case where two users race to claim the same identity in the gap between `findByProviderSubject` and `linkExisting`
+- New frontend page `apps/next-web/src/app/(app)/settings/connected-accounts/page.tsx` — lists linked providers with Disconnect buttons (+ inline last-credential warning for OAuth-only users) and unlinked-but-configured providers with Connect buttons that drive `/api/v1/auth/oauth/:provider/link`. Built around the same `useStore` access-token pattern as the rest of the app shell
+- 9 new unit tests in `oauth.service.unit.test.ts`:
+  - Auto-link happy path (both verified) — issues tokens for the LOCAL user, never calls `createUserWithIdentity`
+  - Auto-link refuses when provider says unverified
+  - Auto-link race → `ALREADY_LINKED`
+  - Link flow happy path (`{ kind: 'linked', userId, returnTo }`, no session-token issuance)
+  - Link flow `ALREADY_LINKED` propagation
+  - Idempotent re-link
+  - `unlink()` ok / `LAST_CREDENTIAL` typed result / unexpected errors rethrow
+- 8 new integration tests in `oauth.callback.integration.test.ts`:
+  - Local-user-then-link via `/link` → callback → identity actually appears in `/identities`
+  - `/link` 401 without a session
+  - Cross-user `ALREADY_LINKED` race against a previously OAuth-created user
+  - `/identities` 401 without session, returns `[]` for fresh user
+  - OAuth-only user is blocked from removing their last identity (409 `LAST_CREDENTIAL`)
+  - Password user can disconnect their linked identity (204 + `/identities` empties)
+  - Auto-link branch: pre-verified local user signs in via OAuth (anon flow) and gets attached to the existing user (no duplicate Users row created)
+
 #### Phase 6 — Post-launch (Week 38 — OAuth: GitHub + Microsoft providers)
 - **`providers/microsoft.ts`** — Microsoft Identity Platform v2.0 with PKCE on every flow (Microsoft requires it for confidential web clients too). Tenant defaults to `common` so any work/school/personal account can sign in; `MICROSOFT_OAUTH_TENANT` env var locks to a specific GUID for enterprise SSO. **`subject` is Graph `/me.id` (the directory `oid`), NOT the OIDC `sub` claim** — `sub` is tenant-scoped on `common`, so the same human gets a different `sub` from work vs personal accounts. Email falls back from `mail` (real mailbox) to `userPrincipalName` (sign-in identifier; populated for personal MSA accounts that have no provisioned mailbox). `prompt=select_account` so multi-account users get the picker
 - **`providers/github.ts`** — GitHub OAuth Apps. **PKCE deliberately omitted** — GitHub OAuth Apps don't support it (the authorization endpoint silently ignores `code_challenge`); sending dead params would mask bugs in real-provider testing. Confidential-client flow with `client_secret` is still safe. **Email fallback**: when `/user.email` is null (user set their primary as private), call `/user/emails` with the `user:email` scope and pick the primary verified address; if no verified email exists, surface `NO_EMAIL` upstream so the user is sent to `/oauth/error?reason=NO_EMAIL`. `subject` is the numeric GitHub user `id` stringified (stable across renames). Uses `Accept: application/json` on the token exchange to avoid parsing GitHub's default form-encoded response. Handles GitHub's quirk of returning 200 with `{ error: 'bad_verification_code' }` on bad codes

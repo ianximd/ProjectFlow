@@ -178,12 +178,13 @@ describe('OAuthService.callback', () => {
     });
   });
 
-  it('rejects with ACCOUNT_EXISTS when the email collides with a local account', async () => {
+  it('rejects with ACCOUNT_EXISTS when local account exists but is unverified', async () => {
     vi.mocked(registry.getProvider).mockReturnValue(fakeProvider());
     vi.mocked(stateMod.consumeState).mockResolvedValue(validPayload);
     const repo = makeRepo({ findByProviderSubject: vi.fn().mockResolvedValue(null) });
     const authRepo = makeAuthRepo({
-      getUserByEmail: vi.fn().mockResolvedValue({ Id: 'preexisting' }),
+      // IsEmailVerified=false — auto-link is unsafe; refuse.
+      getUserByEmail: vi.fn().mockResolvedValue({ Id: 'preexisting', IsEmailVerified: false }),
     });
 
     const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
@@ -275,5 +276,200 @@ describe('OAuthService.callback', () => {
 
     expect(result.kind).toBe('error');
     expect((result as any).reason).toBe('INVALID_STATE');
+  });
+});
+
+// ─── Phase 1.C: email-collision auto-link ──────────────────────────────────
+
+describe('OAuthService.callback — email-collision auto-link (Phase 1.C)', () => {
+  const validPayload = { provider: 'fake' as const, nonce: 'n', pkceVerifier: 'v', returnTo: '/board' };
+
+  it('auto-links when both sides assert email verification', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider({
+      // Provider says verified.
+      fetchUserInfo: vi.fn(async () => ({
+        subject: 'sub-link', email: 'both-verified@x.com',
+        emailVerified: true, name: 'V', avatarUrl: null,
+      })),
+    }));
+    vi.mocked(stateMod.consumeState).mockResolvedValue(validPayload);
+
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue(null),
+      linkExisting:          vi.fn().mockResolvedValue({ Id: 'identity-id' }),
+    });
+    const authRepo = makeAuthRepo({
+      // Local says verified too.
+      getUserByEmail: vi.fn().mockResolvedValue({ Id: 'local-user', Email: 'both-verified@x.com', IsEmailVerified: true }),
+    });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo, authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('tokens');
+    expect(repo.linkExisting).toHaveBeenCalledOnce();
+    expect(repo.linkExisting.mock.calls[0]![0]).toMatchObject({
+      userId:   'local-user',
+      provider: 'fake',
+      subject:  'sub-link',
+    });
+    expect(repo.createUserWithIdentity).not.toHaveBeenCalled();
+    // Critical: tokens are issued for the LOCAL user, not a freshly
+    // created one — proves the auto-link branch funnels through the
+    // same session-token path as password login.
+    expect(authService.issueSessionTokens).toHaveBeenCalledWith(
+      expect.objectContaining({ Id: 'local-user' }),
+    );
+  });
+
+  it('refuses with ACCOUNT_EXISTS when provider says unverified (even if local is verified)', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider({
+      fetchUserInfo: vi.fn(async () => ({
+        subject: 's', email: 'mixed@x.com', emailVerified: false, name: null, avatarUrl: null,
+      })),
+    }));
+    vi.mocked(stateMod.consumeState).mockResolvedValue(validPayload);
+    const repo = makeRepo({ findByProviderSubject: vi.fn().mockResolvedValue(null) });
+    const authRepo = makeAuthRepo({
+      getUserByEmail: vi.fn().mockResolvedValue({ Id: 'local', IsEmailVerified: true }),
+    });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('error');
+    expect((result as any).reason).toBe('ACCOUNT_EXISTS');
+    expect(repo.linkExisting).not.toHaveBeenCalled();
+  });
+
+  it('returns ALREADY_LINKED when SP throws 51030 during the auto-link race', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider({
+      fetchUserInfo: vi.fn(async () => ({
+        subject: 's', email: 'race@x.com', emailVerified: true, name: null, avatarUrl: null,
+      })),
+    }));
+    vi.mocked(stateMod.consumeState).mockResolvedValue(validPayload);
+
+    const linkErr: any = new Error('already linked');
+    linkErr.number = 51030;
+
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue(null),
+      linkExisting:          vi.fn().mockRejectedValue(linkErr),
+    });
+    const authRepo = makeAuthRepo({
+      getUserByEmail: vi.fn().mockResolvedValue({ Id: 'local', IsEmailVerified: true }),
+    });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('error');
+    expect((result as any).reason).toBe('ALREADY_LINKED');
+  });
+});
+
+// ─── Phase 1.C: link flow (authenticated user adding a provider) ───────────
+
+describe('OAuthService.callback — link flow (Phase 1.C)', () => {
+  const linkPayload = {
+    provider:     'fake' as const,
+    nonce:        'n',
+    pkceVerifier: 'v',
+    returnTo:     '/settings/connected-accounts',
+    linkUserId:   'logged-in-user-1',
+  };
+
+  it('attaches the identity to linkUserId and returns kind: linked (no session tokens)', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider());
+    vi.mocked(stateMod.consumeState).mockResolvedValue(linkPayload);
+    const repo = makeRepo({
+      linkExisting: vi.fn().mockResolvedValue({ Id: 'new-identity' }),
+    });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo: makeAuthRepo(), authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('linked');
+    expect((result as any).userId).toBe('logged-in-user-1');
+    expect((result as any).returnTo).toBe('/settings/connected-accounts');
+    expect(repo.linkExisting).toHaveBeenCalledWith(expect.objectContaining({
+      userId:   'logged-in-user-1',
+      provider: 'fake',
+    }));
+    // No session tokens issued — the user already has one.
+    expect(authService.issueSessionTokens).not.toHaveBeenCalled();
+    // The link path runs BEFORE findByProviderSubject — we don't need to
+    // pre-check; the SP throws 51030 if there's a conflict.
+    expect(repo.findByProviderSubject).not.toHaveBeenCalled();
+  });
+
+  it('returns ALREADY_LINKED when the (provider, subject) is already on a different user', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider());
+    vi.mocked(stateMod.consumeState).mockResolvedValue(linkPayload);
+
+    const linkErr: any = new Error('already linked');
+    linkErr.number = 51030;
+
+    const repo = makeRepo({
+      linkExisting: vi.fn().mockRejectedValue(linkErr),
+    });
+
+    const result = await new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('error');
+    expect((result as any).reason).toBe('ALREADY_LINKED');
+  });
+
+  it('idempotent re-link of the same provider+subject for the same user returns linked', async () => {
+    vi.mocked(registry.getProvider).mockReturnValue(fakeProvider());
+    vi.mocked(stateMod.consumeState).mockResolvedValue(linkPayload);
+    // The SP swallows duplicates for the same user (returns the existing row).
+    const repo = makeRepo({
+      linkExisting: vi.fn().mockResolvedValue({ Id: 'existing-identity' }),
+    });
+
+    const result = await new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('linked');
+  });
+});
+
+// ─── Phase 1.C: unlink ──────────────────────────────────────────────────────
+
+describe('OAuthService.unlink', () => {
+  it('returns ok on success', async () => {
+    const repo = makeRepo({ unlink: vi.fn().mockResolvedValue(undefined) });
+    const result = await new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() })
+      .unlink('user-1', 'fake');
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('maps SP error 51031 (last credential) to a typed result', async () => {
+    const err: any = new Error('last credential');
+    err.number = 51031;
+    const repo = makeRepo({ unlink: vi.fn().mockRejectedValue(err) });
+
+    const result = await new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() })
+      .unlink('user-1', 'fake');
+
+    expect(result).toEqual({ ok: false, reason: 'LAST_CREDENTIAL' });
+  });
+
+  it('rethrows unexpected errors so the route handler 500s rather than masking', async () => {
+    const repo = makeRepo({ unlink: vi.fn().mockRejectedValue(new Error('connection lost')) });
+    await expect(
+      new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).unlink('user-1', 'fake'),
+    ).rejects.toThrow(/connection lost/);
   });
 });

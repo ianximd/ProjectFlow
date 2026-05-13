@@ -269,11 +269,74 @@ authRoutes.get('/oauth/:provider/callback', async (c) => {
     return c.redirect(`${finishBase}/oauth/error?reason=${result.reason}`, 302);
   }
 
+  const returnTo = encodeURIComponent(result.returnTo ?? '/board');
+
+  // Link flow: the user is already authenticated; we just attached an
+  // identity. Skip the cookie rotation and bounce them straight back to
+  // settings.
+  if (result.kind === 'linked') {
+    return c.redirect(`${finishBase}${decodeURIComponent(returnTo)}`, 302);
+  }
+
   setRefreshCookie(c, result.refreshToken);
   // The /oauth/finish page calls /auth/refresh on mount to pick up the
   // access token, then routes the user to returnTo. We pass returnTo as
   // a query param rather than baking it into the cookie.
-  const returnTo = encodeURIComponent(result.returnTo ?? '/board');
   return c.redirect(`${finishBase}/oauth/finish?returnTo=${returnTo}`, 302);
+});
+
+// GET /api/v1/auth/oauth/identities  (protected)
+// Returns the providers the current user has linked. Drives the
+// "Connected accounts" settings panel.
+authRoutes.get('/oauth/identities', authMiddleware, async (c) => {
+  const jwtPayload = (c as any).get('user') as any;
+  const rows = await oauthService.listIdentitiesForUser(jwtPayload.userId);
+  return c.json({
+    data: rows.map((r) => ({
+      id:        r.Id,
+      provider:  r.Provider,
+      email:     r.Email,
+      createdAt: r.CreatedAt,
+    })),
+  });
+});
+
+// GET /api/v1/auth/oauth/:provider/link  (protected)
+// Same redirect-to-provider dance as /start, but stamps the user's id
+// into the state payload so the callback links the new identity to
+// THIS user instead of creating a new account.
+authRoutes.get('/oauth/:provider/link', authMiddleware, async (c) => {
+  const provider   = c.req.param('provider')!;
+  const returnTo   = c.req.query('returnTo') ?? '/settings/connected-accounts';
+  const jwtPayload = (c as any).get('user') as any;
+
+  const result = await oauthService.start({
+    provider,
+    returnTo,
+    linkUserId: jwtPayload.userId,
+  });
+  if ('error' in result) {
+    return c.json({ error: { code: result.error, message: 'Provider not configured' } }, 404);
+  }
+  return c.redirect(result.url, 302);
+});
+
+// DELETE /api/v1/auth/oauth/identities/:provider  (protected)
+// Unlink a provider. Returns 409 LAST_CREDENTIAL when removing it would
+// leave the user with no password and no other linked provider.
+authRoutes.delete('/oauth/identities/:provider', authMiddleware, async (c) => {
+  const provider   = c.req.param('provider')!;
+  const jwtPayload = (c as any).get('user') as any;
+
+  const result = await oauthService.unlink(jwtPayload.userId, provider);
+  if (!result.ok) {
+    return c.json({
+      error: {
+        code:    'LAST_CREDENTIAL',
+        message: 'Cannot remove the last credential. Set a password or link another provider first.',
+      },
+    }, 409);
+  }
+  return c.body(null, 204);
 });
 

@@ -10,6 +10,47 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Audit trail field-level diff)
+
+**Why.** The `AuditLog` table has always had `OldValues NVARCHAR(MAX)` and `NewValues NVARCHAR(MAX)` columns, but nothing wrote to them — the audit middleware fired `adminService.log()` with only userId/action/resource/resourceId. So an admin reviewing the log could see "Alice updated Task X at 14:32" but not "she changed priority from MEDIUM to HIGH." This phase closes that gap WITHOUT adding `CreatedBy` / `UpdatedBy` / `DeletedBy` columns to every domain table — the out-of-band audit log is the source of truth, and we just teach it to record the body.
+
+- **`shared/middleware/audit-snapshots.ts`** — new registry that maps resource name → `(id) => Promise<row | null>`. Resources without a registered fetcher fall back to the diff-less audit row (current behaviour, no regression). Keeps `audit.middleware.ts` decoupled from every domain repository — no module → middleware → module import graph
+- **`computeChangedFields(before, after)`** — diff helper. Returns `{ oldValues, newValues }` containing **only the keys that actually changed**. Equality rules:
+  - primitives compared with `===`
+  - `Date` objects compared by `getTime()` so a no-op `UpdatedAt` bump doesn't generate a noisy diff
+  - objects/arrays compared by `JSON.stringify` (shallow — we don't deep-diff into nested structures)
+  - `UpdatedAt` / `updatedAt` / `updated_at` keys are explicitly excluded from the diff so SP-managed timestamps never show up as changes
+  - null/undefined treated identically (a field cleared from `'user-1'` to `null` is still a change; both null on both sides is a non-change)
+- **`audit.middleware.ts` refactor** — for UPDATE/DELETE on a resource with a registered fetcher AND a resourceId in the URL:
+  1. **Pre-handler**: snapshot the row's current state, stash in middleware-local closure
+  2. Run the handler
+  3. **Post-handler** (UPDATE only — for DELETE the row may be gone): snapshot again
+  4. Compute diff, pass to `adminService.log()` as `oldValues`/`newValues`
+  5. If the snapshot fetcher throws (deleted row, SP error), degrade to the diff-less audit row rather than blocking the request — auditing must never be the cause of a failed write
+- **Snapshot fetcher coverage** (4 of 9 audited resources, see Limitations below):
+  - `Task` — `taskRepo.getById()` (the resource the user is most likely to care about for a "what changed" question)
+  - `Project` — `projectRepo.getById()`
+  - `Workspace` — `workspaceRepo.getById()`
+  - `Comment` — `commentRepo.getById()`
+  - Registered via `registerAuditSnapshots()` from `server.ts` before the audit middleware can ever be reached
+- **Behaviour matrix**:
+  | HTTP verb | Audit row written? | OldValues | NewValues |
+  |---|---|---|---|
+  | POST (no id in URL) | ✅ | null | null (TODO: response-body parsing, deferred) |
+  | PATCH/PUT with diff | ✅ | only changed keys | only changed keys |
+  | PATCH/PUT no diff | ✅ | null | null |
+  | DELETE with snapshot | ✅ | full before-state | null |
+  | resource w/o fetcher | ✅ | null | null |
+- **15 new tests** (199 total in API now, +15 over W43 observability's 196):
+  - 12 unit tests in `audit-snapshots.unit.test.ts` — diff helper exercised against: null/null (no-op), null/after (create-shape), before/null (delete-shape), partial changes (only diff keys appear), no changes (returns nulls), `UpdatedAt` excluded, equal Dates pass through, different Dates emit, equal arrays pass through, different arrays emit, null→value transitions, value→null transitions, key additions
+  - 3 integration tests in `audit-diff.integration.test.ts` against the real DB: workspace rename produces `OldValues.Name='Original Name'` + `NewValues.Name='Renamed'` with unchanged keys (`Id`, `Slug`) absent; workspace soft-delete produces full pre-delete snapshot in `OldValues` and `NewValues=null`; an UPDATE that doesn't change any tracked field writes the row with both columns NULL (so audit consumers still see "Alice touched this workspace at 14:32" even when nothing changed)
+
+**Limitations** (deferred to future phases):
+- **5 of 9 audited resources lack snapshot fetchers**: Sprint, AutomationRule, Workflow, WorkLog, OutgoingWebhook. Each would need a `getById` method on its repo backed by a single-row `usp_<Entity>_GetById` SP. None of those exist today. The current audit behavior for these resources (no field-level diff, but the WHO/WHAT/WHEN row is still written) is unchanged from pre-W43.
+- **POST audits have no NewValues body**. Capturing it would require parsing the response body (the new id isn't in the URL); deferred until we need it.
+- **Sensitive-field redaction is not applied to the diff payload**. Domain tables have no password-shaped columns so this is fine today; if a future migration adds e.g. a `secretKey` column to a domain table, add it to the redaction allow-list in `logger.ts` AND consider a per-snapshot redactor.
+- **Field-length cap**: a single field changing from one 10000-char description to another writes both blobs into AuditLog. The table is `NVARCHAR(MAX)` so storage is fine, but a future "audit-log max field length" cap would keep typical queries lean.
+
 #### Phase 6 — Post-launch (Week 43 — Observability v1: structured logging across server, HTTP, and SP layer)
 
 **Why.** Before this week, 60+ ad-hoc `console.log` / `console.warn` / `console.error` calls were scattered through `apps/api`, the dev server emitted a single un-prefixed "Server is running on port 3001" line at boot, and stored-procedure activity was completely invisible unless a query exceeded the 500ms slow-query threshold. An operator running `npm run dev` could not answer "which SP is running, which has failed, what was the rowCount" without `console.log`-debugging individual repositories. This week wires `pino` through the whole stack so the same questions are answerable from `stdout`.

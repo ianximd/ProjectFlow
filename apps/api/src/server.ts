@@ -34,6 +34,7 @@ import { auditMiddleware } from './shared/middleware/audit.middleware.js';
 import { responseCache } from './shared/middleware/responseCache.middleware.js';
 import { securityHeaders } from './shared/middleware/securityHeaders.middleware.js';
 import { httpLogMiddleware } from './shared/middleware/httpLog.middleware.js';
+import { registerAuditSnapshots } from './shared/middleware/audit-snapshots.bootstrap.js';
 import { logger } from './shared/lib/logger.js';
 import { isConfigured as oauthCryptoConfigured } from './shared/lib/tokenCrypto.js';
 import { getEnabledProviders } from './modules/auth/oauth/registry.js';
@@ -137,6 +138,10 @@ app.use('/integrations/*',   authMiddleware);
 app.use('/outgoing-webhooks/*', authMiddleware);
 // incoming git webhooks are public — no authMiddleware
 app.use('/admin/*',         authMiddleware);
+
+// Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
+// can ever be invoked. registerAuditSnapshots() is idempotent.
+registerAuditSnapshots();
 
 // Audit middleware — fire-and-forget write-op logging on all protected routes
 app.use('/tasks/*',       auditMiddleware);

@@ -37,6 +37,20 @@ function parseRow(row: AutomationRuleRow) {
 }
 
 export class AutomationRepository {
+  /**
+   * Single-row read. Backs the audit-snapshot fetcher (W43 Option A) so
+   * automation-rule updates surface field-level diffs in AuditLog —
+   * including the JSON config blobs so an audit row records "the trigger
+   * changed from issue.created to issue.transitioned" rather than just
+   * "the rule was updated."
+   */
+  async getById(id: string): Promise<Record<string, unknown> | null> {
+    const rows = await execSpOne<Record<string, unknown>>('usp_AutomationRule_GetById', [
+      { name: 'RuleId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ?? null;
+  }
+
   async create(
     projectId: string,
     name: string,

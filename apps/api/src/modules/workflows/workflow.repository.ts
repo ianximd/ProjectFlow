@@ -30,6 +30,21 @@ export interface WorkflowTransitionRow {
 }
 
 export class WorkflowRepository {
+  /**
+   * Single-row read of the top-level Workflow row. Backs the audit-
+   * snapshot fetcher (W43 Option A). Sub-resources (statuses,
+   * transitions) live in their own tables and aren't joined here —
+   * PATCH /workflows/:id/statuses/:statusId passes the *status* id as
+   * the audit resourceId, which won't match a Workflow row, so the
+   * snapshot just comes back null and the audit row gets no diff.
+   */
+  async getById(id: string): Promise<Record<string, unknown> | null> {
+    const rows = await execSpOne<Record<string, unknown>>('usp_Workflow_GetById', [
+      { name: 'WorkflowId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ?? null;
+  }
+
   async create(projectId: string, name: string, template: string) {
     const sets = await execSp('usp_Workflow_Create', [
       { name: 'ProjectId', type: sql.UniqueIdentifier, value: projectId },

@@ -10,6 +10,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Audit trail field-level diff: full 9/9 resource coverage)
+
+Follow-up to the audit-diff phase: the five resources that were on the "diff-less audit row" fallback now produce field-level diffs too.
+
+- **5 new single-row stored procedures** (175 total deployed): `usp_Sprint_GetById`, `usp_AutomationRule_GetById`, `usp_Workflow_GetById`, `usp_WorkLog_GetById`, `usp_Webhook_GetById`. Each does a flat `SELECT TOP 1 ... FROM <table> WHERE Id = @<entity>Id` against the canonical row. No migrations needed — these read against existing tables
+- **`usp_Webhook_GetById` deliberately omits the `Secret` column** from its projection. The Webhooks table holds the HMAC signing secret used to sign outgoing webhook payloads — if an operator rotates the secret, the audit row records "an UPDATE happened on this webhook by this user at this time" without leaking the new value into `AuditLog.NewValues`. The change is still recorded as an UPDATE event with WHO/WHEN; just no field-level body
+- **`getById(id)` added to 5 repositories**: `SprintRepository`, `AutomationRepository`, `WorkflowRepository`, `WorkLogRepository`, `WebhookOutgoingRepository`. Each returns `Record<string, unknown> | null` so it slots cleanly into the snapshot registry's signature
+- **`audit-snapshots.bootstrap.ts` extended** — now registers all 9 fetchers (was 4): Task, Project, Workspace, Comment (W43 Option A) plus Sprint, AutomationRule, Workflow, WorkLog, OutgoingWebhook (this follow-up). Coverage of the audit middleware's mounted resources is now 9/9
+- **Workflow has a known sub-resource quirk**: `PATCH /workflows/:id/statuses/:statusId` and `DELETE /workflows/:id/transitions/:from/:to` surface a CHILD entity id as the audit resourceId. The `Workflow` fetcher gets called with what is actually a `WorkflowStatus` id, returns null (no Workflow row with that id), and the audit row degrades to the diff-less fallback. By design — this matches the existing audit middleware's URL-parsing behaviour and avoids a special-case in the snapshot registry. If we add status/transition-level diffs in the future, they get their own resource keys
+
 #### Phase 6 — Post-launch (Week 43 — Audit trail field-level diff)
 
 **Why.** The `AuditLog` table has always had `OldValues NVARCHAR(MAX)` and `NewValues NVARCHAR(MAX)` columns, but nothing wrote to them — the audit middleware fired `adminService.log()` with only userId/action/resource/resourceId. So an admin reviewing the log could see "Alice updated Task X at 14:32" but not "she changed priority from MEDIUM to HIGH." This phase closes that gap WITHOUT adding `CreatedBy` / `UpdatedBy` / `DeletedBy` columns to every domain table — the out-of-band audit log is the source of truth, and we just teach it to record the body.

@@ -34,6 +34,17 @@ function rowToLog(row: WorkLogRow): WorkLog {
 }
 
 export class WorkLogRepository {
+  /**
+   * Single-row read. Backs the audit-snapshot fetcher (W43 Option A) so
+   * worklog updates surface field-level diffs in AuditLog.
+   */
+  async getById(id: string): Promise<Record<string, unknown> | null> {
+    const rows = await execSpOne<Record<string, unknown>>('usp_WorkLog_GetById', [
+      { name: 'WorkLogId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ?? null;
+  }
+
   async listByTask(taskId: string): Promise<WorkLogListResult> {
     const sets = await execSp<WorkLogRow | TotalsRow>('usp_WorkLog_ListByTask', [
       { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },

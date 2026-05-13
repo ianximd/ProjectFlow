@@ -2,6 +2,17 @@ import sql from 'mssql';
 import { execSpOne } from '../../shared/lib/sqlClient.js';
 
 export class SprintRepository {
+  /**
+   * Single-row read. Backs the audit-snapshot fetcher (W43 Option A) so
+   * sprint updates surface field-level diffs in AuditLog.
+   */
+  async getById(id: string): Promise<Record<string, unknown> | null> {
+    const rows = await execSpOne<Record<string, unknown>>('usp_Sprint_GetById', [
+      { name: 'SprintId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ?? null;
+  }
+
   async create(projectId: string, name: string, goal: string | null, startDate: Date | null, endDate: Date | null) {
     const rows = await execSpOne('usp_Sprint_Create', [
       { name: 'ProjectId', type: sql.UniqueIdentifier,  value: projectId },

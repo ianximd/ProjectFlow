@@ -49,6 +49,21 @@ interface LogDeliveryInput {
 }
 
 export class WebhookOutgoingRepository {
+  /**
+   * Single-row read. Backs the audit-snapshot fetcher (W43 Option A) so
+   * outgoing-webhook updates surface field-level diffs in AuditLog.
+   *
+   * The underlying SP deliberately excludes the HMAC `Secret` column —
+   * if an operator rotates the secret, the audit row records "an UPDATE
+   * happened" without leaking the new value into AuditLog.NewValues.
+   */
+  async getById(id: string): Promise<Record<string, unknown> | null> {
+    const rows = await execSpOne<Record<string, unknown>>('usp_Webhook_GetById', [
+      { name: 'WebhookId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ?? null;
+  }
+
   async create(input: {
     workspaceId: string;
     name:        string;

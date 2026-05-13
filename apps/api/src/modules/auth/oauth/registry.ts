@@ -13,6 +13,8 @@
 
 import type { OAuthProvider, OAuthProviderName } from './types.js';
 import { createGoogleProvider }                 from './providers/google.js';
+import { createGitHubProvider }                 from './providers/github.js';
+import { createMicrosoftProvider }              from './providers/microsoft.js';
 import { createFakeProvider }                   from './providers/fake.js';
 
 let cache: Map<OAuthProviderName, OAuthProvider> | null = null;
@@ -26,6 +28,27 @@ function build(): Map<OAuthProviderName, OAuthProvider> {
     map.set('google', createGoogleProvider({
       clientId:     googleId,
       clientSecret: googleSecret,
+    }));
+  }
+
+  const githubId     = process.env.GITHUB_OAUTH_CLIENT_ID;
+  const githubSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+  if (githubId && githubSecret) {
+    map.set('github', createGitHubProvider({
+      clientId:     githubId,
+      clientSecret: githubSecret,
+    }));
+  }
+
+  const microsoftId     = process.env.MICROSOFT_OAUTH_CLIENT_ID;
+  const microsoftSecret = process.env.MICROSOFT_OAUTH_CLIENT_SECRET;
+  if (microsoftId && microsoftSecret) {
+    map.set('microsoft', createMicrosoftProvider({
+      clientId:     microsoftId,
+      clientSecret: microsoftSecret,
+      // Default 'common' lets any work/school/personal Microsoft account
+      // sign in. Lock to a tenant GUID for enterprise SSO.
+      tenant:       process.env.MICROSOFT_OAUTH_TENANT || 'common',
     }));
   }
 

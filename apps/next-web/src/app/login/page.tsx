@@ -12,11 +12,12 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertIcon } from '@/components/ui/alert';
 
-// Provider name → display label + brand color. Adding GitHub / Microsoft
-// in Phase 1.B is one row per provider here.
+// Provider name → display label + brand color. Adding a 4th provider
+// is one row per provider here.
 const PROVIDER_META: Record<string, { label: string; bg: string }> = {
-  google: { label: 'Continue with Google',    bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
-  // github / microsoft land in 1.B
+  google:    { label: 'Continue with Google',    bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
+  github:    { label: 'Continue with GitHub',    bg: 'bg-gray-900 text-white hover:bg-gray-800' },
+  microsoft: { label: 'Continue with Microsoft', bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
 };
 
 export default function LoginPage() {

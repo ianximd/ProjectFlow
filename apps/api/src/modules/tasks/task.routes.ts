@@ -4,6 +4,23 @@ import { z } from 'zod';
 import { TaskRepository } from './task.repository.js';
 import { TaskService } from './task.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { cacheDelPattern } from '../../shared/lib/cache.js';
+
+// Tasks feed three server-cached read endpoints: /epics (5 min), /roadmap/*
+// (2 min) and /sprints/* (2 min). Without this, a newly-created EPIC stays
+// invisible on the Epics page (and Roadmap, sprint summaries) until the
+// Redis TTL elapses, even though the Board is fresh because /tasks isn't
+// server-cached. Scope the /epics bust to the project when known; /roadmap
+// and /sprints don't share a single per-project URL pattern, so bust the
+// whole resource family on any task write.
+function invalidateTaskCaches(projectId?: string | null): void {
+  const epicsPattern = projectId
+    ? `http:*:/api/v1/epics?projectId=${projectId}*`
+    : 'http:*:/api/v1/epics?*';
+  cacheDelPattern(epicsPattern).catch(() => {});
+  cacheDelPattern('http:*:/api/v1/roadmap*').catch(() => {});
+  cacheDelPattern('http:*:/api/v1/sprints*').catch(() => {});
+}
 
 // ── Input schemas ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +97,7 @@ taskRoutes.post(
       { ...body, reporterId: actorId },
       actorId
     );
+    invalidateTaskCaches(body.projectId);
     return c.json({ data: task }, 201);
   },
 );
@@ -114,6 +132,7 @@ taskRoutes.put(
     const user = (c as any).get('user') as any;
     try {
       const assignees = await taskService.setAssignees(id, userIds, user.userId);
+      invalidateTaskCaches();
       return c.json({ data: assignees });
     } catch (err: any) {
       if (err.number === 51030) {
@@ -138,6 +157,7 @@ taskRoutes.patch(
     try {
       const task = await taskService.setPosition(id, position, status ?? null);
       if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      invalidateTaskCaches(task.projectId);
       return c.json({ data: task });
     } catch (err: any) {
       console.error('[taskRoutes] setPosition failed:', err);
@@ -160,6 +180,7 @@ taskRoutes.patch(
   try {
     const task = await taskService.updateTask(id, body, actorId);
     if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+    invalidateTaskCaches(task.projectId);
     return c.json({ data: task });
   } catch (err: any) {
     if (err.number === 50003 || err.number === 50004) {
@@ -183,6 +204,7 @@ taskRoutes.patch(
   try {
     const task = await taskService.transitionTask(id, status, actorId);
     if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+    invalidateTaskCaches(task.projectId);
     return c.json({ data: task });
   } catch (err: any) {
     if (err.number === 50003 || err.number === 50004) {
@@ -203,6 +225,7 @@ taskRoutes.delete(
   
   try {
     const task = await taskService.deleteTask(id, actorId);
+    invalidateTaskCaches(task?.projectId);
     return c.json({ data: task });
   } catch (error: any) {
     if (error.number === 50004) {

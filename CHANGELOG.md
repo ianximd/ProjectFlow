@@ -21,6 +21,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - `DELETE /api/v1/workspaces/:id` previously returned 500 in v1.0.0: the SP attempted a physical delete but `Projects`, `Sprints`, `Tasks`, `WorkflowDefinitions`, and `UserRoles` all hold `REFERENCES Workspaces(Id)` without `ON DELETE CASCADE`, so every call hit a foreign-key violation. Migration 0023 + the rewritten `usp_Workspace_Delete` resolve the failure mode by switching to soft delete
+- Newly-created tasks (most visibly EPICs) did not appear on the Epics page, Roadmap, or sprint summaries for up to 5 minutes after creation. `GET /epics/*`, `/roadmap/*`, and `/sprints/*` are server-cached in Redis (TTL 5 / 2 / 2 min), but `task.routes.ts` never busted those entries on write — so `POST /tasks` (and PATCH / DELETE / position / assignees / transition) left stale data behind. The Board appeared fresh because `/tasks` itself is not server-cached. Added `invalidateTaskCaches(projectId?)` and call it after every task mutation, mirroring the pattern components / labels / versions already use
 
 ### Added
 

@@ -153,23 +153,35 @@ export default function BoardPage() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
+  // All three mutations need to:
+  //  1. Throw on !res.ok so React Query knows the mutation failed.
+  //     (`await api(...)` returns a truthy Response even on 4xx/5xx —
+  //     without a throw, onSuccess fires regardless and the UI silently
+  //     rolls back via the refetch.)
+  //  2. Invalidate via onSettled, not onSuccess — so a failed drag still
+  //     refetches the canonical positions and the card snaps back to
+  //     where the server says it is.
+  //
+  // The toast comes from notifyApiError inside the api() helper itself.
+
   // Drag-end persistence: position SP applies status + position in one shot,
   // bypassing the workflow validator (intentional — drag is free-form).
   const reorderTaskMutation = useMutation({
     mutationFn: async (
       { taskId, position, status }: { taskId: string; position: number; status: string | null },
     ) => {
-      await api(`/tasks/${taskId}/position`, accessToken, {
+      const res = await api(`/tasks/${taskId}/position`, accessToken, {
         method: 'PATCH',
         body: JSON.stringify(status ? { position, status } : { position }),
       });
+      if (!res.ok) throw new Error('reorder failed');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
   });
 
   const addTaskMutation = useMutation({
     mutationFn: async ({ columnId, content }: { columnId: string; content: string }) => {
-      await api(`/tasks`, accessToken, {
+      const res = await api(`/tasks`, accessToken, {
         method: 'POST',
         body: JSON.stringify({
           title:       content,
@@ -178,15 +190,17 @@ export default function BoardPage() {
           workspaceId: activeWorkspaceId,
         }),
       });
+      if (!res.ok) throw new Error('create task failed');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
   });
 
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
-      await api(`/tasks/${taskId}`, accessToken, { method: 'DELETE' });
+      const res = await api(`/tasks/${taskId}`, accessToken, { method: 'DELETE' });
+      if (!res.ok) throw new Error('delete task failed');
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['tasks', activeProjectId] }),
   });
 
   // ── Render ────────────────────────────────────────────────────────────────

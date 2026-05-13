@@ -32,10 +32,28 @@ const TOAST_FOR_CODE: Record<string, { title: string; description: string }> = {
   },
 };
 
-export function notifyApiError(json: ApiErrorBody | null | undefined, _status: number): void {
+export function notifyApiError(json: ApiErrorBody | null | undefined, status: number): void {
+  // 401 means the access token has gone stale — the auth bootstrap will
+  // silent-refresh or punt to /login. A toast here is noise.
+  if (status === 401) return;
+
   const code = json?.error?.code;
-  if (!code) return;
-  const entry = TOAST_FOR_CODE[code];
-  if (!entry) return;
-  toast.error(entry.title, { description: entry.description });
+  if (code) {
+    const known = TOAST_FOR_CODE[code];
+    if (known) {
+      toast.error(known.title, { description: known.description });
+      return;
+    }
+  }
+
+  // Generic fallback. Without this, mutations that fail (validation
+  // errors, conflicts, server crashes) leave the user with no signal —
+  // React Query swallows the throw and the optimistic UI silently
+  // rolls back.
+  const message = json?.error?.message?.trim();
+  toast.error('Something went wrong', {
+    description: message && message.length > 0
+      ? message
+      : 'The request failed. Please try again.',
+  });
 }

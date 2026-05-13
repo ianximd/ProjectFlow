@@ -3,6 +3,20 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { workspaceService } from './workspace.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { cacheDelPattern } from '../../shared/lib/cache.js';
+
+// GET /workspaces and GET /workspaces/:id[/members] are server-cached for
+// 30s (TTL.SHORT). Without busting after writes, a newly-created workspace
+// stays invisible on the workspaces page until the TTL elapses — the user
+// has to navigate away and back, by which time the entry has expired and
+// the next read repopulates from the DB.
+//
+// The cache key is per-user (<userId>:<pathname+search>), but workspaces
+// are shared across members, so wildcard-bust across users on member
+// changes too. Wider than strictly necessary but writes are infrequent.
+function invalidateWorkspaceCaches(): void {
+  cacheDelPattern('http:*:/api/v1/workspaces*').catch(() => {});
+}
 
 const inviteByEmailSchema = z.object({
   email: z.string().email().max(255),
@@ -22,6 +36,7 @@ workspaceRoutes.post('/', async (c) => {
   const user = (c as any).get('user') as any;
   try {
     const workspace = await workspaceService.create(name, slug, user.userId);
+    invalidateWorkspaceCaches();
     return c.json({ data: workspace }, 201);
   } catch (err: any) {
     if (err.number === 50010) return c.json({ error: { message: err.message } }, 409);
@@ -63,6 +78,7 @@ workspaceRoutes.post(
     if (!userId) return c.json({ error: { message: 'userId is required' } }, 400);
     try {
       const member = await workspaceService.addMember(c.req.param('id')!, userId, role);
+      invalidateWorkspaceCaches();
       return c.json({ data: member }, 201);
     } catch (err: any) {
       if (err.number === 50011) return c.json({ error: { message: err.message } }, 409);
@@ -82,6 +98,7 @@ workspaceRoutes.post(
     const { email, role } = c.req.valid('json');
     try {
       const member = await workspaceService.addMemberByEmail(c.req.param('id')!, email, role);
+      invalidateWorkspaceCaches();
       return c.json({ data: member }, 201);
     } catch (err: any) {
       if (err.number === 51052) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
@@ -98,6 +115,7 @@ workspaceRoutes.delete(
   async (c) => {
     try {
       await workspaceService.removeMember(c.req.param('id')!, c.req.param('userId')!);
+      invalidateWorkspaceCaches();
       return c.body(null, 204);
     } catch (err: any) {
       if (err.number === 51050) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
@@ -121,6 +139,7 @@ workspaceRoutes.put(
         c.req.param('userId')!,
         role,
       );
+      invalidateWorkspaceCaches();
       return c.json({ data: result });
     } catch (err: any) {
       if (err.number === 51050) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
@@ -142,6 +161,7 @@ workspaceRoutes.patch(
     try {
       const workspace = await workspaceService.update(c.req.param('id')!, { name, slug, avatarUrl });
       if (!workspace) return c.json({ error: { message: 'Workspace not found' } }, 404);
+      invalidateWorkspaceCaches();
       return c.json({ data: workspace });
     } catch (err: any) {
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
@@ -159,6 +179,7 @@ workspaceRoutes.delete(
   async (c) => {
     try {
       await workspaceService.delete(c.req.param('id')!);
+      invalidateWorkspaceCaches();
       return c.body(null, 204);
     } catch (err: any) {
       if (err.number === 51060) {

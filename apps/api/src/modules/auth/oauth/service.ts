@@ -30,8 +30,10 @@ import {
   makeRandomToken,
   type OAuthStatePayload,
 } from './state.js';
+import { isConfigured as cryptoConfigured, seal } from '../../../shared/lib/tokenCrypto.js';
 
 import type { User } from '@projectflow/types';
+import type { OAuthTokens } from './types.js';
 
 export type OAuthCallbackResult =
   | { kind: 'tokens';    user: Partial<User>; accessToken: string; refreshToken: string }
@@ -136,6 +138,10 @@ export class OAuthService {
       };
     }
 
+    // Capture for after we've resolved which path created/linked the row.
+    // We persist tokens regardless of which branch we ended up in below.
+    const persistTokens = () => this.persistEncryptedTokens(provider.name, info.subject, tokens);
+
     // ── Link flow ───────────────────────────────────────────────────────
     // The state payload carries linkUserId when the user clicked Connect
     // from settings. Attach the new identity to that user and return
@@ -149,6 +155,7 @@ export class OAuthService {
           subject:  info.subject,
           email:    info.email,
         });
+        await persistTokens();
         return { kind: 'linked', userId: payload.linkUserId, returnTo: payload.returnTo };
       } catch (err: any) {
         // 51030 — (Provider, Subject) is already linked to a DIFFERENT user.
@@ -172,6 +179,7 @@ export class OAuthService {
         return { kind: 'error', reason: 'INVALID_STATE', message: 'Linked user no longer exists' };
       }
       const session = await this.authService.issueSessionTokens(user);
+      await persistTokens();
       return { ...session, returnTo: payload.returnTo };
     }
 
@@ -194,6 +202,7 @@ export class OAuthService {
             email:    info.email,
           });
           const session = await this.authService.issueSessionTokens(collision as User);
+          await persistTokens();
           return { ...session, returnTo: payload.returnTo };
         } catch (err: any) {
           // Race: someone else linked this (provider, subject) between
@@ -230,7 +239,35 @@ export class OAuthService {
     });
 
     const session = await this.authService.issueSessionTokens(newUser);
+    await persistTokens();
     return { ...session, returnTo: payload.returnTo };
+  }
+
+  /**
+   * Phase 1.D — encrypt the access + refresh tokens we just exchanged and
+   * stash them on the identity row. No-op when the deployment hasn't
+   * configured an encryption key (back-compat with Phase 1.A/1.B).
+   *
+   * Fire-and-forget at the call sites for safety: a failure to persist
+   * the long-lived refresh token is bad but it MUST NOT take down the
+   * sign-in. The user gets their session; an admin gets a log line.
+   */
+  private async persistEncryptedTokens(provider: string, subject: string, tokens: OAuthTokens): Promise<void> {
+    if (!cryptoConfigured()) return;
+    try {
+      const access  = seal(tokens.accessToken);
+      const refresh = tokens.refreshToken ? seal(tokens.refreshToken) : null;
+      await this.repo.upsertTokens({
+        provider,
+        subject,
+        accessTokenEnc:  access.sealed,
+        refreshTokenEnc: refresh?.sealed ?? null,
+        tokenExpiresAt:  tokens.expiresAt ?? null,
+        tokenKeyVersion: access.keyId,
+      });
+    } catch (err) {
+      console.error('[oauth] failed to persist encrypted tokens', { provider, err: (err as Error).message });
+    }
   }
 
   // ── Identity management (Phase 1.C) ────────────────────────────────────

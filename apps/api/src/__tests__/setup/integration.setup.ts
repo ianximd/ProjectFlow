@@ -16,3 +16,9 @@ process.env.REDIS_URL  = process.env.REDIS_URL || 'redis://localhost:6379';
 // tests can exercise the callback path without hitting real Google /
 // GitHub / Microsoft endpoints. Only honoured when NODE_ENV === 'test'.
 process.env.OAUTH_TEST_PROVIDER = 'true';
+
+// Phase 1.D — turn on token-encryption so the integration suite proves
+// the seal()/repo.upsertTokens path end-to-end. Deterministic key (32
+// zero bytes base64) since these tests don't need real entropy.
+process.env.OAUTH_TOKEN_ENC_KEY_PRIMARY = 'test';
+process.env.OAUTH_TOKEN_ENC_KEY_test    = Buffer.alloc(32).toString('base64');

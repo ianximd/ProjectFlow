@@ -29,9 +29,21 @@ vi.mock('../state.js', () => ({
   makeRandomToken: vi.fn(() => 'rand'),
 }));
 
+// Phase 1.D — mock the crypto module so tests can flip configured/not
+// without juggling env vars + cache resets. Default to configured so the
+// existing repo mock (which now includes `upsertTokens`) gets exercised.
+vi.mock('../../../../shared/lib/tokenCrypto.js', () => ({
+  isConfigured: vi.fn(() => true),
+  seal:         vi.fn((plaintext: string) => ({ sealed: `sealed:${plaintext}`, keyId: 'v1' })),
+  open:         vi.fn(),
+  describeKeyset: vi.fn(() => ({ primary: 'v1', available: ['v1'] })),
+  _resetForTest:  vi.fn(),
+}));
+
 const { OAuthService } = await import('../service.js');
 const registry         = await import('../registry.js');
 const stateMod         = await import('../state.js');
+const cryptoMod        = await import('../../../../shared/lib/tokenCrypto.js');
 
 function fakeProvider(overrides: Record<string, any> = {}) {
   return {
@@ -50,6 +62,7 @@ function makeRepo(overrides: Record<string, any> = {}) {
     linkExisting:            vi.fn(),
     listForUser:             vi.fn(),
     unlink:                  vi.fn(),
+    upsertTokens:            vi.fn(async () => true),
     ...overrides,
   } as any;
 }
@@ -471,5 +484,128 @@ describe('OAuthService.unlink', () => {
     await expect(
       new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).unlink('user-1', 'fake'),
     ).rejects.toThrow(/connection lost/);
+  });
+});
+
+// ─── Phase 1.D: encrypted token persistence ─────────────────────────────────
+
+describe('OAuthService.callback — token persistence (Phase 1.D)', () => {
+  beforeEach(() => {
+    // Default mock posture: configured. Individual tests override.
+    (cryptoMod.isConfigured as any).mockReturnValue(true);
+    (cryptoMod.seal as any).mockImplementation((pt: string) => ({ sealed: `sealed:${pt}`, keyId: 'v1' }));
+  });
+
+  it('persists encrypted access + refresh tokens after a new-user sign-in', async () => {
+    (registry.getProvider as any).mockReturnValue(fakeProvider({
+      exchangeCode: vi.fn(async () => ({
+        accessToken: 'AT', refreshToken: 'RT', idToken: null,
+        expiresAt: new Date('2026-06-01T00:00:00Z'),
+      })),
+    }));
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/board', linkUserId: null,
+    });
+    const repo = makeRepo({
+      findByProviderSubject:  vi.fn().mockResolvedValue(null),
+      createUserWithIdentity: vi.fn().mockResolvedValue({ Id: 'user-new', Email: 'new@x.com' }),
+    });
+    const authRepo = makeAuthRepo({ getUserByEmail: vi.fn().mockResolvedValue(null) });
+    await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(cryptoMod.seal).toHaveBeenCalledWith('AT');
+    expect(cryptoMod.seal).toHaveBeenCalledWith('RT');
+    expect(repo.upsertTokens).toHaveBeenCalledWith({
+      provider:        'fake',
+      subject:         'sub-1',
+      accessTokenEnc:  'sealed:AT',
+      refreshTokenEnc: 'sealed:RT',
+      tokenExpiresAt:  new Date('2026-06-01T00:00:00Z'),
+      tokenKeyVersion: 'v1',
+    });
+  });
+
+  it('persists access only when the provider does not return a refresh token', async () => {
+    (registry.getProvider as any).mockReturnValue(fakeProvider({
+      exchangeCode: vi.fn(async () => ({ accessToken: 'AT', refreshToken: null, idToken: null, expiresAt: null })),
+    }));
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/board', linkUserId: null,
+    });
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue({ UserId: 'user-1' }),
+    });
+    const authRepo = makeAuthRepo({ getUserById: vi.fn().mockResolvedValue({ Id: 'user-1', Email: 'u@x.com' }) });
+
+    await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(repo.upsertTokens).toHaveBeenCalledTimes(1);
+    expect(repo.upsertTokens).toHaveBeenCalledWith(expect.objectContaining({
+      accessTokenEnc:  'sealed:AT',
+      refreshTokenEnc: null,
+    }));
+  });
+
+  it('persists tokens after the link flow attaches an identity', async () => {
+    (registry.getProvider as any).mockReturnValue(fakeProvider({
+      exchangeCode: vi.fn(async () => ({ accessToken: 'AT', refreshToken: 'RT', idToken: null, expiresAt: null })),
+    }));
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/settings', linkUserId: 'user-A',
+    });
+    const repo = makeRepo({ linkExisting: vi.fn().mockResolvedValue({ Id: 'oauth-1' }) });
+
+    await new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(repo.linkExisting).toHaveBeenCalled();
+    expect(repo.upsertTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips persistence entirely when no encryption key is configured', async () => {
+    (cryptoMod.isConfigured as any).mockReturnValue(false);
+
+    (registry.getProvider as any).mockReturnValue(fakeProvider());
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/board', linkUserId: null,
+    });
+    const repo = makeRepo({
+      findByProviderSubject:  vi.fn().mockResolvedValue(null),
+      createUserWithIdentity: vi.fn().mockResolvedValue({ Id: 'user-new', Email: 'new@x.com' }),
+    });
+    const authRepo = makeAuthRepo({ getUserByEmail: vi.fn().mockResolvedValue(null) });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('tokens');
+    expect(cryptoMod.seal).not.toHaveBeenCalled();
+    expect(repo.upsertTokens).not.toHaveBeenCalled();
+  });
+
+  it('does not block sign-in when token persistence throws', async () => {
+    // Storage failure is logged but the user still gets their session.
+    (registry.getProvider as any).mockReturnValue(fakeProvider());
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/board', linkUserId: null,
+    });
+    const repo = makeRepo({
+      findByProviderSubject:  vi.fn().mockResolvedValue(null),
+      createUserWithIdentity: vi.fn().mockResolvedValue({ Id: 'user-new', Email: 'new@x.com' }),
+      upsertTokens:           vi.fn().mockRejectedValue(new Error('SQL connection lost')),
+    });
+    const authRepo = makeAuthRepo({ getUserByEmail: vi.fn().mockResolvedValue(null) });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('tokens');
   });
 });

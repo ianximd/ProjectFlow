@@ -374,6 +374,144 @@ describe('DELETE /auth/oauth/identities/:provider', () => {
   });
 });
 
+// ─── Phase 1.D — encrypted token persistence + audit log ───────────────────
+
+describe('OAuth callback — encrypted token persistence (Phase 1.D)', () => {
+  it('stores AccessTokenEnc + TokenKeyVersion on the identity row after sign-in', async () => {
+    await driveOAuthFlow({
+      identityCode: 'code-tok',
+      identity: {
+        subject: 'tok-sub', email: 'tok@projectflow.test',
+        emailVerified: true, name: 'Tok', avatarUrl: null,
+      },
+      returnTo: '/board',
+    });
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('Subject', 'tok-sub')
+      .query(`
+        SELECT AccessTokenEnc, RefreshTokenEnc, TokenKeyVersion
+        FROM dbo.UserOAuthIdentities
+        WHERE Provider = 'fake' AND Subject = @Subject
+      `);
+    const row = r.recordset[0];
+    expect(row).toBeDefined();
+    // Sealed string format: v1.<keyId>.<iv>.<tag>.<ct>
+    expect(row.AccessTokenEnc).toMatch(/^v1\.test\./);
+    expect(row.TokenKeyVersion).toBe('test');
+    // The fake provider returns no refresh token, so this stays NULL.
+    expect(row.RefreshTokenEnc).toBeNull();
+  });
+});
+
+/** Poll AuditLog for up to ~2s — adminService.log() is fire-and-forget. */
+async function waitForAuditEntry(criteria: {
+  action: string;
+  resource: string;
+  resourceId: string;
+}): Promise<any | null> {
+  const pool = await getPool();
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const r = await pool.request()
+      .input('Action',     criteria.action)
+      .input('Resource',   criteria.resource)
+      .input('ResourceId', criteria.resourceId)
+      .query(`
+        SELECT TOP 1 UserId, UserEmail, Action, Resource, ResourceId, NewValues
+        FROM   dbo.AuditLog
+        WHERE  Action     = @Action
+           AND Resource   = @Resource
+           AND ResourceId = @ResourceId
+        ORDER BY CreatedAt DESC
+      `);
+    if (r.recordset[0]) return r.recordset[0];
+    await new Promise((res) => setTimeout(res, 50));
+  }
+  return null;
+}
+
+describe('OAuth audit log (Phase 1.D)', () => {
+  it('writes oauth.login on a successful sign-in', async () => {
+    await driveOAuthFlow({
+      identityCode: 'code-audit-login',
+      identity: {
+        subject: 'audit-login-sub', email: 'audit-login@projectflow.test',
+        emailVerified: true, name: 'Audit Login', avatarUrl: null,
+      },
+    });
+    const row = await waitForAuditEntry({
+      action: 'oauth.login', resource: 'OAuth', resourceId: 'fake',
+    });
+    expect(row).not.toBeNull();
+    expect(row.UserEmail).toBe('audit-login@projectflow.test');
+  });
+
+  it('writes oauth.link when an authenticated user links a provider', async () => {
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'audit-link@projectflow.test', name: 'Audit Link', password: 'PasswordX1!' },
+    });
+    const login = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'audit-link@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await login.json();
+
+    registerFakeIdentity('code-audit-link', {
+      subject: 'audit-link-sub', email: 'audit-link@projectflow.test',
+      emailVerified: true, name: 'Audit Link', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/link', {
+      headers: { authorization: `Bearer ${token}` }, redirect: 'manual',
+    });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    await request(`/auth/oauth/fake/callback?code=code-audit-link&state=${state}`, { redirect: 'manual' });
+
+    const row = await waitForAuditEntry({
+      action: 'oauth.link', resource: 'OAuth', resourceId: 'fake',
+    });
+    expect(row).not.toBeNull();
+  });
+
+  it('writes oauth.unlink when a user disconnects a provider', async () => {
+    // Use the same password-user-then-link-then-unlink pattern as the
+    // 204 test above so the unlink can succeed (a password is the
+    // remaining credential).
+    await request('/auth/register', {
+      method: 'POST',
+      json:   { email: 'audit-unlink@projectflow.test', name: 'Audit Unlink', password: 'PasswordX1!' },
+    });
+    const login = await request('/auth/login', {
+      method: 'POST',
+      json:   { email: 'audit-unlink@projectflow.test', password: 'PasswordX1!' },
+    });
+    const { data: { token } } = await login.json();
+
+    registerFakeIdentity('code-audit-unlink', {
+      subject: 'audit-unlink-sub', email: 'audit-unlink@projectflow.test',
+      emailVerified: true, name: 'Audit Unlink', avatarUrl: null,
+    });
+    const start = await request('/auth/oauth/fake/link', {
+      headers: { authorization: `Bearer ${token}` }, redirect: 'manual',
+    });
+    const state = new URL(start.headers.get('location')!).searchParams.get('state')!;
+    await request(`/auth/oauth/fake/callback?code=code-audit-unlink&state=${state}`, { redirect: 'manual' });
+
+    const del = await request('/auth/oauth/identities/fake', {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(del.status).toBe(204);
+
+    const row = await waitForAuditEntry({
+      action: 'oauth.unlink', resource: 'OAuth', resourceId: 'fake',
+    });
+    expect(row).not.toBeNull();
+    expect(row.UserEmail).toBe('audit-unlink@projectflow.test');
+  });
+});
+
 describe('OAuth callback — auto-link branch (Phase 1.C)', () => {
   it('auto-links when the local account is verified and the provider asserts verified', async () => {
     // Pre-create a verified local user. We have to flip the flag in

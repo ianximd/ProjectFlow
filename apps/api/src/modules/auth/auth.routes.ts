@@ -6,6 +6,7 @@ import { authMiddleware } from './auth.middleware.js';
 import { roleService } from '../roles/role.service.js';
 import { OAuthService } from './oauth/service.js';
 import { getEnabledProviders } from './oauth/registry.js';
+import { adminService } from '../admin/admin.service.js';
 
 const authRepo = new AuthRepository();
 const authService = new AuthService(authRepo);
@@ -22,6 +23,19 @@ function setRefreshCookie(c: any, token: string) {
     maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
     path: '/api/v1/auth',
   });
+}
+
+/**
+ * The audit middleware only fires on POST/PATCH/PUT/DELETE; OAuth callbacks
+ * arrive as GETs. Pull the same connection metadata the middleware does so
+ * oauth.* events look the same as the ones the middleware emits.
+ */
+function clientMeta(c: any) {
+  const ip        = c.req.header('CF-Connecting-IP')
+                 || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim()
+                 || null;
+  const userAgent = c.req.header('User-Agent')?.slice(0, 512) ?? null;
+  return { ip, userAgent };
 }
 
 export const authRoutes = new Hono();
@@ -264,8 +278,22 @@ authRoutes.get('/oauth/:provider/callback', async (c) => {
   }
 
   const result = await oauthService.callback({ provider, code, state });
+  const meta   = clientMeta(c);
 
   if (result.kind === 'error') {
+    // Phase 1.D — record the failure too. INVALID_STATE / ACCOUNT_EXISTS
+    // are the ones an admin actually wants to see in the audit log when
+    // diagnosing a brute-force or a confused user.
+    adminService.log({
+      userId:     '00000000-0000-0000-0000-000000000000',
+      userEmail:  null,
+      action:     'oauth.login.failure',
+      resource:   'OAuth',
+      resourceId: provider,
+      newValues:  { reason: result.reason },
+      ipAddress:  meta.ip,
+      userAgent:  meta.userAgent,
+    });
     return c.redirect(`${finishBase}/oauth/error?reason=${result.reason}`, 302);
   }
 
@@ -275,10 +303,28 @@ authRoutes.get('/oauth/:provider/callback', async (c) => {
   // identity. Skip the cookie rotation and bounce them straight back to
   // settings.
   if (result.kind === 'linked') {
+    adminService.log({
+      userId:     result.userId,
+      userEmail:  null,
+      action:     'oauth.link',
+      resource:   'OAuth',
+      resourceId: provider,
+      ipAddress:  meta.ip,
+      userAgent:  meta.userAgent,
+    });
     return c.redirect(`${finishBase}${decodeURIComponent(returnTo)}`, 302);
   }
 
   setRefreshCookie(c, result.refreshToken);
+  adminService.log({
+    userId:     (result.user as any).Id ?? (result.user as any).id ?? '',
+    userEmail:  (result.user as any).Email ?? (result.user as any).email ?? null,
+    action:     'oauth.login',
+    resource:   'OAuth',
+    resourceId: provider,
+    ipAddress:  meta.ip,
+    userAgent:  meta.userAgent,
+  });
   // The /oauth/finish page calls /auth/refresh on mount to pick up the
   // access token, then routes the user to returnTo. We pass returnTo as
   // a query param rather than baking it into the cookie.
@@ -337,6 +383,16 @@ authRoutes.delete('/oauth/identities/:provider', authMiddleware, async (c) => {
       },
     }, 409);
   }
+  const meta = clientMeta(c);
+  adminService.log({
+    userId:     jwtPayload.userId,
+    userEmail:  jwtPayload.email ?? null,
+    action:     'oauth.unlink',
+    resource:   'OAuth',
+    resourceId: provider,
+    ipAddress:  meta.ip,
+    userAgent:  meta.userAgent,
+  });
   return c.body(null, 204);
 });
 

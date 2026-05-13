@@ -74,4 +74,33 @@ export class OAuthRepository {
       { name: 'Provider', type: sql.NVarChar(32),     value: provider },
     ]);
   }
+
+  /**
+   * Phase 1.D — store encrypted access/refresh tokens for an existing
+   * identity, identified by (Provider, Subject) which is the natural key
+   * the OAuth callback already has. Refresh-token NULL is preserved on
+   * the row (see SP for why — Google doesn't re-issue it).
+   *
+   * Returns true when the identity row was found and updated; false when
+   * there's no matching row (caller never called linkExisting/createUserWithIdentity
+   * for this (provider, subject)).
+   */
+  async upsertTokens(input: {
+    provider:        string;
+    subject:         string;
+    accessTokenEnc:  string | null;
+    refreshTokenEnc: string | null;
+    tokenExpiresAt:  Date | null;
+    tokenKeyVersion: string | null;
+  }): Promise<boolean> {
+    const rows = await execSpOne<{ RowsAffected: number }>('usp_UserOAuthIdentity_UpsertTokens', [
+      { name: 'Provider',        type: sql.NVarChar(32),     value: input.provider },
+      { name: 'Subject',         type: sql.NVarChar(255),    value: input.subject  },
+      { name: 'AccessTokenEnc',  type: sql.NVarChar(sql.MAX), value: input.accessTokenEnc  },
+      { name: 'RefreshTokenEnc', type: sql.NVarChar(sql.MAX), value: input.refreshTokenEnc },
+      { name: 'TokenExpiresAt',  type: sql.DateTime2,        value: input.tokenExpiresAt },
+      { name: 'TokenKeyVersion', type: sql.NVarChar(16),     value: input.tokenKeyVersion },
+    ]);
+    return (rows[0]?.RowsAffected ?? 0) > 0;
+  }
 }

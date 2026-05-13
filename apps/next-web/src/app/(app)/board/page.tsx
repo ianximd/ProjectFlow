@@ -128,12 +128,20 @@ export default function BoardPage() {
   const assigneesByTaskId = taskList?.assigneesByTaskId ?? {};
 
   // Build columns from the workflow (preferred) or fall back to defaults.
+  //
+  // The /workflows API returns camelCase (workflow.service.ts mapWorkflow),
+  // but earlier code read PascalCase (s.Name/Category/Position) which
+  // silently produced "col-undefined" columns with empty headers. Accept
+  // both cases so a future API-shape drift can't silently break the board.
   const columns: BoardColumn[] = useMemo(() => {
     const ws = workflow?.statuses ?? [];
     if (ws.length === 0) return FALLBACK_COLUMNS;
     return [...ws]
-      .sort((a, b) => (a.Position ?? 0) - (b.Position ?? 0))
-      .map((s: any): BoardColumn => ({ id: s.Name, title: s.Name, category: s.Category }));
+      .sort((a: any, b: any) => (a.position ?? a.Position ?? 0) - (b.position ?? b.Position ?? 0))
+      .map((s: any): BoardColumn => {
+        const name = s.name ?? s.Name;
+        return { id: name, title: name, category: s.category ?? s.Category };
+      });
   }, [workflow]);
 
   // Apply local filters before handing tasks to the board.

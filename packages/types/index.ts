@@ -209,7 +209,11 @@ export interface TaskDependency {
   type: string;
 }
 
-export type WorkflowStatusCategory = 'TODO' | 'IN_PROGRESS' | 'DONE';
+// Ordered left-to-right as they appear on a kanban board.
+// IDEA = pre-commit brainstorm/discovery; TESTING = QA gate before DONE.
+// DB column has no CHECK constraint, so adding values is forward-compatible —
+// existing rows keep working and old clients fall back to the TODO accent.
+export type WorkflowStatusCategory = 'IDEA' | 'TODO' | 'IN_PROGRESS' | 'TESTING' | 'DONE';
 
 export interface WorkflowStatus {
   id: string;

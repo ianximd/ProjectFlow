@@ -32,10 +32,14 @@ interface Props {
 }
 
 // Subtle accent stripe at the top of each column. Keeps the board readable
-// at a glance — TODO grey, IN_PROGRESS blue, DONE green.
+// at a glance — IDEA amber (early-stage), TODO grey, IN_PROGRESS blue,
+// TESTING orange (QA gate), DONE green. Mirrors workflows/page.tsx
+// CATEGORY_META so the column accent and the editor chip agree.
 const CATEGORY_ACCENT: Record<string, string> = {
+  IDEA:        'bg-amber-400 dark:bg-amber-500',
   TODO:        'bg-slate-300 dark:bg-slate-600',
   IN_PROGRESS: 'bg-blue-400 dark:bg-blue-500',
+  TESTING:     'bg-orange-400 dark:bg-orange-500',
   DONE:        'bg-emerald-400 dark:bg-emerald-500',
 };
 

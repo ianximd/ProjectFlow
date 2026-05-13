@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Workflow, Plus, Edit3, Check, X, Trash2, MoveRight, ArrowRight,
-  Circle, Loader2, CheckCircle2,
+  Circle, Loader2, CheckCircle2, Lightbulb, FlaskConical,
 } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
@@ -49,8 +49,10 @@ interface WorkflowData {
 
 // ── Category meta ────────────────────────────────────────────────────────────
 
-type Category = 'TODO' | 'IN_PROGRESS' | 'DONE';
-const CATEGORY_ORDER: Category[] = ['TODO', 'IN_PROGRESS', 'DONE'];
+type Category = 'IDEA' | 'TODO' | 'IN_PROGRESS' | 'TESTING' | 'DONE';
+// Order matters: this controls the section order in the "Statuses" list and
+// the order options appear in the category picker.
+const CATEGORY_ORDER: Category[] = ['IDEA', 'TODO', 'IN_PROGRESS', 'TESTING', 'DONE'];
 const CATEGORY_META: Record<Category, {
   label:    string;
   icon:     typeof Circle;
@@ -58,8 +60,10 @@ const CATEGORY_META: Record<Category, {
   iconCls:  string;        // header icon tint
   defaultColor: string;
 }> = {
-  TODO:        { label: 'To Do',       icon: Circle,        cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',         iconCls: 'text-slate-500',  defaultColor: '#94a3b8' },
-  IN_PROGRESS: { label: 'In Progress', icon: Loader2,       cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',             iconCls: 'text-blue-500',   defaultColor: '#3b82f6' },
+  IDEA:        { label: 'Idea',        icon: Lightbulb,     cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',         iconCls: 'text-amber-500',   defaultColor: '#f59e0b' },
+  TODO:        { label: 'To Do',       icon: Circle,        cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',         iconCls: 'text-slate-500',   defaultColor: '#94a3b8' },
+  IN_PROGRESS: { label: 'In Progress', icon: Loader2,       cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',             iconCls: 'text-blue-500',    defaultColor: '#3b82f6' },
+  TESTING:     { label: 'Testing',     icon: FlaskConical,  cls: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',     iconCls: 'text-orange-500',  defaultColor: '#fb923c' },
   DONE:        { label: 'Done',        icon: CheckCircle2,  cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300', iconCls: 'text-emerald-500', defaultColor: '#10b981' },
 };
 
@@ -348,7 +352,7 @@ function WorkflowEditor({ projectId, workflow }: { projectId: string; workflow: 
   // Group by category for the statuses card
   const byCategory = useMemo(() => {
     const buckets: Record<Category, WorkflowStatus[]> = {
-      TODO: [], IN_PROGRESS: [], DONE: [],
+      IDEA: [], TODO: [], IN_PROGRESS: [], TESTING: [], DONE: [],
     };
     for (const s of workflow.statuses) {
       const cat = (CATEGORY_ORDER as string[]).includes(s.category)

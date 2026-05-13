@@ -26,6 +26,16 @@ interface FakeIdentity {
 const codeToIdentity = new Map<string, FakeIdentity>();
 
 /**
+ * In-memory log of refresh attempts. Tests can assert on this to confirm
+ * the silent-refresh worker actually called refreshTokens with the
+ * decrypted refresh token. Reset by clearFakeIdentities().
+ */
+const refreshLog: Array<{ refreshToken: string }> = [];
+export function fakeRefreshLog(): ReadonlyArray<{ refreshToken: string }> {
+  return refreshLog;
+}
+
+/**
  * Register a fake identity that the next callback with `code` will resolve
  * to. The integration test calls this BEFORE driving /auth/oauth/fake/start.
  */
@@ -36,6 +46,7 @@ export function registerFakeIdentity(code: string, identity: FakeIdentity): void
 /** Wipe all registered fake identities (call from afterEach for isolation). */
 export function clearFakeIdentities(): void {
   codeToIdentity.clear();
+  refreshLog.length = 0;
 }
 
 export function createFakeProvider(): OAuthProvider {
@@ -67,6 +78,21 @@ export function createFakeProvider(): OAuthProvider {
         throw new Error(`fake provider: no identity registered for code "${accessToken}"`);
       }
       return identity;
+    },
+
+    async refreshTokens(refreshToken) {
+      // Throw on the sentinel "fail" so tests can drive the failure path
+      // without having to swap the provider out.
+      if (refreshToken === 'refresh-fail') {
+        throw new Error('fake provider: refresh-fail sentinel');
+      }
+      refreshLog.push({ refreshToken });
+      return {
+        accessToken:  `refreshed-${refreshToken}`,
+        refreshToken: `${refreshToken}-rotated`,
+        idToken:      null,
+        expiresAt:    new Date(Date.now() + 3_600_000),
+      };
     },
   };
 }

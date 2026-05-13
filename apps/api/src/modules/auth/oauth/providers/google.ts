@@ -74,6 +74,39 @@ export function createGoogleProvider(config: GoogleProviderConfig): OAuthProvide
       };
     },
 
+    async refreshTokens(refreshToken: string): Promise<OAuthTokens> {
+      const body = new URLSearchParams({
+        client_id:     config.clientId,
+        client_secret: config.clientSecret,
+        refresh_token: refreshToken,
+        grant_type:    'refresh_token',
+      });
+      const res = await fetch(TOKEN_URL, {
+        method:  'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+        signal:  AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Google token refresh failed (${res.status}): ${text.slice(0, 200)}`);
+      }
+      const json = await res.json() as {
+        access_token: string;
+        refresh_token?: string;
+        id_token?:     string;
+        expires_in?:   number;
+      };
+      return {
+        accessToken:  json.access_token,
+        // Google's refresh response usually omits refresh_token (the old
+        // one is still valid). UpsertTokens preserves the column on NULL.
+        refreshToken: json.refresh_token ?? null,
+        idToken:      json.id_token ?? null,
+        expiresAt:    json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : null,
+      };
+    },
+
     async fetchUserInfo(accessToken: string): Promise<OAuthUserInfo> {
       const res = await fetch(USERINFO_URL, {
         headers: { authorization: `Bearer ${accessToken}` },

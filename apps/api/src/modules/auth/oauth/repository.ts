@@ -103,4 +103,33 @@ export class OAuthRepository {
     ]);
     return (rows[0]?.RowsAffected ?? 0) > 0;
   }
+
+  // Phase 1.E — token-store rows the maintenance workers operate on.
+  // Both queries return the encrypted blobs intact so the worker can
+  // decrypt them in app code; the SPs themselves never touch plaintext.
+
+  async listExpiringTokens(withinSeconds: number, limit: number): Promise<TokenStoreRow[]> {
+    return await execSpOne<TokenStoreRow>('usp_UserOAuthIdentity_ListExpiringTokens', [
+      { name: 'WithinSeconds', type: sql.Int, value: withinSeconds },
+      { name: 'Limit',         type: sql.Int, value: limit },
+    ]) as unknown as TokenStoreRow[];
+  }
+
+  async listByKeyVersion(notMatchingPrimary: string, limit: number): Promise<TokenStoreRow[]> {
+    return await execSpOne<TokenStoreRow>('usp_UserOAuthIdentity_ListByKeyVersion', [
+      { name: 'PrimaryKeyVersion', type: sql.NVarChar(16), value: notMatchingPrimary },
+      { name: 'Limit',             type: sql.Int,          value: limit },
+    ]) as unknown as TokenStoreRow[];
+  }
+}
+
+export interface TokenStoreRow {
+  Id:               string;
+  UserId:           string;
+  Provider:         string;
+  Subject:          string;
+  AccessTokenEnc:   string | null;
+  RefreshTokenEnc:  string | null;
+  TokenExpiresAt:   Date | null;
+  TokenKeyVersion:  string | null;
 }

@@ -93,21 +93,34 @@ Restart. From here, every new sign-in stores `TokenKeyVersion='v2'`.
 Old `'v1'` rows are still decryptable because the v1 key is still in
 env.
 
-### Step 3 — re-encrypt the backlog
+### Step 3 — let the rotation worker drain the backlog
 
-Run the rotation worker (until it's built, do this manually):
+The OAuth maintenance worker (Phase 1.E) runs every 15 minutes and
+re-encrypts up to 100 rows per tick under the current PRIMARY. After
+restarting the API in step 2, the worker is already on the case.
+
+Watch progress with:
 
 ```sql
--- How many rows still need re-encryption?
 SELECT COUNT(*) FROM dbo.UserOAuthIdentities
 WHERE TokenKeyVersion IS NOT NULL AND TokenKeyVersion <> 'v2';
 ```
 
-For each such row, the worker reads `AccessTokenEnc`/`RefreshTokenEnc`,
-decrypts via `tokenCrypto.open()`, re-seals via `tokenCrypto.seal()`
-(now under v2), and writes back via `usp_UserOAuthIdentity_UpsertTokens`.
+For a small deployment this is usually zero within one tick. For a
+large backlog, math: `(rows / 100) * 15 minutes`. If you need it done
+faster, you can drop the worker's `ROTATION_INTERVAL_MS` in
+`apps/api/src/modules/auth/oauth/workers/oauth-maintenance.worker.ts`
+and redeploy — but don't go below ~1 minute, the SP isn't designed
+for tighter polling.
 
-Let it finish before step 4.
+Wait for the count to hit zero before step 4. The worker logs each
+sweep when `scanned > 0`:
+
+```
+[oauth-maintenance] rotation sweep { primary: 'v2', scanned: 100, rotated: 100, failed: 0, remaining: 'maybe-more' }
+```
+
+When `remaining: 'caught-up'`, the backlog is drained.
 
 ### Step 4 — drop the old key
 
@@ -138,11 +151,12 @@ strings + the key. Treat it as a refresh-token compromise:
 
 ### "I dropped v1 before re-encrypting"
 
-`tokenCrypto.open()` will throw `key "v1" not present in keyset` for
-every old row. You have two options:
+The rotation worker will start logging `[oauth/rotate] row failed …
+key "v1" not present in keyset` for every affected row, and the
+sweep result will show non-zero `failed`. You have two options:
 
-- **Restore v1 to env** (if you still have it) and re-run rotation
-  step 3.
+- **Restore v1 to env** (if you still have it) and let the next sweep
+  pick the rows up.
 - **Accept the loss.** Set `AccessTokenEnc = NULL`, `RefreshTokenEnc
   = NULL`, `TokenKeyVersion = NULL` on every row whose KeyVersion is
   no longer in the keyset. Those users will be re-prompted by the
@@ -153,6 +167,36 @@ every old row. You have two options:
 The module rejects this at load time with a descriptive error. The API
 will fail to handle OAuth requests until env is fixed; sign-in via
 password keeps working.
+
+---
+
+## The other maintenance sweep: silent refresh
+
+The same worker also runs a silent-refresh sweep every 5 minutes. It
+finds identity rows whose access token will expire within ~10 minutes
+**and** that have a stored refresh token, calls the provider's refresh
+endpoint, and writes the new tokens back encrypted.
+
+Operators don't normally need to touch this — it just keeps stored
+tokens warm so future feature work (e.g. Calendar / Drive integrations)
+finds an unexpired access token instead of having to refresh on the
+critical path. With the current OAuth flows it's mostly a no-op:
+
+- **Google** sign-in uses `access_type=online` and doesn't issue a
+  refresh token. Rows have NULL `RefreshTokenEnc` → the SP filter
+  excludes them. Adding a feature that needs offline access (e.g.
+  Drive) means flipping `access_type=offline` in
+  `providers/google.ts`.
+- **GitHub** OAuth Apps don't issue refresh tokens at all. Same: no
+  rows match the filter.
+- **Microsoft** scopes already include `offline_access`, so refresh
+  tokens DO get stored — these are the rows the sweep actually
+  refreshes.
+
+A failing refresh (revoked grant, expired refresh token) is logged
+under `[oauth/refresh] row failed`, increments the `failed` counter,
+and is otherwise harmless — the user re-authorises on the next
+sign-in.
 
 ---
 

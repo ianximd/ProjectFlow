@@ -93,6 +93,41 @@ export function createMicrosoftProvider(config: MicrosoftProviderConfig): OAuthP
       };
     },
 
+    async refreshTokens(refreshToken: string): Promise<OAuthTokens> {
+      const body = new URLSearchParams({
+        client_id:     config.clientId,
+        client_secret: config.clientSecret,
+        refresh_token: refreshToken,
+        grant_type:    'refresh_token',
+        // MS rejects refresh requests that omit a scope — pass the same
+        // set we asked for at consent so the new access token has parity.
+        scope:         SCOPES.join(' '),
+      });
+      const res = await fetch(tokenUrl, {
+        method:  'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+        signal:  AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Microsoft token refresh failed (${res.status}): ${text.slice(0, 200)}`);
+      }
+      const json = await res.json() as {
+        access_token:  string;
+        refresh_token?: string;
+        id_token?:     string;
+        expires_in?:   number;
+      };
+      return {
+        accessToken:  json.access_token,
+        // MS rotates the refresh token on every refresh — store the new one.
+        refreshToken: json.refresh_token ?? null,
+        idToken:      json.id_token ?? null,
+        expiresAt:    json.expires_in ? new Date(Date.now() + json.expires_in * 1000) : null,
+      };
+    },
+
     async fetchUserInfo(accessToken: string): Promise<OAuthUserInfo> {
       const res = await fetch(meUrl, {
         headers: { authorization: `Bearer ${accessToken}` },

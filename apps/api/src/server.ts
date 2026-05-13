@@ -27,6 +27,7 @@ import { webhookRoutes }     from './modules/git/webhook.routes.js';
 import { integrationRoutes } from './modules/integrations/integration.routes.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
+import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
 import { requestIdMiddleware } from './shared/middleware/requestId.middleware.js';
 import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.middleware.js';
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
@@ -202,6 +203,12 @@ if (process.env.NODE_ENV !== 'test') {
 
   // Start outgoing webhook delivery worker
   startOutgoingWebhookWorker();
+
+  // Start OAuth maintenance worker (silent-refresh + key-rotation sweeps).
+  // No-op when token encryption isn't configured.
+  startOAuthMaintenanceWorker().catch((err) =>
+    console.warn('[oauth-maintenance] failed to start:', err?.message),
+  );
 
   const port = 3001;
   console.log(`Server is running on port ${port}`);

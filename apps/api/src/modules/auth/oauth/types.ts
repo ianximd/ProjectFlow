@@ -55,4 +55,21 @@ export interface OAuthProvider {
 
   /** GET the provider's userinfo endpoint and normalise the result. */
   fetchUserInfo(accessToken: string): Promise<OAuthUserInfo>;
+
+  /**
+   * Phase 1.E — exchange a refresh token for a fresh access token.
+   *
+   * Optional because not every provider supports it:
+   *   - GitHub OAuth Apps don't issue refresh tokens; their access tokens
+   *     don't expire either, so refresh is moot.
+   *   - Google sign-in with `access_type=online` (the current default for
+   *     the bare auth flow) doesn't return a refresh token at all. The
+   *     refresh worker simply skips rows without `RefreshTokenEnc`.
+   *
+   * Implementations should return a fresh `OAuthTokens` envelope. The
+   * `refreshToken` may be NULL on the response — providers are allowed to
+   * issue a new one or reuse the old one — which the upsert SP handles
+   * by preserving the existing column value.
+   */
+  refreshTokens?(refreshToken: string): Promise<OAuthTokens>;
 }

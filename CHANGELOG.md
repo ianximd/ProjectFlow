@@ -10,6 +10,37 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 37 — OAuth foundation: Google sign-in)
+- **Migration `0025_oauth_identities.sql`** — adds `dbo.UserOAuthIdentities` (`Id, UserId, Provider, Subject, Email, AccessTokenEnc, RefreshTokenEnc, TokenExpiresAt, CreatedAt, UpdatedAt`) with `UNIQUE (Provider, Subject)` and an index on `UserId`. Satellite-table pattern (mirrors `MfaRecoveryCodes`) so a user can link multiple providers without sparse columns. Token columns reserved for Phase 1.D / future Drive-style features; v1 is pure-identity. `ON DELETE CASCADE` on `UserId` so user deletion cleanly removes linked identities. Idempotent
+- 5 new stored procedures:
+  - `usp_UserOAuthIdentity_GetByProviderSubject` — primary lookup during callback
+  - `usp_UserOAuthIdentity_LinkExisting` — attaches a provider/subject to an existing user; throws 51030 if already linked to a different account
+  - `usp_UserOAuthIdentity_Unlink` — refuses (51031) when removing the user's last credential to prevent lockout
+  - `usp_UserOAuthIdentity_ListForUser` — drives the future "Connected accounts" panel
+  - `usp_User_CreateFromOAuth` — atomic Users + UserOAuthIdentities insert in a transaction. `PasswordHash NULL`, `IsEmailVerified` follows the provider's assertion
+- **Provider abstraction** in `apps/api/src/modules/auth/oauth/`:
+  - `types.ts` — small `OAuthProvider` interface (`getAuthorizationUrl` / `exchangeCode` / `fetchUserInfo`). Adding a 4th provider in 1.B/later is one new file plus one entry in the registry
+  - `providers/google.ts` — Google OIDC, `prompt=select_account`, **PKCE on every flow** (cost nothing, protects the redirect leg even on confidential clients). 5 s timeout per outbound request
+  - `providers/fake.ts` — test-only provider registered only when `NODE_ENV === 'test'` AND `OAUTH_TEST_PROVIDER === 'true'`. Lets integration tests drive the full callback path with deterministic identities; never reachable from production
+  - `registry.ts` — env-gated. A provider is enabled only when both its `*_CLIENT_ID` and `*_CLIENT_SECRET` are set, so a deployment with no OAuth creds boots cleanly and `/auth/oauth/providers` simply returns `[]`
+  - `state.ts` — Redis-backed one-time state store with 10-min TTL. State token consumed via DEL-on-read; carries provider, nonce, PKCE verifier, and the validated `returnTo` path
+  - `service.ts` — orchestrator. Resolves identity (existing → reuse; unseen + fresh email → create user via `usp_User_CreateFromOAuth`; unseen + email collision → `ACCOUNT_EXISTS`). Always issues session tokens through the **existing** `AuthService.issueSessionTokens` so `clearLoginAttempts` + `createRefreshToken` fire identically across password / MFA / OAuth login
+  - `repository.ts` — wraps the 5 SPs
+- New REST endpoints under `/api/v1/auth/oauth`:
+  - `GET /providers` — public; returns the env-enabled provider list. Login page hides the social section when this returns `[]`
+  - `GET /:provider/start?returnTo=` — generates state + nonce + PKCE verifier, persists in Redis, 302s to the provider's authorization URL. Returns 404 when the provider is not configured
+  - `GET /:provider/callback?code=&state=` — exchanges the code, fetches userinfo, resolves the identity, sets the `refresh_token` cookie, then 302s to the SPA's `/oauth/finish` page. Errors 302 to `/oauth/error?reason=…`
+- `AuthService.issueSessionTokens` made public so `OAuthService.callback` can reuse the exact same token-issuance code-path as password + MFA login
+- Frontend additions:
+  - **Login page** (`apps/next-web/src/app/login/page.tsx`) fetches `/auth/oauth/providers` on mount and renders a `Continue with <provider>` button per enabled provider, above the email/password form, with an "or" divider. Top-level `<a href>` (not fetch) so the browser follows the 302 chain to the consent screen
+  - **`/oauth/finish`** — landing page for the post-callback hop. Trades the refresh cookie for an in-memory access token via `/auth/refresh`, populates the Zustand store, then `router.replace(returnTo)`. Mirrors `AuthBootstrap`'s silent-refresh path but lives outside the `(app)` layout so the user sees a brief "Signing you in…" screen
+  - **`/oauth/error`** — surfaces `?reason=INVALID_STATE|PROVIDER_ERROR|NO_EMAIL|ACCOUNT_EXISTS` with copy explaining the next step
+- New env vars in `apps/api/.env.example` with inline Google Cloud Console setup instructions: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `OAUTH_REDIRECT_BASE_URL`, `OAUTH_FINISH_BASE_URL`. All optional — empty values disable OAuth without affecting the rest of the API
+- **Security details** baked in: PKCE on every flow; state + nonce are one-time (DEL-on-read); `returnTo` validated against a relative-path allow-list to prevent open-redirect; subject-keyed identity lookup, never email-keyed (except the documented future auto-link path)
+- 12 unit tests + 8 integration tests for the OAuth surface (FakeProvider stand-in — never hits real Google):
+  - `oauth.service.unit.test.ts` covers every branch: existing identity → tokens, new identity + new email → user created, email collision → `ACCOUNT_EXISTS`, no email → `NO_EMAIL`, exchange throws → `PROVIDER_ERROR`, missing/expired state → `INVALID_STATE`, state.provider mismatch → `INVALID_STATE`, unknown provider → `INVALID_STATE`, linked user gone → `INVALID_STATE`, open-redirect-style `returnTo` → coerced to `/board`
+  - `oauth.callback.integration.test.ts` proves the full HTTP round-trip against real Redis + SQL: new-subject path persists Users + UserOAuthIdentities rows, repeat sign-in reuses the same user, replay of the same `state` returns 302 → `/oauth/error?reason=INVALID_STATE`, missing code/state, unconfigured provider 404, `/providers` lists the fake provider when `OAUTH_TEST_PROVIDER=true`
+
 #### Phase 6 — Post-launch (Week 36 — Playwright E2E skeleton)
 - **One Playwright E2E spec, ~4 s wall-clock**, exercising the highest-value happy path: register (via API) → login (UI) → create workspace via dialog → create project via dialog → cleanup soft-delete via API. Drag-and-drop and task creation deliberately deferred to a later iteration — `@dnd-kit` needs synthetic mouse events that are notoriously flaky in Playwright; better to ship a stable skeleton than a flaky comprehensive flow
 - `playwright.config.ts` — single chromium project, serial workers, `webServer` auto-starts both `apps/api` and `apps/next-web` (with `reuseExistingServer: !CI` so a developer with `npm run dev` already running skips the cold boot). Trace + screenshot retained on failure

@@ -4,9 +4,12 @@ import { AuthRepository } from './auth.repository.js';
 import { AuthService } from './auth.service.js';
 import { authMiddleware } from './auth.middleware.js';
 import { roleService } from '../roles/role.service.js';
+import { OAuthService } from './oauth/service.js';
+import { getEnabledProviders } from './oauth/registry.js';
 
 const authRepo = new AuthRepository();
 const authService = new AuthService(authRepo);
+const oauthService = new OAuthService({ authService });
 
 const REFRESH_COOKIE = 'refresh_token';
 const isProduction = process.env.NODE_ENV === 'production';
@@ -212,5 +215,65 @@ authRoutes.post('/reset-password', async (c) => {
   }
 
   return c.json({ data: { message: 'Password updated successfully. Please log in.' } });
+});
+
+
+// ─── OAuth ─────────────────────────────────────────────────────────────────
+//
+// Phase 1.A: Google sign-in (anonymous flow only — link/unlink + multiple
+// providers ship in 1.B/1.C). Boots cleanly when no provider creds are
+// configured: GET /providers returns [] and the login page hides every
+// social button.
+
+// GET /api/v1/auth/oauth/providers — public; the login page uses this to
+// decide which buttons to render.
+authRoutes.get('/oauth/providers', (c) => {
+  return c.json({ data: getEnabledProviders() });
+});
+
+// GET /api/v1/auth/oauth/:provider/start
+// Generates one-time state + nonce + PKCE verifier, persists in Redis,
+// then 302s the browser to the provider's authorization URL.
+authRoutes.get('/oauth/:provider/start', async (c) => {
+  const provider = c.req.param('provider');
+  const returnTo = c.req.query('returnTo') ?? undefined;
+
+  const result = await oauthService.start({ provider, returnTo });
+  if ('error' in result) {
+    return c.json({ error: { code: result.error, message: 'Provider not configured' } }, 404);
+  }
+  return c.redirect(result.url, 302);
+});
+
+// GET /api/v1/auth/oauth/:provider/callback
+// Provider sends the user here after consent. We exchange the code,
+// resolve the identity, set the refresh cookie, and 302 to the SPA's
+// /oauth/finish page so AuthBootstrap can pick up the new session.
+authRoutes.get('/oauth/:provider/callback', async (c) => {
+  const provider = c.req.param('provider');
+  const code     = c.req.query('code');
+  const state    = c.req.query('state');
+
+  // Front-end origin we redirect back to. Falls back to the frontend's
+  // dev port when no explicit env var is set.
+  const finishBase = (process.env.OAUTH_FINISH_BASE_URL ?? process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+    .split(',')[0]!.trim().replace(/\/$/, '');
+
+  if (!code || !state) {
+    return c.redirect(`${finishBase}/oauth/error?reason=INVALID_STATE`, 302);
+  }
+
+  const result = await oauthService.callback({ provider, code, state });
+
+  if (result.kind === 'error') {
+    return c.redirect(`${finishBase}/oauth/error?reason=${result.reason}`, 302);
+  }
+
+  setRefreshCookie(c, result.refreshToken);
+  // The /oauth/finish page calls /auth/refresh on mount to pick up the
+  // access token, then routes the user to returnTo. We pass returnTo as
+  // a query param rather than baking it into the cookie.
+  const returnTo = encodeURIComponent(result.returnTo ?? '/board');
+  return c.redirect(`${finishBase}/oauth/finish?returnTo=${returnTo}`, 302);
 });
 

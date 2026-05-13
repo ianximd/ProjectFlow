@@ -118,7 +118,15 @@ export class AuthService {
     return this.issueSessionTokens(user);
   }
 
-  private async issueSessionTokens(
+  /**
+   * Issue access + refresh tokens for an authenticated user, clear any
+   * lockout state, and strip sensitive fields from the returned user
+   * record. Public so the OAuth callback path (oauth.service) can reuse
+   * the exact same token-issuance code-path as password + MFA login —
+   * `clearLoginAttempts` and `createRefreshToken` MUST fire identically
+   * for every successful sign-in regardless of the second-factor branch.
+   */
+  async issueSessionTokens(
     user: User,
   ): Promise<{ kind: 'tokens'; user: Partial<User>; accessToken: string; refreshToken: string }> {
     const userId = (user as any).Id as string;

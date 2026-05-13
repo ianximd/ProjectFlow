@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
@@ -12,12 +12,30 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertIcon } from '@/components/ui/alert';
 
+// Provider name → display label + brand color. Adding GitHub / Microsoft
+// in Phase 1.B is one row per provider here.
+const PROVIDER_META: Record<string, { label: string; bg: string }> = {
+  google: { label: 'Continue with Google',    bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
+  // github / microsoft land in 1.B
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const setAuth = useStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [providers, setProviders] = useState<{ name: string }[]>([]);
+
+  // Fetch the configured-provider list on mount. The endpoint is public
+  // and returns [] when no OAuth credentials are wired — in which case we
+  // simply render no social-sign-in section.
+  useEffect(() => {
+    fetch('/api/v1/auth/oauth/providers')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((j) => setProviders(j.data ?? []))
+      .catch(() => setProviders([]));
+  }, []);
 
   const loginMutation = useMutation({
     mutationFn: async () => {
@@ -74,6 +92,35 @@ export default function LoginPage() {
                 </AlertIcon>
                 <AlertDescription>{errorMsg}</AlertDescription>
               </Alert>
+            )}
+
+            {providers.length > 0 && (
+              <div className="space-y-3">
+                {providers.map((p) => {
+                  const meta = PROVIDER_META[p.name];
+                  if (!meta) return null;
+                  return (
+                    // Top-level navigation (not fetch) so the browser
+                    // follows the 302 redirect chain and ends up on the
+                    // provider's consent page.
+                    <a
+                      key={p.name}
+                      href={`/api/v1/auth/oauth/${p.name}/start`}
+                      className={`flex items-center justify-center w-full h-10 rounded-md text-sm font-medium transition-colors ${meta.bg}`}
+                    >
+                      {meta.label}
+                    </a>
+                  );
+                })}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+              </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-5">

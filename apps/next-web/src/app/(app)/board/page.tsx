@@ -9,6 +9,7 @@ import { Board } from '@/components/Board';
 import type { BoardColumn } from '@/components/Column';
 import { TaskDrawer } from '@/components/TaskDrawer';
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,12 @@ async function api(path: string, token: string | null, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
+  // Peek at the body for well-known error codes (e.g. WORKSPACE_FROZEN)
+  // without consuming the original stream — callers still .json() the
+  // response themselves. clone() is cheap and 204s have no body to peek.
+  if (!res.ok && res.status !== 204) {
+    res.clone().json().then((json) => notifyApiError(json, res.status)).catch(() => {});
+  }
   return res;
 }
 

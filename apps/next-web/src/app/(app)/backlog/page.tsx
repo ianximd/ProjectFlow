@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import { TaskDrawer } from '@/components/TaskDrawer';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -98,6 +99,7 @@ async function api(path: string, token: string | null, init?: RequestInit) {
   });
   if (res.status === 204) return {};
   const json = await res.json().catch(() => ({}));
+  if (!res.ok) notifyApiError(json, res.status);
   return { ok: res.ok, status: res.status, json };
 }
 

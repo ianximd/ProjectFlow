@@ -8,6 +8,10 @@
  *
  * Import this constant anywhere a JWT needs to be signed or verified.
  */
+import { subLogger } from './logger.js';
+
+const log = subLogger('auth');
+
 export const JWT_SECRET = (() => {
   const secret = process.env.JWT_SECRET;
   if (!secret || secret === 'change-this-secret-in-production') {
@@ -16,7 +20,7 @@ export const JWT_SECRET = (() => {
         'JWT_SECRET env var is required in production and must not use the default value',
       );
     }
-    console.warn('[auth] WARNING: Using default JWT_SECRET — set a strong secret in production');
+    log.warn('using default JWT_SECRET — set a strong secret in production');
     return secret || 'change-this-secret-in-production';
   }
   return secret;

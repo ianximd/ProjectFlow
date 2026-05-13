@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { adminService } from './admin.service.js';
 import { roleRoutes } from '../roles/role.routes.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('admin');
 
 // ── Validators ──────────────────────────────────────────────────────────────
 
@@ -67,7 +70,7 @@ adminRoutes.post(
       return c.json({ data: user, meta: { tempPassword } }, 201);
     } catch (err: any) {
       if (err.number === 50001) return c.json({ error: { code: 'CONFLICT', message: err.message } }, 409);
-      console.error('[adminRoutes] createUser failed:', err);
+      log.error({ err: (err as Error).message }, 'createUser failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -88,7 +91,7 @@ adminRoutes.patch(
     } catch (err: any) {
       if (err.number === 50001) return c.json({ error: { code: 'CONFLICT', message: err.message } }, 409);
       if (err.number === 50004) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
-      console.error('[adminRoutes] updateUser failed:', err);
+      log.error({ err: (err as Error).message }, 'updateUser failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -106,7 +109,7 @@ adminRoutes.delete(
       if (err.number === 50004) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       // 51040 = blocked by FK references; the message lists the blockers.
       if (err.number === 51040) return c.json({ error: { code: 'CONFLICT', message: err.message } }, 409);
-      console.error('[adminRoutes] hardDeleteUser failed:', err);
+      log.error({ err: (err as Error).message }, 'hardDeleteUser failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -122,7 +125,7 @@ adminRoutes.post(
       return c.json({ data: { tempPassword } });
     } catch (err: any) {
       if (err.number === 50004) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
-      console.error('[adminRoutes] resetPassword failed:', err);
+      log.error({ err: (err as Error).message }, 'resetPassword failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -138,7 +141,7 @@ adminRoutes.post(
       return c.json({ data: { ok: true } });
     } catch (err: any) {
       if (err.number === 50004) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
-      console.error('[adminRoutes] disableMfa failed:', err);
+      log.error({ err: (err as Error).message }, 'disableMfa failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -154,7 +157,7 @@ adminRoutes.post(
       return c.json({ data: { ok: true } });
     } catch (err: any) {
       if (err.number === 50004) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
-      console.error('[adminRoutes] unlockUser failed:', err);
+      log.error({ err: (err as Error).message }, 'unlockUser failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },

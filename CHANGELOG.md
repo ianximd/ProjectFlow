@@ -10,6 +10,51 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Observability v1: structured logging across server, HTTP, and SP layer)
+
+**Why.** Before this week, 60+ ad-hoc `console.log` / `console.warn` / `console.error` calls were scattered through `apps/api`, the dev server emitted a single un-prefixed "Server is running on port 3001" line at boot, and stored-procedure activity was completely invisible unless a query exceeded the 500ms slow-query threshold. An operator running `npm run dev` could not answer "which SP is running, which has failed, what was the rowCount" without `console.log`-debugging individual repositories. This week wires `pino` through the whole stack so the same questions are answerable from `stdout`.
+
+- **`apps/api/src/shared/lib/logger.ts`** — singleton pino instance. Output behaviour split by env:
+  - dev (NODE_ENV !== production && !== test): `pino-pretty` transport, coloured, `HH:MM:ss.l` timestamps, single-line, with the namespace and key fields formatted prominently. Lets `npm run dev` be eyeballable.
+  - prod: raw JSON, one event per line, suitable for `journalctl`, Loki, CloudWatch, ELK, or piping into `jq` locally.
+  - tests: `silent` (no log lines) — tests exercise 4xx paths constantly and we don't want hundreds of warn lines polluting `vitest` output. `LOG_LEVEL=debug npm test` opts back into the firehose for debugging.
+  - `LOG_LEVEL` env override accepted at all times (`trace` | `debug` | `info` | `warn` | `error` | `fatal` | `silent`)
+- **Redaction allow-list, applied to every log call regardless of namespace**: `*.password`, `*.PasswordHash`, `*.passwordHash`, `*.MfaSecret`, `*.mfaSecret`, `*.refreshToken`, `*.RefreshToken`, `*.AccessTokenEnc`, `*.RefreshTokenEnc`, `*.accessTokenEnc`, `*.refreshTokenEnc`, `*.token`, `*.Token`, plus SP-param shapes `params.@Password` / `@PasswordHash` / `@MfaSecret` / `@AccessTokenEnc` / `@RefreshTokenEnc` / `@Code` / `@RecoveryCode` / `@Subject` / `@Email`. Pino walks log payloads once and replaces matching leaves with `[redacted]` — defence in depth, so adding a new sensitive field means adding the key here, not cleaning up the call site
+- **`subLogger(name)` helper** — `logger.child({ name })` for per-module namespacing. Every module that emits logs now does `const log = subLogger('oauth-maintenance')` etc., so the namespace shows up next to every line: `[12:38:17.910] INFO (oauth-maintenance): worker started`
+- **`shared/middleware/httpLog.middleware.ts`** — request log per HTTP call, slotted after `requestIdMiddleware` so each line carries the X-Request-ID. One line per response with `{req, method, path, status, durationMs, userId}` and a `METHOD /path → status` message. Level mapping: `5xx`/thrown → error, `4xx` → warn, `2xx`/`3xx` → info, `/health` → debug (avoid spamming Kubernetes liveness probes). Userid comes from `c.get('user')` so it's populated only on routes that go through `authMiddleware` — anonymous requests log `userId: null`
+- **SP call instrumentation in `shared/lib/sqlClient.ts`** — every `execSp`/`execSpOne` call logs at INFO (operator-chosen verbosity — they explicitly picked "every SP, including production" over the more-conservative DEBUG default). Each line carries:
+  - `sp` — proc name (e.g. `usp_Task_List`)
+  - `durationMs` — wall-clock time
+  - `rowCounts` — array of recordset sizes (`[12]` means one recordset with 12 rows; `[1, 5]` means two recordsets)
+  - `params` — sanitised parameter set: strings >200 chars truncated with a `…(len)` suffix, Buffers rendered as `<Buffer NNNNB>`, Dates as ISO strings, sensitive keys redacted via the central allow-list
+  - On error: `errNumber`, `errLine`, `errProcName`, `errMessage` — the four fields you actually want when debugging a failing SP
+  - The existing >500ms slow-query WARN still fires, separately
+- **`server.ts` boot summary** — replaces the bare `Server is running on port 3001` with a structured line: `{port, nodeEnv, oauthProviders, oauthCrypto, workers}` so an operator can see in one glance which OAuth providers are configured, whether token encryption is on, and which background workers are running. Example:
+  ```
+  [12:38:17.866] INFO: API server listening on :3001
+      port: 3001
+      nodeEnv: "development"
+      oauthProviders: ["google", "microsoft"]
+      oauthCrypto: "on"
+      workers: ["automation", "outgoing-webhook", "oauth-maintenance"]
+  ```
+- **`apps/api/.env.example`** — new `LOG_LEVEL` entry with the level list and defaults
+- **Migrated all 60 `console.*` callsites** from the codebase to the logger. Touched modules: `db.ts`, `redis.ts`, `cache.ts`, `jwtSecret.ts`, `envAdminBootstrap.ts`, `oauth/service.ts`, `oauth/workers/*`, `automation/worker.ts`, `automation/actions.ts`, `webhook-outgoing/worker.ts`, `webhook-outgoing/service.ts`, `integrations/notifier.ts`, `integrations/service.ts`, `admin/routes.ts`, `tasks/routes.ts`, `tasks/service.ts`, `workspaces/routes.ts`, plus `server.ts`. Zero console calls remain in production code (`grep -rn 'console\.' src --exclude-dir=__tests__` returns nothing)
+- **Tests** — 12 unit tests in `tokenCrypto`-adjacent `shared/lib/__tests__/logger.unit.test.ts` (196 total in API now, +12 over W42's 184):
+  - Redaction: top-level `password` via wildcard, `PasswordHash` regardless of casing, SP-param secrets (`@PasswordHash`/`@Email`/`@AccessTokenEnc`/`@RefreshTokenEnc`/`@Code`/`@RecoveryCode`) — all replaced with `[redacted]`; safe fields like `@Provider` and `@Name` pass through unchanged
+  - `paramsForLog`: handles both `SpParam[]` and key→value shapes, prefixes names with `@`, truncates long strings with `…(len)` suffix, renders `Buffer`/`Date` as size/ISO summaries
+  - `summariseValue`: passes through small primitives unchanged, returns `typeof` for unrecognised exotics (covers null, undefined, boolean, number, string)
+- **Operator-facing dep**: `pino@^10` + `pino-pretty@^14` (dev transport), ~27 transitive packages, no production-affecting upgrades to other deps
+
+**Configuration knobs operators care about:**
+
+| env var | default | meaning |
+|--|--|--|
+| `LOG_LEVEL` | `info` (prod) / `debug` (dev) / `silent` (tests) | pino level; `silent` to suppress entirely |
+| `NODE_ENV` | (existing) | `production` switches output from pretty to raw JSON |
+
+**Limitations**: There's no request-context propagation via `AsyncLocalStorage`, so SP-call logs don't automatically carry the originating X-Request-ID — they're correlated by timestamp + active path. Adding ALS would let you grep all SP calls from one HTTP request together; deferred for now because it adds complexity that isn't necessary at our scale and we want to land the basic visibility first. Logs are not yet shipped anywhere external (Loki/Cloudwatch/etc) — stdout only.
+
 #### Phase 6 — Post-launch (Week 42 — OAuth × MFA: close the second-factor bypass)
 
 **Security fix.** Until Phase 1.F, the OAuth callback handler called `AuthService.issueSessionTokens(user)` directly without checking `Users.MfaEnabled`. The same user signing in with their password would be challenged for TOTP; signing in via Google/Microsoft would not. An attacker who compromised a user's social account got an MFA-protected ProjectFlow session for free. This phase closes that gap.

@@ -1,7 +1,9 @@
 import type { IntegrationConnection, IntegrationEvent } from '@projectflow/types';
 import { IntegrationRepository } from './integration.repository.js';
 import { dispatchToIntegration, type IntegrationMessage } from './integration.notifier.js';
+import { subLogger } from '../../shared/lib/logger.js';
 
+const log = subLogger('integrations');
 const repo = new IntegrationRepository();
 
 export class IntegrationService {
@@ -41,7 +43,7 @@ export class IntegrationService {
         active.map((c) => dispatchToIntegration(c.provider, c.webhookUrl, { ...msg, event })),
       );
     } catch (err: any) {
-      console.error('[IntegrationService.notify] Error:', err?.message);
+      log.error({ err: err?.message }, 'notify failed');
     }
   }
 

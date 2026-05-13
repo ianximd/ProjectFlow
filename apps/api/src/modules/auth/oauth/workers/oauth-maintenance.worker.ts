@@ -21,6 +21,9 @@ import { Queue, Worker } from 'bullmq';
 import { isConfigured as cryptoConfigured } from '../../../../shared/lib/tokenCrypto.js';
 import { runRefreshSweep } from './refreshTokens.service.js';
 import { runRotationSweep } from './keyRotation.service.js';
+import { subLogger } from '../../../../shared/lib/logger.js';
+
+const log = subLogger('oauth-maintenance');
 
 const QUEUE_NAME = 'oauth-maintenance';
 
@@ -79,14 +82,14 @@ export async function startOAuthMaintenanceWorker(): Promise<{ queue: Queue<JobD
       if (name === 'refresh-tokens') {
         const result = await runRefreshSweep();
         if (result.scanned > 0) {
-          console.log('[oauth-maintenance] refresh sweep', result);
+          log.info(result, 'refresh sweep');
         }
         return result;
       }
       if (name === 'key-rotation') {
         const result = await runRotationSweep();
         if (result.scanned > 0) {
-          console.log('[oauth-maintenance] rotation sweep', result);
+          log.info(result, 'rotation sweep');
         }
         return result;
       }
@@ -96,12 +99,12 @@ export async function startOAuthMaintenanceWorker(): Promise<{ queue: Queue<JobD
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[oauth-maintenance] job ${job?.name} (${job?.id}) failed:`, err?.message);
+    log.error({ jobName: job?.name, jobId: job?.id, err: err?.message }, 'job failed');
   });
   worker.on('error', (err) => {
-    console.error('[oauth-maintenance] worker error:', err?.message);
+    log.error({ err: err?.message }, 'worker error');
   });
 
-  console.log('[oauth-maintenance] worker started (refresh:5m, rotate:15m)');
+  log.info({ refreshEveryMs: REFRESH_INTERVAL_MS, rotateEveryMs: ROTATION_INTERVAL_MS }, 'worker started');
   return { queue, worker };
 }

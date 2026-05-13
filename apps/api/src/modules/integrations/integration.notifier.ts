@@ -8,6 +8,10 @@
  * they never surface to the caller.
  */
 
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('integrations');
+
 export interface IntegrationMessage {
   event:       string;   // e.g. 'task.created'
   title:       string;   // Short summary line
@@ -59,10 +63,10 @@ export async function sendSlackMessage(
       body:    JSON.stringify(body),
     });
     if (!res.ok) {
-      console.warn(`[Integrations] Slack webhook returned ${res.status} for event "${msg.event}"`);
+      log.warn({ status: res.status, event: msg.event }, 'Slack webhook non-2xx');
     }
   } catch (err: any) {
-    console.error('[Integrations] Slack delivery failed:', err?.message);
+    log.error({ err: err?.message }, 'Slack delivery failed');
   }
 }
 
@@ -108,10 +112,10 @@ export async function sendTeamsMessage(
       body:    JSON.stringify(body),
     });
     if (!res.ok) {
-      console.warn(`[Integrations] Teams webhook returned ${res.status} for event "${msg.event}"`);
+      log.warn({ status: res.status, event: msg.event }, 'Teams webhook non-2xx');
     }
   } catch (err: any) {
-    console.error('[Integrations] Teams delivery failed:', err?.message);
+    log.error({ err: err?.message }, 'Teams delivery failed');
   }
 }
 
@@ -129,6 +133,6 @@ export async function dispatchToIntegration(
   } else if (provider === 'msteams') {
     await sendTeamsMessage(webhookUrl, msg);
   } else {
-    console.warn(`[Integrations] Unknown provider "${provider}" — skipping dispatch`);
+    log.warn({ provider }, 'unknown provider — skipping dispatch');
   }
 }

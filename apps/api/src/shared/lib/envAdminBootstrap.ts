@@ -1,4 +1,7 @@
 import { roleService } from '../../modules/roles/role.service.js';
+import { subLogger } from './logger.js';
+
+const log = subLogger('env-admin-bootstrap');
 
 /**
  * Idempotently promote every user listed in the legacy ADMIN_USER_IDS env var
@@ -30,14 +33,11 @@ export async function ensureEnvAdminsPromoted(): Promise<void> {
     } catch (err) {
       // Most likely the user id from the env var doesn't exist in the DB.
       // Log and keep going — don't block server startup over one bad entry.
-      console.warn(
-        `[env-admin-bootstrap] Failed to promote user '${userId}':`,
-        (err as Error).message,
-      );
+      log.warn({ userId, err: (err as Error).message }, 'failed to promote user');
     }
   }
 
   if (promoted > 0) {
-    console.log(`[env-admin-bootstrap] Ensured super-admin role on ${promoted} env-listed user(s).`);
+    log.info({ promoted }, 'ensured super-admin role on env-listed users');
   }
 }

@@ -19,6 +19,9 @@ import {
   open,
   seal,
 } from '../../../../shared/lib/tokenCrypto.js';
+import { subLogger } from '../../../../shared/lib/logger.js';
+
+const log = subLogger('oauth-rotate');
 
 export interface RotationSweepResult {
   primary:    string | null;
@@ -62,11 +65,14 @@ export async function runRotationSweep(
       result.rotated += 1;
     } catch (err: any) {
       result.failed += 1;
-      console.error('[oauth/rotate] row failed', {
-        provider: row.Provider, subject: row.Subject,
-        oldKey:   row.TokenKeyVersion,
-        reason:   err?.message ?? String(err),
-      });
+      log.error(
+        {
+          provider: row.Provider, subject: row.Subject,
+          oldKey:   row.TokenKeyVersion,
+          reason:   err?.message ?? String(err),
+        },
+        'row failed',
+      );
     }
   }
 

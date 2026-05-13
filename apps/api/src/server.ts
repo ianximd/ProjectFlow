@@ -33,6 +33,10 @@ import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.mi
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
 import { responseCache } from './shared/middleware/responseCache.middleware.js';
 import { securityHeaders } from './shared/middleware/securityHeaders.middleware.js';
+import { httpLogMiddleware } from './shared/middleware/httpLog.middleware.js';
+import { logger } from './shared/lib/logger.js';
+import { isConfigured as oauthCryptoConfigured } from './shared/lib/tokenCrypto.js';
+import { getEnabledProviders } from './modules/auth/oauth/registry.js';
 import { TTL, cachePing } from './shared/lib/cache.js';
 import { getPool } from './shared/lib/db.js';
 import { ensureEnvAdminsPromoted } from './shared/lib/envAdminBootstrap.js';
@@ -62,6 +66,10 @@ app.use('*', cors({
 // Global security hardening
 app.use('*', securityHeaders);
 app.use('*', requestIdMiddleware);
+// Structured request log — slot AFTER requestIdMiddleware so each line
+// carries X-Request-ID. Tests get suppressed lines because the logger
+// defaults to warn-level under NODE_ENV=test.
+app.use('*', httpLogMiddleware);
 // Rate limiters are skipped in test mode — they target hostile traffic, not
 // the rapid-fire request pattern of the integration suite. Dedicated rate-
 // limiter tests live in their own file.
@@ -191,11 +199,11 @@ app.all('/graphql', async (c) => yoga.handle(c.req.raw, c));
 // this — and without binding port 3001 in vitest workers.
 if (process.env.NODE_ENV !== 'test') {
   // Ensure MinIO bucket exists
-  ensureBucket().catch((err) => console.warn('MinIO bucket init failed (will retry on first request):', err?.message));
+  ensureBucket().catch((err) => logger.warn({ err: err?.message }, 'MinIO bucket init failed (will retry on first request)'));
 
   // Promote any users listed in ADMIN_USER_IDS to the super-admin role
   ensureEnvAdminsPromoted().catch((err) =>
-    console.warn('[env-admin-bootstrap] failed:', err?.message),
+    logger.warn({ err: err?.message }, 'env-admin bootstrap failed'),
   );
 
   // Start automation job worker
@@ -207,11 +215,20 @@ if (process.env.NODE_ENV !== 'test') {
   // Start OAuth maintenance worker (silent-refresh + key-rotation sweeps).
   // No-op when token encryption isn't configured.
   startOAuthMaintenanceWorker().catch((err) =>
-    console.warn('[oauth-maintenance] failed to start:', err?.message),
+    logger.warn({ err: err?.message }, 'oauth-maintenance worker failed to start'),
   );
 
   const port = 3001;
-  console.log(`Server is running on port ${port}`);
+  logger.info(
+    {
+      port,
+      nodeEnv:           process.env.NODE_ENV ?? 'development',
+      oauthProviders:    getEnabledProviders().map((p) => p.name),
+      oauthCrypto:       oauthCryptoConfigured() ? 'on' : 'off',
+      workers:           ['automation', 'outgoing-webhook', oauthCryptoConfigured() && 'oauth-maintenance'].filter(Boolean),
+    },
+    `API server listening on :${port}`,
+  );
 
   serve({
     fetch: app.fetch,

@@ -31,9 +31,12 @@ import {
   type OAuthStatePayload,
 } from './state.js';
 import { isConfigured as cryptoConfigured, seal } from '../../../shared/lib/tokenCrypto.js';
+import { subLogger } from '../../../shared/lib/logger.js';
 
 import type { User } from '@projectflow/types';
 import type { OAuthTokens } from './types.js';
+
+const log = subLogger('oauth');
 
 export type OAuthCallbackResult =
   | { kind: 'tokens';       user: Partial<User>; accessToken: string; refreshToken: string }
@@ -313,7 +316,7 @@ export class OAuthService {
         tokenKeyVersion: access.keyId,
       });
     } catch (err) {
-      console.error('[oauth] failed to persist encrypted tokens', { provider, err: (err as Error).message });
+      log.error({ provider, err: (err as Error).message }, 'failed to persist encrypted tokens');
     }
   }
 

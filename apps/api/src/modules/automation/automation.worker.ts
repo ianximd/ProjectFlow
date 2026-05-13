@@ -3,6 +3,9 @@ import { AutomationRepository } from './automation.repository.js';
 import { evaluateConditions }   from './automation.conditions.js';
 import { executeAction }        from './automation.actions.js';
 import type { AutomationJobData } from './automation.queue.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('automation');
 
 const repo = new AutomationRepository();
 
@@ -35,7 +38,7 @@ export function startAutomationWorker() {
         try {
           await executeAction(action, payload);
         } catch (err: any) {
-          console.error(`[automation] action ${action.type} failed for rule ${ruleId}:`, err?.message);
+          log.error({ ruleId, action: action.type, err: err?.message }, 'action failed');
           // Continue with remaining actions even if one fails
         }
       }
@@ -50,13 +53,13 @@ export function startAutomationWorker() {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[automation] job ${job?.id} failed:`, err?.message);
+    log.error({ jobId: job?.id, err: err?.message }, 'job failed');
   });
 
   worker.on('error', (err) => {
-    console.error('[automation] worker error:', err?.message);
+    log.error({ err: err?.message }, 'worker error');
   });
 
-  console.log('[automation] worker started');
+  log.info('worker started');
   return worker;
 }

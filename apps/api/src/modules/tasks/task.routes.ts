@@ -5,6 +5,9 @@ import { TaskRepository } from './task.repository.js';
 import { TaskService } from './task.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('tasks-routes');
 
 // Tasks feed three server-cached read endpoints: /epics (5 min), /roadmap/*
 // (2 min) and /sprints/* (2 min). Without this, a newly-created EPIC stays
@@ -144,7 +147,7 @@ taskRoutes.put(
       if (err.number === 51030) {
         return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       }
-      console.error('[taskRoutes] setAssignees failed:', err);
+      log.error({ err: (err as Error).message }, 'setAssignees failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -166,7 +169,7 @@ taskRoutes.patch(
       await invalidateTaskCaches(task.projectId);
       return c.json({ data: task });
     } catch (err: any) {
-      console.error('[taskRoutes] setPosition failed:', err);
+      log.error({ err: (err as Error).message }, 'setPosition failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },

@@ -1,6 +1,9 @@
 import { WebhookOutgoingRepository } from './webhook-outgoing.repository.js';
 import { outgoingWebhookQueue }       from './webhook-outgoing.queue.js';
+import { subLogger } from '../../shared/lib/logger.js';
 import type { OutgoingWebhook, CreateWebhookInput, WebhookDelivery } from '@projectflow/types';
+
+const log = subLogger('webhook-outgoing');
 
 export class WebhookOutgoingService {
   private repo = new WebhookOutgoingRepository();
@@ -50,7 +53,7 @@ export class WebhookOutgoingService {
       );
       await Promise.allSettled(jobs);
     } catch (err: any) {
-      console.error('[webhook-service] dispatch error:', err?.message);
+      log.error({ err: err?.message }, 'dispatch error');
     }
   }
 

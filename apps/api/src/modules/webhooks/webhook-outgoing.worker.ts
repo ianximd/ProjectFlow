@@ -2,6 +2,9 @@ import { Worker } from 'bullmq';
 import { deliverWebhook }            from './webhook-outgoing.dispatcher.js';
 import { WebhookOutgoingRepository } from './webhook-outgoing.repository.js';
 import type { OutgoingWebhookJobData } from './webhook-outgoing.queue.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('webhook-outgoing');
 
 const repo = new WebhookOutgoingRepository();
 
@@ -30,7 +33,7 @@ export function startOutgoingWebhookWorker() {
         attempt,
         success:      result.success,
       }).catch((err: any) =>
-        console.error('[webhook-worker] log delivery failed:', err?.message),
+        log.error({ err: err?.message }, 'log delivery failed'),
       );
 
       if (!result.success) {
@@ -43,13 +46,13 @@ export function startOutgoingWebhookWorker() {
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[webhook-worker] job ${job?.id} failed:`, err?.message);
+    log.error({ jobId: job?.id, err: err?.message }, 'job failed');
   });
 
   worker.on('error', (err) => {
-    console.error('[webhook-worker] worker error:', err?.message);
+    log.error({ err: err?.message }, 'worker error');
   });
 
-  console.log('[webhook-worker] outgoing webhook worker started');
+  log.info('worker started');
   return worker;
 }

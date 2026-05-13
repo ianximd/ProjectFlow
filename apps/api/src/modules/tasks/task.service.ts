@@ -1,7 +1,10 @@
 import { TaskRepository, type AssigneeRow } from './task.repository.js';
 import { notificationService } from '../notifications/notification.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
+import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
+
+const log = subLogger('tasks');
 
 export class TaskService {
   constructor(private repo: TaskRepository) {}
@@ -16,7 +19,7 @@ export class TaskService {
         actorId,
         type: 'TASK_ASSIGNED',
         payload: { taskId: task.id, taskTitle: task.title },
-      }).catch((err: any) => console.error('[taskService] notification failed:', err?.message));
+      }).catch((err: any) => log.error({ err: err?.message }, 'notification failed'));
     }
 
     // Dispatch outgoing webhooks (fire-and-forget)
@@ -24,7 +27,7 @@ export class TaskService {
       id: task.id, issueKey: task.issueKey, title: task.title,
       type: task.type, status: task.status, priority: task.priority,
       projectId: task.projectId,
-    }).catch((err: any) => console.error('[taskService] webhook dispatch failed:', err?.message));
+    }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
 
     return task;
   }
@@ -53,12 +56,12 @@ export class TaskService {
         actorId,
         type: 'TASK_ASSIGNED',
         payload: { taskId, taskTitle: before.title },
-      }).catch((err: any) => console.error('[taskService] notification failed:', err?.message));
+      }).catch((err: any) => log.error({ err: err?.message }, 'notification failed'));
 
       webhookOutgoingService.dispatch(before.workspaceId, 'issue.assigned', {
         id: before.id, issueKey: before.issueKey, title: before.title,
         assigneeIds: rows.map((r) => r.UserId), projectId: before.projectId,
-      }).catch((err: any) => console.error('[taskService] webhook dispatch failed:', err?.message));
+      }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
     }
     return rows;
   }
@@ -72,7 +75,7 @@ export class TaskService {
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.updated', {
       id: task.id, issueKey: task.issueKey, title: task.title,
       status: newStatus, projectId: task.projectId,
-    }).catch((err: any) => console.error('[taskService] webhook dispatch failed:', err?.message));;
+    }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));;
     return task;
   }
 
@@ -80,7 +83,7 @@ export class TaskService {
     const task = await this.repo.delete(taskId, actorId);
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.deleted', {
       id: task.id, issueKey: task.issueKey, projectId: task.projectId,
-    }).catch((err: any) => console.error('[taskService] webhook dispatch failed:', err?.message));
+    }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
     return task;
   }
 

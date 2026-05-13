@@ -1,4 +1,7 @@
 import sql from 'mssql';
+import { subLogger } from './logger.js';
+
+const log = subLogger('db');
 
 const config: sql.config = {
   user:     process.env.DB_USER || 'sa',
@@ -31,7 +34,7 @@ export async function getPool(): Promise<sql.ConnectionPool> {
     pool = await new sql.ConnectionPool(config).connect();
 
     pool.on('error', (err) => {
-      console.error('[db] Pool error:', err);
+      log.error({ err: err?.message }, 'pool error');
     });
   }
   return pool;
@@ -63,7 +66,7 @@ export function trackQueryTime(label: string): () => void {
   return () => {
     const elapsed = Date.now() - start;
     if (elapsed >= SLOW_QUERY_MS) {
-      console.warn(`[db] Slow query detected — ${label} took ${elapsed} ms`);
+      log.warn({ sp: label, durationMs: elapsed }, 'slow query');
     }
   };
 }

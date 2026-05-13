@@ -4,7 +4,10 @@
  */
 import sql from 'mssql';
 import { execSpOne } from '../../shared/lib/sqlClient.js';
+import { subLogger } from '../../shared/lib/logger.js';
 import type { AutomationAction } from '@projectflow/types';
+
+const log = subLogger('automation');
 
 export async function executeAction(
   action: AutomationAction,
@@ -111,11 +114,11 @@ export async function executeAction(
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ event: payload }),
         signal:  AbortSignal.timeout(10_000),
-      }).catch(err => console.error('[automation] webhook error', err?.message));
+      }).catch((err: any) => log.error({ err: err?.message }, 'webhook error'));
       break;
     }
 
     default:
-      console.warn('[automation] unknown action type:', (action as any).type);
+      log.warn({ type: (action as any).type }, 'unknown action type');
   }
 }

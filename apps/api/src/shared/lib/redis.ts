@@ -5,6 +5,9 @@
  */
 
 import { Redis } from 'ioredis';
+import { subLogger } from './logger.js';
+
+const log = subLogger('redis');
 
 let _redis: Redis | null = null;
 let _down = false;
@@ -28,12 +31,12 @@ export function getRedis(): Redis {
     });
 
     _redis.on('error', (err) => {
-      if (!_down) console.warn('[redis] Connection error — degrading gracefully:', err?.message);
+      if (!_down) log.warn({ err: err?.message }, 'connection error — degrading gracefully');
       _down = true;
     });
 
     _redis.on('ready', () => {
-      if (_down) console.info('[redis] Connection restored');
+      if (_down) log.info('connection restored');
       _down = false;
     });
   }

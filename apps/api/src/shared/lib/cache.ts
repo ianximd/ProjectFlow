@@ -7,6 +7,9 @@
  */
 
 import { getRedis } from './redis.js';
+import { subLogger } from './logger.js';
+
+const log = subLogger('cache');
 
 // ── TTL presets (seconds) ───────────────────────────────────────────────────
 
@@ -52,7 +55,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
     if (raw === null) return null;
     return JSON.parse(raw) as T;
   } catch (err) {
-    console.warn('[cache] get error:', (err as Error).message);
+    log.warn({ err: (err as Error).message }, 'get error');
     return null;
   }
 }
@@ -64,7 +67,7 @@ export async function cacheSet(key: string, value: unknown, ttlSeconds: number):
   try {
     await getRedis().set(key, JSON.stringify(value), 'EX', ttlSeconds);
   } catch (err) {
-    console.warn('[cache] set error:', (err as Error).message);
+    log.warn({ err: (err as Error).message }, 'set error');
   }
 }
 
@@ -76,7 +79,7 @@ export async function cacheDel(...keys: string[]): Promise<void> {
   try {
     await getRedis().del(...keys);
   } catch (err) {
-    console.warn('[cache] del error:', (err as Error).message);
+    log.warn({ err: (err as Error).message }, 'del error');
   }
 }
 
@@ -94,7 +97,7 @@ export async function cacheDelPattern(pattern: string): Promise<void> {
       if (keys.length > 0) await redis.del(...keys);
     } while (cursor !== '0');
   } catch (err) {
-    console.warn('[cache] delPattern error:', (err as Error).message);
+    log.warn({ err: (err as Error).message }, 'delPattern error');
   }
 }
 

@@ -15,6 +15,9 @@
 import { OAuthRepository, type TokenStoreRow } from '../repository.js';
 import { getProvider } from '../registry.js';
 import { isConfigured as cryptoConfigured, seal, open } from '../../../../shared/lib/tokenCrypto.js';
+import { subLogger } from '../../../../shared/lib/logger.js';
+
+const log = subLogger('oauth-refresh');
 
 export interface RefreshSweepResult {
   scanned:         number; // rows pulled from the SP
@@ -57,9 +60,7 @@ export async function runRefreshSweep(
         result.skippedNoRefresh += 1;
       } else {
         result.failed += 1;
-        console.error('[oauth/refresh] row failed', {
-          provider: row.Provider, subject: row.Subject, reason,
-        });
+        log.error({ provider: row.Provider, subject: row.Subject, reason }, 'row failed');
       }
     }
   }

@@ -4,6 +4,9 @@ import { z } from 'zod';
 import { workspaceService } from './workspace.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('workspaces');
 
 // GET /workspaces and GET /workspaces/:id[/members] are server-cached for
 // 30s (TTL.SHORT). Without busting after writes, a newly-created workspace
@@ -105,7 +108,7 @@ workspaceRoutes.post(
       return c.json({ data: member }, 201);
     } catch (err: any) {
       if (err.number === 51052) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
-      console.error('[workspaceRoutes] addMemberByEmail failed:', err);
+      log.error({ err: (err as Error).message }, 'addMemberByEmail failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -123,7 +126,7 @@ workspaceRoutes.delete(
     } catch (err: any) {
       if (err.number === 51050) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       if (err.number === 51051) return c.json({ error: { code: 'CONFLICT',  message: err.message } }, 409);
-      console.error('[workspaceRoutes] removeMember failed:', err);
+      log.error({ err: (err as Error).message }, 'removeMember failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -149,7 +152,7 @@ workspaceRoutes.put(
       if (err.number === 51053) return c.json({ error: { code: 'CONFLICT',  message: err.message } }, 409);
       if (err.number === 51054 || err.number === 51055)
         return c.json({ error: { code: 'BAD_REQUEST', message: err.message } }, 400);
-      console.error('[workspaceRoutes] setMemberRole failed:', err);
+      log.error({ err: (err as Error).message }, 'setMemberRole failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },
@@ -188,7 +191,7 @@ workspaceRoutes.delete(
       if (err.number === 51060) {
         return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       }
-      console.error('[workspaceRoutes] delete failed:', err);
+      log.error({ err: (err as Error).message }, 'delete failed');
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },

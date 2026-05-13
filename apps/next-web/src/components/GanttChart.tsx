@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useStore } from '@/store/useStore';
 
 // ─── Types (matches the API shape) ───────────────────────────────────────────
 
@@ -156,11 +157,18 @@ interface DragState {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
-  const [zoom, setZoom] = useState<ZoomLevel>('week');
+  // Zoom + scroll position live in the store so navigating away and back
+  // preserves the user's viewport instead of snapping to today.
+  const zoom               = useStore((s) => s.roadmapZoom);
+  const setZoom            = useStore((s) => s.setRoadmapZoom);
+  const savedScrollLeft    = useStore((s) => s.roadmapScrollLeft);
+  const setSavedScrollLeft = useStore((s) => s.setRoadmapScrollLeft);
+
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [overrides, setOverrides] = useState<Record<string, { startDate?: string; dueDate?: string }>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef   = useRef<DragState | null>(null);
+  const didRestoreRef = useRef(false);
 
   const today = today0();
   const cfg   = ZOOM_CFG[zoom];
@@ -222,19 +230,64 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
     return rows;
   }, [items, collapsed]);
 
-  // ── Scroll-to-today on mount / zoom change ────────────────────────────────
+  // ── Scroll position management ────────────────────────────────────────────
+  // - On first mount, restore the saved scrollLeft (if any) so a page navigation
+  //   round-trip keeps the user's viewport intact.
+  // - Only auto-scroll-to-today when the user explicitly changes zoom or hits
+  //   the Today button — not on mount.
   const scrollToToday = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollLeft = Math.max(0, todayPx - el.clientWidth / 2 + LABEL_W);
-  }, [todayPx]);
+    const next = Math.max(0, todayPx - el.clientWidth / 2 + LABEL_W);
+    el.scrollLeft = next;
+    setSavedScrollLeft(next);
+  }, [todayPx, setSavedScrollLeft]);
 
-  useEffect(() => { scrollToToday(); }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Restore once per mount. The flag guards against the items/range memo
+  // recomputing and clobbering the restored position.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || didRestoreRef.current) return;
+    if (savedScrollLeft > 0 && savedScrollLeft <= el.scrollWidth) {
+      el.scrollLeft = savedScrollLeft;
+    } else {
+      // First-ever load — centre on today.
+      el.scrollLeft = Math.max(0, todayPx - el.clientWidth / 2 + LABEL_W);
+    }
+    didRestoreRef.current = true;
+  }, [totalW]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist scroll position as the user pans. Debounced via rAF coalescing so
+  // we don't write to the store on every scroll event.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setSavedScrollLeft(el.scrollLeft);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [setSavedScrollLeft]);
 
   const scrollBy = (deltaPx: number) => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollBy({ left: deltaPx, behavior: 'smooth' });
+  };
+
+  // Explicit zoom change → re-centre on today, since the px positions of all
+  // bars shift and the previously-visible window no longer matches reality.
+  const changeZoom = (z: ZoomLevel) => {
+    setZoom(z);
+    requestAnimationFrame(() => scrollToToday());
   };
 
   // ── Fit-to-data: scroll so the earliest data point is left-aligned ────────
@@ -379,7 +432,7 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
             <button
               key={z}
               type="button"
-              onClick={() => setZoom(z)}
+              onClick={() => changeZoom(z)}
               className={cn(
                 'h-7 px-3 text-xs rounded transition-colors',
                 zoom === z

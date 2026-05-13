@@ -10,6 +10,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 33 — Workspace soft-delete + Task time-of-day deadlines)
+- **Migration `0023_workspace_deletedat.sql`** — adds `Workspaces.DeletedAt DATETIME2 NULL` plus a filtered non-clustered index `IX_Workspaces_DeletedAt … WHERE DeletedAt IS NULL` to keep "list active workspaces" cheap. Idempotent
+- `usp_Workspace_Delete` now stamps `DeletedAt = SYSUTCDATETIME()` instead of issuing a physical `DELETE`, mirroring the soft-delete pattern Users and Projects already use. `usp_Workspace_GetById` and `usp_Workspace_List` filter `DeletedAt IS NULL` so soft-deleted workspaces disappear from the API surface
+- **Migration `0024_task_duedate_datetime.sql`** — widens `Tasks.DueDate` from `DATE` to `DATETIME2`. Existing day-only values implicitly become same-day-at-00:00:00, so reports / filters that compare against `CAST(GETDATE() AS DATE)` keep returning the same rows. The three covering indexes from `0016_perf_indexes.sql` that carry `DueDate` in their `INCLUDE` list (`IX_Task_ProjectId_Status`, `IX_Task_SprintId_Status`, `IX_Task_ReporterId_Status`) are dropped and recreated around the `ALTER COLUMN`. Idempotent: skips when the column is already `DATETIME2`
+- `StartDate` deliberately stays `DATE` — the only producer is the Gantt drag-to-set-dates flow on the roadmap, which is a day-granular planning view
+- `usp_Task_Create`, `usp_Task_Update`, and `usp_Task_UpdateDates` updated to bind `DueDate` as `sql.DateTime2` instead of `sql.Date`
+- `TaskDrawer` "Deadline" field becomes `<input type="datetime-local">` so users can express "due by 17:00" rather than just a calendar day
+
+### Fixed
+
+- `DELETE /api/v1/workspaces/:id` previously returned 500 in v1.0.0: the SP attempted a physical delete but `Projects`, `Sprints`, `Tasks`, `WorkflowDefinitions`, and `UserRoles` all hold `REFERENCES Workspaces(Id)` without `ON DELETE CASCADE`, so every call hit a foreign-key violation. Migration 0023 + the rewritten `usp_Workspace_Delete` resolve the failure mode by switching to soft delete
+
+### Added
+
+#### Phase 6 — Post-launch (Week 32 — Admin user management)
+- **Migration `0022_admin_user_perms.sql`** — adds five admin user-management permission slugs (`admin.users.{create,update,delete,reset_password,reset_mfa}`) and grants the full set to both `super-admin` and `user-admin`. Splitting recovery actions (reset password, reset MFA + lockout) from `delete` lets an org grant help-desk staff the recovery slugs without granting the destructive one. Idempotent
+- 6 new admin-only stored procedures: `usp_Admin_User_Create` (skips the self-registration flow — admin sets a temporary password directly), `usp_Admin_User_Update` (name/email), `usp_Admin_User_HardDelete` (refuses if any FK reference remains; returns the blocking count so the API can surface a useful error), `usp_Admin_User_SetPassword` (force-reset to a temporary value), `usp_Admin_User_DisableMfa` (clears `MfaSecret` and every `MfaRecoveryCodes` row in one transaction), `usp_Admin_User_Unlock` (clears `LockedUntil` and the failed-login counter from migration 0017)
+- Matching REST endpoints under `/api/v1/admin/users`, each gated on the corresponding slug from 0022
+
 #### Phase 6 — Post-launch (Week 32 — TOTP MFA)
 - **Migration `0021_mfa_recovery_codes.sql`** — adds `Users.MfaEnabledAt` audit timestamp + `dbo.MfaRecoveryCodes` (UserId, CodeHash, CreatedAt, indexed on UserId). The `MfaEnabled` and `MfaSecret` columns from `0001_init.sql` are reused
 - 7 new stored procedures: `usp_User_GetMfaState`, `usp_User_SetMfaPending` (refuses if MFA already enabled — error 51020), `usp_User_EnableMfa`, `usp_User_DisableMfa` (transactionally clears secret + every recovery code), `usp_MfaRecovery_CreateBatch` (parses newline-separated bcrypt hashes via `STRING_SPLIT` and replaces the user's batch atomically), `usp_MfaRecovery_ListHashes`, `usp_MfaRecovery_Consume` (returns `@@ROWCOUNT` so the caller can distinguish "consumed" from "already used")

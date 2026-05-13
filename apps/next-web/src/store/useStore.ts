@@ -43,13 +43,24 @@ interface SelectionState {
   setCurrentProject:   (id: string | null) => void;
 }
 
+// Roadmap viewport — persisted so navigating away and back keeps the user on
+// the same zoom level and scroll position. Without this the Gantt remounts
+// each time and snaps back to today, losing the user's context.
+export type RoadmapZoom = 'day' | 'week' | 'month';
+interface RoadmapState {
+  roadmapZoom:       RoadmapZoom;
+  roadmapScrollLeft: number;
+  setRoadmapZoom:       (z: RoadmapZoom) => void;
+  setRoadmapScrollLeft: (px: number) => void;
+}
+
 const defaultCols: Column[] = [
   { id: 'To Do', title: 'To Do' },
   { id: 'In Progress', title: 'In Progress' },
   { id: 'Done', title: 'Done' },
 ];
 
-export const useStore = create<BoardState & AuthState & SelectionState>()(
+export const useStore = create<BoardState & AuthState & SelectionState & RoadmapState>()(
   persist(
     (set) => ({
       // Board state
@@ -64,6 +75,11 @@ export const useStore = create<BoardState & AuthState & SelectionState>()(
       currentProjectId:   null,
       setCurrentWorkspace: (id) => set({ currentWorkspaceId: id, currentProjectId: null }),
       setCurrentProject:   (id) => set({ currentProjectId: id }),
+      // Roadmap state — persisted so the Gantt remembers zoom + scroll.
+      roadmapZoom:       'week',
+      roadmapScrollLeft: 0,
+      setRoadmapZoom:       (z)  => set({ roadmapZoom: z }),
+      setRoadmapScrollLeft: (px) => set({ roadmapScrollLeft: px }),
     }),
     {
       name: 'pf-selection',
@@ -72,6 +88,8 @@ export const useStore = create<BoardState & AuthState & SelectionState>()(
       partialize: (s) => ({
         currentWorkspaceId: s.currentWorkspaceId,
         currentProjectId:   s.currentProjectId,
+        roadmapZoom:        s.roadmapZoom,
+        roadmapScrollLeft:  s.roadmapScrollLeft,
       }),
     },
   ),

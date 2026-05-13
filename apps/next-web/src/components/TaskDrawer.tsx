@@ -19,6 +19,7 @@ interface Task {
   priority?: string;
   type?: string;
   storyPoints?: number | null;
+  startDate?: string | null;
   dueDate?: string | null;
   // PascalCase (raw from API / SQL Server)
   Id?: string;
@@ -29,6 +30,7 @@ interface Task {
   Priority?: string;
   Type?: string;
   StoryPoints?: number | null;
+  StartDate?: string | null;
   DueDate?: string | null;
 }
 
@@ -57,19 +59,32 @@ function toLocalInput(iso: string | null | undefined): string {
        + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// <input type="date"> expects "YYYY-MM-DD". Tasks.StartDate is a DATE column
+// (day-granular), so we drop any time component.
+function toDateInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 export function TaskDrawer({ task, onClose }: Props) {
   const drawerRef   = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Seed the editable deadline from whichever casing the task arrived in.
+  // Seed the editable dates from whichever casing the task arrived in.
   // Hooks must run unconditionally, so this stays above the `!task` short-circuit.
-  const initialDueIso = task?.DueDate ?? task?.dueDate ?? null;
-  const [dueInput, setDueInput] = useState<string>(toLocalInput(initialDueIso));
+  const initialStartIso = task?.StartDate ?? task?.startDate ?? null;
+  const initialDueIso   = task?.DueDate   ?? task?.dueDate   ?? null;
+  const [startInput, setStartInput] = useState<string>(toDateInput(initialStartIso));
+  const [dueInput,   setDueInput]   = useState<string>(toLocalInput(initialDueIso));
 
-  // Re-sync the input when the drawer swaps to a different task.
+  // Re-sync the inputs when the drawer swaps to a different task.
   useEffect(() => {
-    setDueInput(toLocalInput(task?.DueDate ?? task?.dueDate ?? null));
-  }, [task?.Id, task?.id, task?.DueDate, task?.dueDate]);
+    setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
+    setDueInput  (toLocalInput(task?.DueDate   ?? task?.dueDate   ?? null));
+  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate]);
 
   // Close on Escape
   useEffect(() => {
@@ -82,20 +97,28 @@ export function TaskDrawer({ task, onClose }: Props) {
 
   const mutationTaskId = task?.Id ?? task?.id ?? '';
 
-  const updateDue = useMutation({
-    mutationFn: async (newDueIso: string | null) => {
+  // Single endpoint covers both StartDate (DATE) and DueDate (DATETIME2). The
+  // `clear*` flags tell the SP to actively NULL the column when we pass
+  // an empty string — without them an undefined value would be a no-op.
+  const updateSchedule = useMutation({
+    mutationFn: async (input: { startIso: string | null; dueIso: string | null }) => {
       const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/tasks/${mutationTaskId}`, {
+      const res = await fetch(`/api/v1/roadmap/tasks/${mutationTaskId}/dates`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
         credentials: 'include',
-        body: JSON.stringify({ dueDate: newDueIso }),
+        body: JSON.stringify({
+          startDate:      input.startIso,
+          dueDate:        input.dueIso,
+          clearStartDate: input.startIso === null,
+          clearDueDate:   input.dueIso   === null,
+        }),
       });
       if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       return res.json();
     },
     onSuccess: () => {
-      // Refresh every cache that surfaces a task's deadline.
+      // Refresh every cache that surfaces a task's schedule.
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
@@ -115,7 +138,8 @@ export function TaskDrawer({ task, onClose }: Props) {
   const priority    = task.Priority ?? task.priority ?? '';
   const type        = task.Type   ?? task.type   ?? '';
   const storyPoints = task.StoryPoints ?? task.storyPoints;
-  const dueDate     = task.DueDate ?? task.dueDate;
+  const startDate   = task.StartDate ?? task.startDate;
+  const dueDate     = task.DueDate   ?? task.dueDate;
 
   return (
     <>
@@ -148,72 +172,79 @@ export function TaskDrawer({ task, onClose }: Props) {
             )}
           </div>
 
-          {/* Editable deadline — datetime-local gives users hour/minute precision
-              now that Tasks.DueDate is DATETIME2 (migration 0024). */}
+          {/* Editable schedule — Start (DATE) + Due (DATETIME2). Single Save
+              hits PATCH /roadmap/tasks/:id/dates so the bar on the Gantt and
+              the deadline chip on the board both refresh from one request. */}
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Deadline</p>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="datetime-local"
-                value={dueInput}
-                onChange={(e) => setDueInput(e.target.value)}
-                disabled={updateDue.isPending}
-                style={{
-                  background:   '#2d3748',
-                  border:       '1px solid #4a5568',
-                  borderRadius: 6,
-                  color:        '#e2e8f0',
-                  padding:      '6px 10px',
-                  fontSize:     13,
-                  colorScheme:  'dark',
+            <p className={styles.sectionTitle}>Schedule</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <ScheduleRow
+                label="Start date"
+                kind="date"
+                value={startInput}
+                onChange={setStartInput}
+                hasValue={!!startDate}
+                onClear={() => {
+                  setStartInput('');
+                  updateSchedule.mutate({
+                    startIso: null,
+                    dueIso:   dueInput ? new Date(dueInput).toISOString() : null,
+                  });
                 }}
+                disabled={updateSchedule.isPending}
               />
-              <button
-                type="button"
-                onClick={() => {
-                  const iso = dueInput ? new Date(dueInput).toISOString() : null;
-                  updateDue.mutate(iso);
+              <ScheduleRow
+                label="Due date"
+                kind="datetime"
+                value={dueInput}
+                onChange={setDueInput}
+                hasValue={!!dueDate}
+                onClear={() => {
+                  setDueInput('');
+                  updateSchedule.mutate({
+                    startIso: startInput || null,
+                    dueIso:   null,
+                  });
                 }}
-                disabled={updateDue.isPending || dueInput === toLocalInput(dueDate)}
-                style={{
-                  background:   '#3182ce',
-                  color:        '#fff',
-                  border:       'none',
-                  borderRadius: 6,
-                  padding:      '6px 14px',
-                  fontSize:     13,
-                  fontWeight:   500,
-                  cursor:       (updateDue.isPending || dueInput === toLocalInput(dueDate)) ? 'default' : 'pointer',
-                  opacity:      (updateDue.isPending || dueInput === toLocalInput(dueDate)) ? 0.5 : 1,
-                }}
-              >
-                {updateDue.isPending ? 'Saving…' : 'Save'}
-              </button>
-              {dueDate && (
+                disabled={updateSchedule.isPending}
+              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    setDueInput('');
-                    updateDue.mutate(null);
-                  }}
-                  disabled={updateDue.isPending}
+                  onClick={() => updateSchedule.mutate({
+                    startIso: startInput || null,
+                    dueIso:   dueInput ? new Date(dueInput).toISOString() : null,
+                  })}
+                  disabled={
+                    updateSchedule.isPending
+                    || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate))
+                  }
                   style={{
-                    background:   'transparent',
-                    color:        '#a0aec0',
-                    border:       '1px solid #4a5568',
+                    background:   '#3182ce',
+                    color:        '#fff',
+                    border:       'none',
                     borderRadius: 6,
                     padding:      '6px 14px',
                     fontSize:     13,
-                    cursor:       updateDue.isPending ? 'default' : 'pointer',
+                    fontWeight:   500,
+                    cursor:       (updateSchedule.isPending
+                                   || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate)))
+                                  ? 'default' : 'pointer',
+                    opacity:      (updateSchedule.isPending
+                                   || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate)))
+                                  ? 0.5 : 1,
                   }}
                 >
-                  Clear
+                  {updateSchedule.isPending ? 'Saving…' : 'Save schedule'}
                 </button>
-              )}
+                <span style={{ fontSize: 11, color: '#718096' }}>
+                  Start is day-granular; due supports time.
+                </span>
+              </div>
             </div>
-            {updateDue.isError && (
+            {updateSchedule.isError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
-                Failed to update deadline.
+                Failed to update schedule.
               </p>
             )}
           </div>
@@ -247,5 +278,58 @@ export function TaskDrawer({ task, onClose }: Props) {
         </div>
       </div>
     </>
+  );
+}
+
+// Reusable date-input row used inside the Schedule section. Inline-styled to
+// match the dark CSS-module drawer skin without pulling in another stylesheet.
+function ScheduleRow({
+  label, kind, value, onChange, hasValue, onClear, disabled,
+}: {
+  label:    string;
+  kind:     'date' | 'datetime';
+  value:    string;
+  onChange: (v: string) => void;
+  hasValue: boolean;
+  onClear:  () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 12, color: '#a0aec0', minWidth: 84 }}>{label}</span>
+      <input
+        type={kind === 'date' ? 'date' : 'datetime-local'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        style={{
+          background:   '#2d3748',
+          border:       '1px solid #4a5568',
+          borderRadius: 6,
+          color:        '#e2e8f0',
+          padding:      '6px 10px',
+          fontSize:     13,
+          colorScheme:  'dark',
+        }}
+      />
+      {hasValue && (
+        <button
+          type="button"
+          onClick={onClear}
+          disabled={disabled}
+          style={{
+            background:   'transparent',
+            color:        '#a0aec0',
+            border:       '1px solid #4a5568',
+            borderRadius: 6,
+            padding:      '4px 10px',
+            fontSize:     12,
+            cursor:       disabled ? 'default' : 'pointer',
+          }}
+        >
+          Clear
+        </button>
+      )}
+    </div>
   );
 }

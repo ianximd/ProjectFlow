@@ -549,3 +549,97 @@ describe('OAuth callback — auto-link branch (Phase 1.C)', () => {
     expect(r.recordset[0]!.c).toBe(1);
   });
 });
+
+// ─── Phase 1.F — MFA gate ───────────────────────────────────────────────────
+
+describe('OAuth callback — MFA gate (Phase 1.F)', () => {
+  /**
+   * Helper: turn MFA on for a user via direct SQL. The /mfa/setup +
+   * /mfa/verify-setup flow needs a real TOTP code which requires the
+   * shared secret — easier in tests to flip the column directly.
+   */
+  async function enableMfaFor(email: string) {
+    const pool = await getPool();
+    await pool.request()
+      .input('Email', email)
+      .query(`
+        UPDATE dbo.Users
+        SET MfaEnabled = 1,
+            MfaSecret  = 'JBSWY3DPEHPK3PXP', -- arbitrary base32; never used in this test
+            MfaEnabledAt = SYSUTCDATETIME()
+        WHERE Email = @Email
+      `);
+  }
+
+  it('redirects to /oauth/mfa with a token (no refresh cookie) when the linked user has MFA on', async () => {
+    // Sign in once to create the identity + user.
+    await driveOAuthFlow({
+      identityCode: 'code-mfa-1',
+      identity: {
+        subject: 'mfa-sub-1', email: 'mfa-user@projectflow.test',
+        emailVerified: true, name: 'Mfa User', avatarUrl: null,
+      },
+    });
+
+    // Flip MFA on, then sign in again — the gate must fire.
+    await enableMfaFor('mfa-user@projectflow.test');
+    const { callback } = await driveOAuthFlow({
+      identityCode: 'code-mfa-1',
+      identity: {
+        subject: 'mfa-sub-1', email: 'mfa-user@projectflow.test',
+        emailVerified: true, name: 'Mfa User', avatarUrl: null,
+      },
+    });
+
+    expect(callback.status).toBe(302);
+    const loc = callback.headers.get('location')!;
+    expect(loc).toMatch(/\/oauth\/mfa\?/);
+    // The challenge JWT is in the URL.
+    const url = new URL(loc);
+    expect(url.searchParams.get('token')).toMatch(/^[\w-]+\.[\w-]+\.[\w-]+$/); // 3-part JWT
+    expect(url.searchParams.get('returnTo')).toBe('/board');
+    // Critically: NO refresh cookie. The session has not been issued.
+    expect(callback.headers.get('set-cookie')).toBeNull();
+
+    const row = await waitForAuditEntry({
+      action: 'oauth.mfa-required', resource: 'OAuth', resourceId: 'fake',
+    });
+    expect(row).not.toBeNull();
+    expect(row.UserEmail).toBe('mfa-user@projectflow.test');
+  });
+
+  it('does NOT log a SECOND oauth.login when the gate fires — only oauth.mfa-required', async () => {
+    // First sign-in (no MFA yet) — produces one oauth.login row.
+    await driveOAuthFlow({
+      identityCode: 'code-mfa-2',
+      identity: {
+        subject: 'mfa-sub-2', email: 'mfa-only@projectflow.test',
+        emailVerified: true, name: 'Mfa Only', avatarUrl: null,
+      },
+    });
+    await waitForAuditEntry({ action: 'oauth.login', resource: 'OAuth', resourceId: 'fake' });
+
+    await enableMfaFor('mfa-only@projectflow.test');
+
+    // Second sign-in (MFA on) — gate fires, no new oauth.login row.
+    await driveOAuthFlow({
+      identityCode: 'code-mfa-2',
+      identity: {
+        subject: 'mfa-sub-2', email: 'mfa-only@projectflow.test',
+        emailVerified: true, name: 'Mfa Only', avatarUrl: null,
+      },
+    });
+    await waitForAuditEntry({ action: 'oauth.mfa-required', resource: 'OAuth', resourceId: 'fake' });
+
+    const pool = await getPool();
+    const r = await pool.request()
+      .input('Action', 'oauth.login')
+      .input('Email', 'mfa-only@projectflow.test')
+      .query(`
+        SELECT COUNT(*) AS c FROM dbo.AuditLog
+        WHERE Action = @Action AND UserEmail = @Email
+      `);
+    // One row from the first flow, none added by the second.
+    expect(r.recordset[0]!.c).toBe(1);
+  });
+});

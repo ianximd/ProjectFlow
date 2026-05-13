@@ -10,6 +10,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 42 — OAuth × MFA: close the second-factor bypass)
+
+**Security fix.** Until Phase 1.F, the OAuth callback handler called `AuthService.issueSessionTokens(user)` directly without checking `Users.MfaEnabled`. The same user signing in with their password would be challenged for TOTP; signing in via Google/Microsoft would not. An attacker who compromised a user's social account got an MFA-protected ProjectFlow session for free. This phase closes that gap.
+
+- **`AuthService.mintMfaChallengeToken(userId, email)`** — extracted from the existing `login()` method so OAuth can mint the *exact same* short-lived `purpose: 'mfa-challenge'` JWT shape password+MFA login uses. Single helper means the two callsites can't drift in their TTL or claim shape
+- **`OAuthCallbackResult`** gains a fourth variant: `{ kind: 'mfa-required'; userId; userEmail; mfaToken }`. The other three (`tokens`, `linked`, `error`) are unchanged
+- **`OAuthService.maybeMfaGate()`** — private helper invoked at the two sign-in branches where a pre-existing user gets resolved:
+  - **Existing-identity sign-in**: `findByProviderSubject → getUserById → MfaEnabled?` — gate fires, `issueSessionTokens` does NOT
+  - **Email-collision auto-link**: identity is still attached to the local user, then the gate fires before token issuance — provider auth proved the social account, but the local account's MFA still gates the session
+  - **Brand-new-user-via-OAuth**: deliberately skips the gate — just-created users can't have MFA enabled. Skipping the call also avoids the JWT mint cost on the hot path
+  - Accepts both `MfaEnabled === true` (booleans) and `=== 1` (SQL bit driver shape)
+- **Token persistence policy at the gate**: encrypted provider tokens ARE written to `UserOAuthIdentities` even when MFA hasn't completed. Trade-off documented in the service comment: an attacker who passes provider auth but fails MFA leaves a few KB of ciphertext sitting in our DB — they cannot get a session regardless, and the legitimate user benefits when they complete the challenge because the refresh + rotation workers can already see the row. The cost-of-failure asymmetry is heavily in favour of persisting eagerly
+- **Route handler** (`auth.routes.ts`) gains the mfa-required branch: 302 to `${finishBase}/oauth/mfa?token=<mfa-jwt>&returnTo=<spa-path>`, deliberately WITHOUT calling `setRefreshCookie` (no session yet). The frontend's `/oauth/mfa` page collects the TOTP and POSTs to the existing `/auth/mfa/challenge` endpoint, which sets the refresh cookie on success — no second MFA endpoint needed, both password and OAuth paths converge there
+- **New frontend page** `apps/next-web/src/app/oauth/mfa/page.tsx` — Suspense-wrapped client component, reads `token` + `returnTo` from query, supports TOTP and recovery-code modes via a single input field with a "use a recovery code instead" toggle. On success calls `/auth/refresh` to pick up the access token (mirroring the `/oauth/finish` pattern from Phase 1.A) and SPA-navigates to `returnTo`. Stale-link defence: bails to `/login` if `token` is missing (5-min challenge JWT expired or page bookmarked)
+- **Audit log** gains `oauth.mfa-required` events:
+  - Fired when the gate redirects to `/oauth/mfa` — records userId + userEmail so an admin investigating a half-completed sign-in can see who got challenged
+  - `oauth.login` event no longer fires for MFA-gated flows — it only fires when tokens are actually issued, which means a user who challenge-fails appears in audit as `oauth.mfa-required` but never as `oauth.login`. The other half-step's audit (the `/auth/mfa/challenge` POST) is a pre-existing gap for password+MFA too; that's tracked separately
+- **8 new tests** (172 total in API now, +8 over W41's 164):
+  - 6 unit tests in `oauth.service.unit.test.ts` for the gate: fires for existing-identity with `MfaEnabled=true`, fires for auto-link branch (identity still linked, no session issued), does NOT fire for brand-new user, does NOT fire when `MfaEnabled=false`, persists tokens at the gate boundary (proves the documented trade-off), accepts `MfaEnabled=1` SQL-bit shape the same as `=true`. All assert `authService.issueSessionTokens` was NOT called when the gate fires — that's the bypass the unit suite is guarding against
+  - 2 integration tests in `oauth.callback.integration.test.ts`:
+    - Real MFA-enabled user signs in via OAuth → callback 302s to `/oauth/mfa?token=…&returnTo=/board` with a 3-part JWT in the query, sets NO `Set-Cookie` (no refresh token issued), and writes a `oauth.mfa-required` row to `dbo.AuditLog`
+    - Second sign-in for an MFA-enabled user does not add a second `oauth.login` row — the first sign-in (before MFA was turned on) accounts for the only `oauth.login` row; the second produces `oauth.mfa-required` instead
+
+**Limitations**: the deferred-persistence trade-off above. Also, the new `/oauth/mfa` page calls `/auth/refresh` after a successful challenge to pick up the access token — same single-cookie-then-refresh hop the rest of the auth flows use, but worth noting that an OAuth+MFA sign-in is now a 4-redirect dance: provider → `/api/v1/auth/oauth/:p/callback` → SPA `/oauth/mfa` → `/auth/mfa/challenge` POST → SPA returnTo.
+
 #### Phase 6 — Post-launch (Week 41 — OAuth maintenance workers: silent-refresh + key-rotation)
 - **`apps/api/src/modules/auth/oauth/workers/oauth-maintenance.worker.ts`** — single BullMQ queue (`oauth-maintenance`) drives two recurring jobs via `JobScheduler.upsertJobScheduler` (BullMQ ≥5 idempotent recurring API). Refresh sweep every 5 minutes, rotation sweep every 15 minutes. Both gated on `tokenCrypto.isConfigured()` — the worker exits cleanly without scheduling anything when the OSS deployment hasn't set `OAUTH_TOKEN_ENC_KEY_PRIMARY`. Concurrency 1 (both sweeps touch the same table; serialise to dodge contention)
 - **Silent-refresh sweep** (`refreshTokens.service.ts`):

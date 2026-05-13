@@ -36,9 +36,10 @@ import type { User } from '@projectflow/types';
 import type { OAuthTokens } from './types.js';
 
 export type OAuthCallbackResult =
-  | { kind: 'tokens';    user: Partial<User>; accessToken: string; refreshToken: string }
-  | { kind: 'linked';    userId: string }
-  | { kind: 'error';     reason: 'INVALID_STATE' | 'PROVIDER_ERROR' | 'NO_EMAIL' | 'ACCOUNT_EXISTS' | 'ALREADY_LINKED'; message: string };
+  | { kind: 'tokens';       user: Partial<User>; accessToken: string; refreshToken: string }
+  | { kind: 'linked';       userId: string }
+  | { kind: 'mfa-required'; userId: string; userEmail: string; mfaToken: string }
+  | { kind: 'error';        reason: 'INVALID_STATE' | 'PROVIDER_ERROR' | 'NO_EMAIL' | 'ACCOUNT_EXISTS' | 'ALREADY_LINKED'; message: string };
 
 const RETURN_TO_ALLOW = /^\/[\w\-/?=&.#]*$/;
 
@@ -178,6 +179,19 @@ export class OAuthService {
       if (!user) {
         return { kind: 'error', reason: 'INVALID_STATE', message: 'Linked user no longer exists' };
       }
+      // Phase 1.F — MFA gate. If the local account has TOTP enabled, the
+      // OAuth provider's auth alone isn't enough: we still need the
+      // second factor before issuing a real session. Persisting the
+      // provider tokens here is intentional even though the user
+      // hasn't completed MFA — the worst an attacker can do without
+      // MFA is keep some encrypted bytes warm in our DB; they still
+      // cannot get a session, and the legitimate user benefits from
+      // the cached tokens once they complete the challenge.
+      const gate = this.maybeMfaGate(user, payload.returnTo);
+      if (gate) {
+        await persistTokens();
+        return gate;
+      }
       const session = await this.authService.issueSessionTokens(user);
       await persistTokens();
       return { ...session, returnTo: payload.returnTo };
@@ -201,6 +215,13 @@ export class OAuthService {
             subject:  info.subject,
             email:    info.email,
           });
+          // Auto-link still has to honour the local user's MFA. Same
+          // gate as the existing-identity path above — see comment there.
+          const gate = this.maybeMfaGate(collision as User, payload.returnTo);
+          if (gate) {
+            await persistTokens();
+            return gate;
+          }
           const session = await this.authService.issueSessionTokens(collision as User);
           await persistTokens();
           return { ...session, returnTo: payload.returnTo };
@@ -241,6 +262,32 @@ export class OAuthService {
     const session = await this.authService.issueSessionTokens(newUser);
     await persistTokens();
     return { ...session, returnTo: payload.returnTo };
+  }
+
+  /**
+   * Phase 1.F — return an `mfa-required` callback result when the user
+   * has TOTP enabled, otherwise null (caller proceeds with token
+   * issuance). Single helper so the existing-identity and auto-link
+   * paths can't drift in their MFA enforcement.
+   *
+   * Brand-new-user-via-OAuth doesn't call this — those users were just
+   * created and CAN'T have MFA enabled. Skipping the call also avoids
+   * the cost of a no-op JWT mint.
+   */
+  private maybeMfaGate(user: User, returnTo?: string):
+    (OAuthCallbackResult & { returnTo?: string }) | null
+  {
+    const enabled = (user as any).MfaEnabled;
+    if (enabled !== true && enabled !== 1) return null;
+    const userId    = (user as any).Id    as string;
+    const userEmail = (user as any).Email as string;
+    return {
+      kind:      'mfa-required',
+      userId,
+      userEmail,
+      mfaToken:  this.authService.mintMfaChallengeToken(userId, userEmail),
+      returnTo,
+    };
   }
 
   /**

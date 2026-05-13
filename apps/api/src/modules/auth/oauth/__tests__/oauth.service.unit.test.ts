@@ -83,6 +83,8 @@ function makeAuthService(overrides: Record<string, any> = {}) {
       accessToken:  'access-jwt',
       refreshToken: 'refresh-raw',
     })),
+    // Phase 1.F — service mints MFA challenge JWTs via this helper.
+    mintMfaChallengeToken: vi.fn((userId: string, _email: string) => `mfa-jwt-for-${userId}`),
     ...overrides,
   } as any;
 }
@@ -484,6 +486,139 @@ describe('OAuthService.unlink', () => {
     await expect(
       new OAuthService({ repo, authRepo: makeAuthRepo(), authService: makeAuthService() }).unlink('user-1', 'fake'),
     ).rejects.toThrow(/connection lost/);
+  });
+});
+
+// ─── Phase 1.F: MFA gate ────────────────────────────────────────────────────
+
+describe('OAuthService.callback — MFA gate (Phase 1.F)', () => {
+  beforeEach(() => {
+    (registry.getProvider as any).mockReturnValue(fakeProvider());
+    (stateMod.consumeState as any).mockResolvedValue({
+      provider: 'fake', nonce: 'n', pkceVerifier: 'p', returnTo: '/board', linkUserId: null,
+    });
+  });
+
+  it('returns mfa-required for an existing identity whose user has MfaEnabled', async () => {
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue({ UserId: 'user-mfa' }),
+    });
+    const authRepo = makeAuthRepo({
+      getUserById: vi.fn().mockResolvedValue({ Id: 'user-mfa', Email: 'mfa@x.com', MfaEnabled: true }),
+    });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo, authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('mfa-required');
+    expect(result).toMatchObject({
+      kind:      'mfa-required',
+      userId:    'user-mfa',
+      userEmail: 'mfa@x.com',
+      mfaToken:  'mfa-jwt-for-user-mfa',
+      returnTo:  '/board',
+    });
+    // The gate must short-circuit BEFORE issueSessionTokens — that's
+    // the whole point of the fix.
+    expect(authService.issueSessionTokens).not.toHaveBeenCalled();
+    expect(authService.mintMfaChallengeToken).toHaveBeenCalledWith('user-mfa', 'mfa@x.com');
+  });
+
+  it('returns mfa-required from the auto-link branch when local user has MfaEnabled', async () => {
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue(null),
+      linkExisting:          vi.fn().mockResolvedValue({ Id: 'oauth-row-1' }),
+    });
+    const authRepo = makeAuthRepo({
+      getUserByEmail: vi.fn().mockResolvedValue({
+        Id: 'user-collide', Email: 'collide@x.com',
+        IsEmailVerified: true, MfaEnabled: true,
+      }),
+    });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo, authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('mfa-required');
+    expect(repo.linkExisting).toHaveBeenCalled(); // identity DOES get linked
+    expect(authService.issueSessionTokens).not.toHaveBeenCalled();
+  });
+
+  it('does NOT trigger the MFA gate for a brand-new user (just-created accounts cannot have MFA)', async () => {
+    const repo = makeRepo({
+      findByProviderSubject:  vi.fn().mockResolvedValue(null),
+      // The brand-new user CAN'T have MfaEnabled — but even if some
+      // pathological path returned MfaEnabled=true here, the new-user
+      // branch deliberately skips the gate to avoid the JWT mint cost.
+      createUserWithIdentity: vi.fn().mockResolvedValue({ Id: 'user-new', Email: 'new@x.com' }),
+    });
+    const authRepo = makeAuthRepo({ getUserByEmail: vi.fn().mockResolvedValue(null) });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo, authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('tokens');
+    expect(authService.mintMfaChallengeToken).not.toHaveBeenCalled();
+  });
+
+  it('still issues tokens directly when MfaEnabled is false on the existing user', async () => {
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue({ UserId: 'user-no-mfa' }),
+    });
+    const authRepo = makeAuthRepo({
+      getUserById: vi.fn().mockResolvedValue({ Id: 'user-no-mfa', Email: 'plain@x.com', MfaEnabled: false }),
+    });
+    const authService = makeAuthService();
+
+    const result = await new OAuthService({ repo, authRepo, authService }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('tokens');
+    expect(authService.mintMfaChallengeToken).not.toHaveBeenCalled();
+    expect(authService.issueSessionTokens).toHaveBeenCalled();
+  });
+
+  it('persists provider tokens at the gate boundary (so the post-MFA session benefits)', async () => {
+    // The deferred-persistence trade-off documented in the service:
+    // we DO write the encrypted tokens before the user passes MFA.
+    // Worst case for an attacker: a few KB of unusable ciphertext sit
+    // in the DB. The legitimate user benefits because the rotation +
+    // refresh workers can already see the row.
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue({ UserId: 'user-mfa-persist' }),
+    });
+    const authRepo = makeAuthRepo({
+      getUserById: vi.fn().mockResolvedValue({ Id: 'user-mfa-persist', Email: 'mfa2@x.com', MfaEnabled: true }),
+    });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('mfa-required');
+    expect(repo.upsertTokens).toHaveBeenCalled();
+  });
+
+  it('treats MfaEnabled=1 (SQL Bit) the same as MfaEnabled=true', async () => {
+    const repo = makeRepo({
+      findByProviderSubject: vi.fn().mockResolvedValue({ UserId: 'user-bit' }),
+    });
+    const authRepo = makeAuthRepo({
+      getUserById: vi.fn().mockResolvedValue({ Id: 'user-bit', Email: 'bit@x.com', MfaEnabled: 1 }),
+    });
+
+    const result = await new OAuthService({ repo, authRepo, authService: makeAuthService() }).callback({
+      provider: 'fake', code: 'c', state: 's',
+    });
+
+    expect(result.kind).toBe('mfa-required');
   });
 });
 

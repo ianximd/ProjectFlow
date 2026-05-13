@@ -68,12 +68,10 @@ export class AuthService {
     // mfaChallenge. Issuing a short-lived "MFA challenge" JWT prevents the
     // client from having to re-send the password with the TOTP code.
     if ((user as any).MfaEnabled) {
-      const mfaToken = jwt.sign(
-        { purpose: 'mfa-challenge', userId, email: (user as any).Email } satisfies MfaChallengePayload,
-        JWT_SECRET,
-        { expiresIn: MFA_CHALLENGE_EXPIRY_S },
-      );
-      return { kind: 'mfa-required', mfaToken };
+      return {
+        kind:     'mfa-required',
+        mfaToken: this.mintMfaChallengeToken(userId, (user as any).Email),
+      };
     }
 
     // ── Successful login (no MFA): clear lockout state + issue tokens ────────
@@ -116,6 +114,21 @@ export class AuthService {
     const user = await this.repo.getUserById(payload.userId);
     if (!user) return 'invalid-token';
     return this.issueSessionTokens(user);
+  }
+
+  /**
+   * Mint the short-lived JWT that the client trades in at /auth/mfa/challenge
+   * for a real session. Public so OAuth (Phase 1.F) can reuse the exact
+   * same shape password+MFA login uses — keeping a single MFA verification
+   * code-path means we don't risk the OAuth gate drifting from the
+   * password gate.
+   */
+  mintMfaChallengeToken(userId: string, email: string): string {
+    return jwt.sign(
+      { purpose: 'mfa-challenge', userId, email } satisfies MfaChallengePayload,
+      JWT_SECRET,
+      { expiresIn: MFA_CHALLENGE_EXPIRY_S },
+    );
   }
 
   /**

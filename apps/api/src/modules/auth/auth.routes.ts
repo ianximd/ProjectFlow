@@ -315,6 +315,28 @@ authRoutes.get('/oauth/:provider/callback', async (c) => {
     return c.redirect(`${finishBase}${decodeURIComponent(returnTo)}`, 302);
   }
 
+  // Phase 1.F — MFA gate. Provider auth alone isn't enough; the user
+  // still needs to pass the second factor before we issue a session.
+  // Hand the mfa-challenge JWT to the SPA's /oauth/mfa page, which
+  // collects the TOTP and POSTs to the existing /auth/mfa/challenge.
+  // No refresh cookie set yet — that happens after MFA succeeds.
+  if (result.kind === 'mfa-required') {
+    adminService.log({
+      userId:     result.userId,
+      userEmail:  result.userEmail,
+      action:     'oauth.mfa-required',
+      resource:   'OAuth',
+      resourceId: provider,
+      ipAddress:  meta.ip,
+      userAgent:  meta.userAgent,
+    });
+    const mfaQs = new URLSearchParams({
+      token:    result.mfaToken,
+      returnTo: result.returnTo ?? '/board',
+    });
+    return c.redirect(`${finishBase}/oauth/mfa?${mfaQs.toString()}`, 302);
+  }
+
   setRefreshCookie(c, result.refreshToken);
   adminService.log({
     userId:     (result.user as any).Id ?? (result.user as any).id ?? '',

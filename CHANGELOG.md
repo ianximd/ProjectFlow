@@ -10,6 +10,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Richer User status labels in the admin panel)
+
+Until this week the admin "Status" column was a binary `Suspended | Active` ternary computed from `DeletedAt`. Three other states already existed in the data — failed-login lockout (migration 0017), unverified email (migration 0001), MFA-protected — but they weren't surfaced as a single readable label. This phase teaches the admin UI to compute a four-way status from existing fields, without adding a `Status` column or a lookup table.
+
+- **`usp_Admin_ListUsers`** now projects `LockedUntil` alongside the existing user columns. NULL is the normal case; populated during the 15-minute failed-login lockout window from `usp_Auth_RecordFailedLogin` / cleared by `usp_Admin_User_Unlock`
+- **`AdminUser` type** (`packages/types/index.ts`) gains `lockedUntil: string | null`. The admin repository maps `r.LockedUntil` → ISO string in all four code-paths that construct an `AdminUser` (listUsers, createUser, updateUser, toggleUserActive)
+- **`apps/next-web/src/lib/userStatus.ts`** — pure helper, no I/O. `getUserStatus({ deletedAt, lockedUntil?, isEmailVerified }, now?)` returns `{ label, tone }` with priority order:
+  1. **Suspended** (red) — `deletedAt` set; wins over everything because the account can't sign in regardless
+  2. **Locked** (orange) — `lockedUntil` > now; clears itself when the timestamp passes OR via admin unlock
+  3. **Pending Verification** (yellow) — `!isEmailVerified`
+  4. **Active** (green) — fallback
+  The `now` parameter is injectable so unit tests pin time without mocking Date
+- **`admin/page.tsx` Status badge** replaces the binary ternary with the helper. Adds `.badgeOrange` (`#ffedd5` / `#c2410c`) to `page.module.css` for the new Locked tone. The badge gets a `title="Locked until <local-time>"` tooltip when the user is actively locked, so an admin can see when the window expires without clicking through
+- **MFA stays separate** — it's not a status (an Active user can have MFA on; a Suspended user can also have had MFA). The existing MFA badge in its own column is unchanged
+- **Workspace status stays binary** (Active / Archived). The Workspaces table has no signals beyond `DeletedAt` — no equivalent of `LockedUntil` or `IsEmailVerified` to compose into a richer label. If we ever want statuses like "Empty" (no members or projects) or "Inactive" (no activity in N days) we'd add them either as computed conditions in the admin UI or as cached counters
+- **8 new tests** in `apps/next-web/src/lib/__tests__/userStatus.test.ts`: Active happy path; Pending when unverified; Locked when future timestamp; NOT Locked when past timestamp; Suspended overrides Locked and Pending; Locked outranks Pending; missing `lockedUntil` accepted; default `now` returns a known-shape result
+
+**Limitation**: The `LockedUntil` flag is populated only via the API-layer lockout flow. If a future feature adds its own lockout mechanism (e.g., an admin-initiated temporary suspension that's distinct from soft-delete), this helper will need to know about it.
+
 #### Phase 6 — Post-launch (Week 43 — Audit trail field-level diff: full 9/9 resource coverage)
 
 Follow-up to the audit-diff phase: the five resources that were on the "diff-less audit row" fallback now produce field-level diffs too.

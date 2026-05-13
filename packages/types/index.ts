@@ -684,6 +684,10 @@ export interface AdminUser {
   avatarUrl:        string | null;
   isEmailVerified:  boolean;
   mfaEnabled:       boolean;
+  // W43 — populated while the user is in the failed-login lockout window;
+  // null otherwise. The admin UI computes a "Locked" status when this
+  // is set AND in the future.
+  lockedUntil:      string | null;
   workspaceCount:   number;
   createdAt:        string;
   deletedAt:        string | null;

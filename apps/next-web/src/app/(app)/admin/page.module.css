@@ -164,6 +164,7 @@
 .badgeYellow { background: #fef9c3; color: #ca8a04; }
 .badgeBlue   { background: #dbeafe; color: #2563eb; }
 .badgeGray   { background: #f1f5f9; color: #475569; }
+.badgeOrange { background: #ffedd5; color: #c2410c; } /* W43 — Locked status */
 
 /* ── Action button ── */
 .actionBtn {

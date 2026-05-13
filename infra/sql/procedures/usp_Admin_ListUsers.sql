@@ -15,6 +15,11 @@ BEGIN
     u.AvatarUrl,
     u.IsEmailVerified,
     u.MfaEnabled,
+    -- W43 — surface the lockout-window expiry so the admin UI can
+    -- compute a "Locked" status while the timestamp is in the future.
+    -- NULL is the normal case; integration with usp_Admin_User_Unlock
+    -- clears it.
+    u.LockedUntil,
     u.CreatedAt,
     u.DeletedAt,
     (SELECT COUNT(*) FROM dbo.WorkspaceMembers wm WHERE wm.UserId = u.Id) AS WorkspaceCount,

@@ -6,6 +6,7 @@ import { useStore } from '@/store/useStore';
 import styles from './page.module.css';
 import type { AdminStats, AdminUser, AdminWorkspace, AuditLogEntry } from '@projectflow/types';
 import { RolesTab } from '@/components/admin/RolesTab';
+import { getUserStatus } from '@/lib/userStatus';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -345,9 +346,23 @@ export default function AdminPage() {
                     <td>{u.workspaceCount}</td>
                     <td className={styles.mono}>{u.createdAt.slice(0, 10)}</td>
                     <td>
-                      <span className={`${styles.badge} ${u.deletedAt ? styles.badgeRed : styles.badgeGreen}`}>
-                        {u.deletedAt ? 'Suspended' : 'Active'}
-                      </span>
+                      {(() => {
+                        const { label, tone } = getUserStatus(u);
+                        const toneClass = tone === 'red'    ? styles.badgeRed
+                                       : tone === 'orange' ? styles.badgeOrange
+                                       : tone === 'yellow' ? styles.badgeYellow
+                                       :                     styles.badgeGreen;
+                        return (
+                          <span
+                            className={`${styles.badge} ${toneClass}`}
+                            title={u.lockedUntil && tone === 'orange'
+                              ? `Locked until ${new Date(u.lockedUntil).toLocaleString()}`
+                              : undefined}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td>
                       <div className={styles.actionRow}>

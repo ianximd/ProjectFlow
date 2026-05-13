@@ -111,6 +111,9 @@ export class AdminRepository {
       avatarUrl:       r.AvatarUrl ?? null,
       isEmailVerified: Boolean(r.IsEmailVerified),
       mfaEnabled:      Boolean(r.MfaEnabled),
+      lockedUntil:     r.LockedUntil
+        ? (r.LockedUntil instanceof Date ? r.LockedUntil.toISOString() : String(r.LockedUntil))
+        : null,
       workspaceCount:  r.WorkspaceCount ?? 0,
       createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
       deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
@@ -155,6 +158,7 @@ export class AdminRepository {
       avatarUrl:       r.AvatarUrl ?? null,
       isEmailVerified: Boolean(r.IsEmailVerified),
       mfaEnabled:      Boolean(r.MfaEnabled),
+      lockedUntil:     r.LockedUntil ? (r.LockedUntil instanceof Date ? r.LockedUntil.toISOString() : String(r.LockedUntil)) : null,
       workspaceCount:  r.WorkspaceCount ?? 0,
       createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
       deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
@@ -176,6 +180,7 @@ export class AdminRepository {
       avatarUrl:       r.AvatarUrl ?? null,
       isEmailVerified: Boolean(r.IsEmailVerified),
       mfaEnabled:      Boolean(r.MfaEnabled),
+      lockedUntil:     r.LockedUntil ? (r.LockedUntil instanceof Date ? r.LockedUntil.toISOString() : String(r.LockedUntil)) : null,
       workspaceCount:  r.WorkspaceCount ?? 0,
       createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
       deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
@@ -221,6 +226,7 @@ export class AdminRepository {
       avatarUrl:       null,
       isEmailVerified: Boolean(r.IsEmailVerified),
       mfaEnabled:      false,
+      lockedUntil:     null,
       workspaceCount:  0,
       createdAt:       r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
       deletedAt:       r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,

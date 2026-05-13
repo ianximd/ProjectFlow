@@ -25,6 +25,17 @@ export class WorkspaceRepository {
     return rows[0] ?? null;
   }
 
+  // Lightweight status lookup used by the freeze-guard in
+  // permissions.middleware. Does NOT filter on DeletedAt so an archived
+  // workspace also shows up — the caller decides what to do.
+  async getStatus(id: string): Promise<{ Id: string; Status: string; DeletedAt: Date | null } | null> {
+    const rows = await execSpOne<{ Id: string; Status: string; DeletedAt: Date | null }>(
+      'usp_Workspace_GetStatus',
+      [{ name: 'Id', type: sql.UniqueIdentifier, value: id }],
+    );
+    return rows[0] ?? null;
+  }
+
   async addMember(workspaceId: string, userId: string, role = 'MEMBER') {
     const rows = await execSpOne('usp_WorkspaceMember_Add', [
       { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },

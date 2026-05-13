@@ -10,6 +10,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Freeze guard: FROZEN workspaces actually refuse writes)
+
+Last week's W43 entry shipped `Workspaces.Status` as a passive admin annotation — the badge changed colour but writes still went through. This follow-up wires `Status` into the permission middleware so `FROZEN` and `SUSPENDED` workspaces fail closed on every workspace-scoped write.
+
+- **New `usp_Workspace_GetStatus(Id)`** — single-row PK lookup returning `{Id, Status, DeletedAt}`. Unlike `usp_Workspace_GetById` it does NOT filter `DeletedAt` (the freeze guard needs to see archived workspaces to skip them cleanly). Two scalar columns, no joins — the middleware calls this on every workspace-scoped write so it has to be cheap. 177 SPs total now
+- **`WorkspaceRepository.getStatus(id)`** — thin wrapper around the SP. Per-request result is cached on the Hono context (`workspaceStatus:<id>`) so multi-gate routes (e.g. `ownerFallback` + primary check) hit MSSQL once
+- **Freeze guard in `permissions.middleware.ts`** — runs *after* the existing allow/deny logic, only on workspace-scoped writes:
+  - **Method-aware**: only POST/PATCH/PUT/DELETE trigger the check. GET stays open on a frozen workspace so admins can still see what's there
+  - **Status-aware**: `FROZEN` → `403 { code: 'WORKSPACE_FROZEN' }`; `SUSPENDED` → `403 { code: 'WORKSPACE_SUSPENDED' }`. `ACTIVE` and `TRIAL` pass through
+  - **Admin bypass**: any user holding an `admin.workspaces.*` slug skips the guard (otherwise admins couldn't unfreeze, change status, or soft-delete a frozen workspace through the public API). Prefix-match instead of an enumerated allow-list so future admin slugs are covered automatically
+  - **Archived ≠ frozen**: when `DeletedAt` is set the guard skips entirely. The route's own resource lookup will 404 — returning `WORKSPACE_FROZEN` for an archived workspace would mislead the caller into thinking thaw is the fix
+  - **Order**: permission check runs first. If the slug is missing we 403 with `FORBIDDEN` and never call the status SP — both to keep the hot path cheap and to avoid a timing leak (frozen-vs-not shouldn't be visible to users who lack permission anyway)
+- **12 new unit tests** in `permissions.middleware.unit.test.ts`: each branch of the guard (FROZEN/SUSPENDED block, ACTIVE/TRIAL pass, GET pass-through, admin bypass, system-scoped skip, missing workspace, archived skip, per-context status cache, permission-before-freeze order). Mocks `WorkspaceRepository` via `vi.hoisted` so the map of stub statuses survives the hoisted `vi.mock` factory
+- **5 new integration tests** in `freeze-guard.integration.test.ts` exercising the full stack against MSSQL: FROZEN blocks `POST /projects`, SUSPENDED blocks too, reads still work, thaw → write succeeds, super-admin can `DELETE /workspaces/:id` on a frozen workspace
+
+**Why method-aware rather than blocking everything?** A frozen workspace's data is still a legitimate audit/forensic subject — operators need to read what's there to decide whether to unfreeze. Locking reads as well would force the unfreezer to first unfreeze blind. Writes are the only mutation surface, so that's the only thing we block.
+
+**Why per-context status cache?** Some routes gate twice (primary check + ownerFallback). Without caching, the SP would run once per gate even though the underlying workspace doesn't change mid-request. The cache key is per-workspaceId so multi-workspace requests still work.
+
 #### Phase 6 — Post-launch (Week 43 — Workspace Status enum: real DB-backed states)
 
 **The bug we found while reviewing User status.** The admin Workspace badge had a `deletedAt ? 'Archived' : 'Active'` ternary just like Users, but `usp_Admin_ListWorkspaces` was never projecting `DeletedAt` — so every row showed "Active" regardless of soft-delete state. The badge was effectively static. This phase fixes the projection AND adds richer operational states the Workspaces table didn't have before.
@@ -29,7 +48,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 **Trade-off**: Status is intentionally orthogonal to `DeletedAt`. An archived workspace keeps whatever Status it had before archiving — useful for forensics ("what state was this in when we archived it?") but means the badge composition has to know to show "Archived" instead. The composer enforces that by checking `deletedAt` first.
 
-**Future**: `Status='FROZEN'` is a passive label today. A follow-up could wire it into the workspace permission middleware so writes against frozen workspaces 403 with `WORKSPACE_FROZEN`. Right now it's purely an admin annotation.
+**Follow-up shipped same week** (see the "Freeze guard" entry above): `FROZEN` and `SUSPENDED` now refuse writes at the permission middleware with `WORKSPACE_FROZEN` / `WORKSPACE_SUSPENDED`.
 
 #### Phase 6 — Post-launch (Week 43 — Richer User status labels in the admin panel)
 

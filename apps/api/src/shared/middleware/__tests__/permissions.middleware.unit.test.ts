@@ -9,6 +9,22 @@ vi.mock('../../../modules/roles/role.service.js', () => ({
   },
 }));
 
+// Freeze guard hits WorkspaceRepository.getStatus() — mock the class so
+// each test can declare the workspace's current Status/DeletedAt without
+// touching the DB. vi.hoisted keeps the map alive across the hoisted mock.
+const mocks = vi.hoisted(() => ({
+  statuses: new Map<string, { Id: string; Status: string; DeletedAt: Date | null }>(),
+  getStatusSpy: vi.fn<(id: string) => Promise<{ Id: string; Status: string; DeletedAt: Date | null } | null>>(),
+}));
+vi.mock('../../../modules/workspaces/workspace.repository.js', () => ({
+  WorkspaceRepository: class {
+    async getStatus(id: string) {
+      mocks.getStatusSpy(id);
+      return mocks.statuses.get(id) ?? null;
+    }
+  },
+}));
+
 const { requirePermission, loadPermissions } = await import('../permissions.middleware.js');
 const { roleService }                        = await import('../../../modules/roles/role.service.js');
 
@@ -20,6 +36,8 @@ interface ShimOpts {
   userId?:        string | null;
   pathParams?:    Record<string, string>;
   queryParams?:   Record<string, string>;
+  method?:        string;
+  path?:          string;
 }
 function makeContext(o: ShimOpts = {}) {
   const state = new Map<string, unknown>();
@@ -35,8 +53,10 @@ function makeContext(o: ShimOpts = {}) {
       return { __response: true, body, status } as any;
     },
     req: {
-      param: (name: string) => o.pathParams?.[name],
-      query: (name: string) => o.queryParams?.[name],
+      param:  (name: string) => o.pathParams?.[name],
+      query:  (name: string) => o.queryParams?.[name],
+      method: o.method ?? 'GET',
+      path:   o.path   ?? '/',
     },
     // Test helpers
     _responses: () => responses,
@@ -46,6 +66,7 @@ function makeContext(o: ShimOpts = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.statuses.clear();
 });
 
 // ─── unauth ─────────────────────────────────────────────────────────────────
@@ -345,5 +366,160 @@ describe('loadPermissions', () => {
 
     expect(result.size).toBe(0);
     expect(roleService.getUserPermissionSlugs).not.toHaveBeenCalled();
+  });
+});
+
+// ─── freeze guard ───────────────────────────────────────────────────────────
+// Phase 6 W43. Even with the right slug, mutating requests against a FROZEN
+// or SUSPENDED workspace must fail closed. The check is method-aware
+// (writes only) and lets admins through so they can unfreeze.
+
+describe('requirePermission — freeze guard', () => {
+  it('blocks a POST to a FROZEN workspace with 403 WORKSPACE_FROZEN', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.create']));
+    mocks.statuses.set('ws-frozen', { Id: 'ws-frozen', Status: 'FROZEN', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-frozen' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(c._responses()[0]?.status).toBe(403);
+    expect(c._responses()[0]?.body).toMatchObject({ error: { code: 'WORKSPACE_FROZEN' } });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('blocks a DELETE to a SUSPENDED workspace with 403 WORKSPACE_SUSPENDED', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.delete']));
+    mocks.statuses.set('ws-susp', { Id: 'ws-susp', Status: 'SUSPENDED', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-susp' }, method: 'DELETE' });
+    const next = vi.fn();
+
+    await requirePermission('task.delete', { workspaceParam: 'id' })(c, next);
+
+    expect(c._responses()[0]?.status).toBe(403);
+    expect(c._responses()[0]?.body).toMatchObject({ error: { code: 'WORKSPACE_SUSPENDED' } });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('allows a GET against a FROZEN workspace — reads stay open', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.read']));
+    mocks.statuses.set('ws-frozen', { Id: 'ws-frozen', Status: 'FROZEN', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-frozen' }, method: 'GET' });
+    const next = vi.fn();
+
+    await requirePermission('task.read', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    // Avoid the SP entirely for reads — keeps the hot path cheap.
+    expect(mocks.getStatusSpy).not.toHaveBeenCalled();
+  });
+
+  it('allows a POST against an ACTIVE workspace', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.create']));
+    mocks.statuses.set('ws-1', { Id: 'ws-1', Status: 'ACTIVE', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-1' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('allows a POST against a TRIAL workspace', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.create']));
+    mocks.statuses.set('ws-trial', { Id: 'ws-trial', Status: 'TRIAL', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-trial' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('lets an admin (admin.workspaces.update) write to a FROZEN workspace', async () => {
+    // Otherwise admins could never unfreeze. The slug also doubles as the
+    // permission the admin uses to change Status itself.
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(
+      new Set(['task.create', 'admin.workspaces.update']),
+    );
+    mocks.statuses.set('ws-frozen', { Id: 'ws-frozen', Status: 'FROZEN', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-frozen' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    // Bypass should also skip the SP call — no point asking if we're not gating.
+    expect(mocks.getStatusSpy).not.toHaveBeenCalled();
+  });
+
+  it('skips the guard for system-scoped routes (no workspaceId)', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['admin.stats.read']));
+    const c    = makeContext({ method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('admin.stats.read')(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+    expect(mocks.getStatusSpy).not.toHaveBeenCalled();
+  });
+
+  it('lets the request through when the workspace lookup returns null — route owns the 404', async () => {
+    // We deliberately don't 404 from the freeze guard: the resource the
+    // route is about to load probably won't exist either and will produce
+    // a better-shaped error.
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.create']));
+    const c    = makeContext({ pathParams: { id: 'ws-missing' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('skips the guard when the workspace is archived — DeletedAt is handled elsewhere', async () => {
+    // A frozen-AND-archived workspace will be rejected by the route's own
+    // resource lookup (which filters DeletedAt). Returning WORKSPACE_FROZEN
+    // here would mislead the caller into thinking thaw is the fix.
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.create']));
+    mocks.statuses.set('ws-archived', {
+      Id: 'ws-archived', Status: 'FROZEN', DeletedAt: new Date('2026-01-01'),
+    });
+    const c    = makeContext({ pathParams: { id: 'ws-archived' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(next).toHaveBeenCalledOnce();
+  });
+
+  it('caches the status lookup across two gates on the same context', async () => {
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set(['task.update', 'task.delete']));
+    mocks.statuses.set('ws-1', { Id: 'ws-1', Status: 'ACTIVE', DeletedAt: null });
+    const c = makeContext({ pathParams: { id: 'ws-1' }, method: 'POST' });
+
+    const next1 = vi.fn();
+    await requirePermission('task.update', { workspaceParam: 'id' })(c, next1);
+    const next2 = vi.fn();
+    await requirePermission('task.delete', { workspaceParam: 'id' })(c, next2);
+
+    expect(next1).toHaveBeenCalledOnce();
+    expect(next2).toHaveBeenCalledOnce();
+    expect(mocks.getStatusSpy).toHaveBeenCalledOnce();
+  });
+
+  it('still 403s on the permission check before checking freeze status — order matters', async () => {
+    // No slug → 403 FORBIDDEN. We must not pay for the status SP when the
+    // permission itself has failed (timing leak + wasted DB call).
+    vi.mocked(roleService.getUserPermissionSlugs).mockResolvedValue(new Set([]));
+    mocks.statuses.set('ws-frozen', { Id: 'ws-frozen', Status: 'FROZEN', DeletedAt: null });
+    const c    = makeContext({ pathParams: { id: 'ws-frozen' }, method: 'POST' });
+    const next = vi.fn();
+
+    await requirePermission('task.create', { workspaceParam: 'id' })(c, next);
+
+    expect(c._responses()[0]?.status).toBe(403);
+    expect(c._responses()[0]?.body).toMatchObject({ error: { code: 'FORBIDDEN' } });
+    expect(mocks.getStatusSpy).not.toHaveBeenCalled();
   });
 });

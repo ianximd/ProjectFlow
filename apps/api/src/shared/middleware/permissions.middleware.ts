@@ -1,5 +1,23 @@
 import type { Context, Next } from 'hono';
 import { roleService } from '../../modules/roles/role.service.js';
+import { WorkspaceRepository } from '../../modules/workspaces/workspace.repository.js';
+import { subLogger } from '../lib/logger.js';
+
+const log = subLogger('freeze-guard');
+const workspaceRepo = new WorkspaceRepository();
+
+// HTTP methods that mutate state — the only ones the freeze guard fires on.
+// GET/HEAD/OPTIONS can stay readable on a frozen workspace.
+const WRITE_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
+
+// Holding ANY admin.workspaces.* slug bypasses the freeze guard. Narrower
+// than this (e.g. only admin.workspaces.update) locks admins out of legit
+// remediation: they couldn't archive a frozen workspace with just
+// admin.workspaces.delete, even though that's exactly what the slug grants.
+function hasAdminWorkspaceBypass(perms: Set<string>): boolean {
+  for (const p of perms) if (p.startsWith('admin.workspaces.')) return true;
+  return false;
+}
 
 // ─── Cache key ───────────────────────────────────────────────────────────────
 
@@ -144,6 +162,13 @@ export function requirePermission(
     }
 
     if (allowed) {
+      // Freeze guard: even with the right permission, refuse writes when the
+      // workspace is FROZEN or SUSPENDED. Admins holding admin.workspaces.update
+      // bypass (otherwise they couldn't unfreeze it).
+      if (workspaceId && WRITE_METHODS.has(c.req.method) && !hasAdminWorkspaceBypass(permissions)) {
+        const frozenResp = await checkFreezeGuard(c, workspaceId);
+        if (frozenResp) return frozenResp;
+      }
       await next();
       return;
     }
@@ -161,4 +186,61 @@ export function requirePermission(
       403,
     );
   };
+}
+
+// ─── Freeze guard ────────────────────────────────────────────────────────────
+
+interface WorkspaceStatusSnapshot {
+  status:    string;
+  deletedAt: Date | null;
+}
+
+// Load + cache the workspace status on the request context. Most writes only
+// touch one workspace per request, but routes that gate twice (e.g.
+// ownerFallback combined with the primary check) would otherwise hit the DB
+// twice. One SP call per request, max.
+async function loadWorkspaceStatusSnapshot(
+  c: Context,
+  workspaceId: string,
+): Promise<WorkspaceStatusSnapshot | null> {
+  const key = `workspaceStatus:${workspaceId}`;
+  const cached = (c as any).get(key) as WorkspaceStatusSnapshot | null | undefined;
+  if (cached !== undefined) return cached;
+
+  const row = await workspaceRepo.getStatus(workspaceId);
+  const snap: WorkspaceStatusSnapshot | null = row
+    ? { status: row.Status, deletedAt: row.DeletedAt }
+    : null;
+  (c as any).set(key, snap);
+  return snap;
+}
+
+async function checkFreezeGuard(c: Context, workspaceId: string) {
+  const snap = await loadWorkspaceStatusSnapshot(c, workspaceId);
+  // Missing workspace — let the route's own resource lookup handle the 404.
+  if (!snap) return null;
+  // Soft-deleted workspaces are blocked elsewhere (resource lookups filter
+  // DeletedAt); freeze guard only cares about Status.
+  if (snap.deletedAt) return null;
+
+  if (snap.status === 'FROZEN' || snap.status === 'SUSPENDED') {
+    const code = snap.status === 'FROZEN' ? 'WORKSPACE_FROZEN' : 'WORKSPACE_SUSPENDED';
+    log.warn(
+      { workspaceId, status: snap.status, method: c.req.method, path: c.req.path },
+      'write blocked by freeze guard',
+    );
+    return c.json(
+      {
+        error: {
+          code,
+          message: snap.status === 'FROZEN'
+            ? 'Workspace is frozen — writes are temporarily disabled.'
+            : 'Workspace is suspended — writes are not permitted.',
+          statusCode: 403,
+        },
+      },
+      403,
+    );
+  }
+  return null;
 }

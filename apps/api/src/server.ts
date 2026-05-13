@@ -61,7 +61,12 @@ app.use('*', cors({
 // Global security hardening
 app.use('*', securityHeaders);
 app.use('*', requestIdMiddleware);
-app.use('*', rateLimiter());
+// Rate limiters are skipped in test mode — they target hostile traffic, not
+// the rapid-fire request pattern of the integration suite. Dedicated rate-
+// limiter tests live in their own file.
+if (process.env.NODE_ENV !== 'test') {
+  app.use('*', rateLimiter());
+}
 
 // Body size guard — reject payloads larger than 4 MB to prevent DoS
 app.use('*', async (c, next) => {
@@ -95,7 +100,9 @@ app.get('/health', async (c) => {
 });
 
 // Public routes (auth has its own stricter rate limit)
-app.use('/auth/*', authRateLimiter());
+if (process.env.NODE_ENV !== 'test') {
+  app.use('/auth/*', authRateLimiter());
+}
 app.route('/auth', authRoutes);
 
 // Protected routes
@@ -177,24 +184,32 @@ app.route('/admin',             adminRoutes);
 // @ts-ignore – yoga type cascades from pre-existing schema.ts Pothos errors
 app.all('/graphql', async (c) => yoga.handle(c.req.raw, c));
 
-// Ensure MinIO bucket exists
-ensureBucket().catch((err) => console.warn('MinIO bucket init failed (will retry on first request):', err?.message));
+// Boot side-effects (workers, MinIO bucket, env-admin promotion, HTTP
+// listener) only run when the process is actually a server. Tests import
+// `app` for in-process `app.request()` calls without paying for any of
+// this — and without binding port 3001 in vitest workers.
+if (process.env.NODE_ENV !== 'test') {
+  // Ensure MinIO bucket exists
+  ensureBucket().catch((err) => console.warn('MinIO bucket init failed (will retry on first request):', err?.message));
 
-// Promote any users listed in ADMIN_USER_IDS to the super-admin role
-ensureEnvAdminsPromoted().catch((err) =>
-  console.warn('[env-admin-bootstrap] failed:', err?.message),
-);
+  // Promote any users listed in ADMIN_USER_IDS to the super-admin role
+  ensureEnvAdminsPromoted().catch((err) =>
+    console.warn('[env-admin-bootstrap] failed:', err?.message),
+  );
 
-// Start automation job worker
-startAutomationWorker();
+  // Start automation job worker
+  startAutomationWorker();
 
-// Start outgoing webhook delivery worker
-startOutgoingWebhookWorker();
+  // Start outgoing webhook delivery worker
+  startOutgoingWebhookWorker();
 
-const port = 3001;
-console.log(`Server is running on port ${port}`);
+  const port = 3001;
+  console.log(`Server is running on port ${port}`);
 
-serve({
-  fetch: app.fetch,
-  port
-});
+  serve({
+    fetch: app.fetch,
+    port,
+  });
+}
+
+export { app };

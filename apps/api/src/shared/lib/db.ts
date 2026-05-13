@@ -38,6 +38,18 @@ export async function getPool(): Promise<sql.ConnectionPool> {
 }
 
 /**
+ * Close the pool and clear the singleton. Used by integration tests in
+ * vitest's afterAll hook so the worker process can exit cleanly. Safe to
+ * call when no pool exists.
+ */
+export async function closePool(): Promise<void> {
+  if (pool) {
+    await pool.close();
+    pool = null;
+  }
+}
+
+/**
  * Emit a warning when a query exceeds the slow-query threshold.
  * Call at the start of an operation and invoke the returned function when done.
  *

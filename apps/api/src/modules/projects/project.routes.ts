@@ -7,8 +7,10 @@ import { cacheDelPattern } from '../../shared/lib/cache.js';
 // /projects/* is server-cached for 30s (TTL.SHORT). Wildcard-bust on any
 // project write so the projects list under a workspace updates immediately
 // instead of waiting for the TTL to expire.
-function invalidateProjectCaches(): void {
-  cacheDelPattern('http:*:/api/v1/projects*').catch(() => {});
+//
+// Awaited so a read-after-write in the same client sees the new state.
+async function invalidateProjectCaches(): Promise<void> {
+  try { await cacheDelPattern('http:*:/api/v1/projects*'); } catch { /* ignore */ }
 }
 
 export const projectRoutes = new Hono();
@@ -37,7 +39,7 @@ projectRoutes.post(
     const user = (c as any).get('user') as any;
     try {
       const project = await projectService.create(workspaceId, name, key, description ?? null, type ?? 'KANBAN', user.userId);
-      invalidateProjectCaches();
+      await invalidateProjectCaches();
       return c.json({ data: project }, 201);
     } catch (err: any) {
       if (err.number === 50020) return c.json({ error: { message: err.message } }, 409);
@@ -77,7 +79,7 @@ projectRoutes.patch(
       endDate: endDate ? new Date(endDate) : undefined,
     });
     if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
-    invalidateProjectCaches();
+    await invalidateProjectCaches();
     return c.json({ data: project });
   } catch (err: any) {
     return c.json({ error: { message: 'Internal Server Error' } }, 500);
@@ -92,7 +94,7 @@ projectRoutes.post(
   try {
     const project = await projectService.archive(c.req.param('id')!);
     if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
-    invalidateProjectCaches();
+    await invalidateProjectCaches();
     return c.json({ data: project });
   } catch (err: any) {
     return c.json({ error: { message: 'Internal Server Error' } }, 500);
@@ -106,7 +108,7 @@ projectRoutes.delete(
   async (c) => {
   try {
     await projectService.delete(c.req.param('id')!);
-    invalidateProjectCaches();
+    await invalidateProjectCaches();
     return c.body(null, 204);
   } catch (err: any) {
     return c.json({ error: { message: 'Internal Server Error' } }, 500);

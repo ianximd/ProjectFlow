@@ -10,6 +10,42 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 35 — Integration test spine)
+- **31 integration tests** across 5 files run against a real SQL Server + Redis stack via Vitest's `integration` project. Total wall-clock: ~30 s after the one-time SP deploy. All exercise the route boundary in-process via Hono's `app.request()` — no HTTP listener, no supertest dependency
+- `apps/api/src/__tests__/setup/globalSetup.ts` — runs once per `vitest run`. Creates `ProjectFlow_Test` if missing, then re-uses the existing `scripts/db-migrate.ts` and `scripts/db-deploy-sps.ts` as child processes so the schema/SP code-path is identical to production deploys. Test DB is preserved between runs to skip the ~5 s SP deploy on local fast-iteration
+- `apps/api/src/__tests__/setup/integration.setup.ts` — preloaded into every worker before module import so `db.ts`'s module-level config evaluates with `DB_NAME=ProjectFlow_Test` and `NODE_ENV=test`
+- `apps/api/src/__tests__/setup/testServer.ts` — exports `request(path, init)` that wraps `app.request()` and a `json(res, status?)` parser. Auth via the `token` shorthand sets `Authorization: Bearer …`
+- `truncateAll()` now real (`fixtures/truncate.ts`) — clears every mutable table in FK-safe child→parent order while preserving the seed catalog (`Permissions`, `Roles`, `RolePermissions`). Wiping the catalog would silently strip `workspace-owner` of `workspace.delete` so freshly-created workspaces would 403 their own owners
+- Test factories (`fixtures/factories.ts`) call the in-process API for `createTestUser` / `createTestWorkspace` / `createTestProject` / `createTestTask`, with a side door (`grantSystemRole`) that goes straight to `usp_UserRole_AssignBySlug` for super-admin — the public API can't promote when no super-admin exists yet
+- The 5 integration test files cover the highest-risk paths:
+  - `auth.routes.integration.test.ts` (12 tests) — full HTTP round-trip register / login / refresh / logout, refresh-token rotation, replay rejection (cookie cleared on revoked-token replay), 401 on no/bad token
+  - `account-lockout.integration.test.ts` (3 tests) — 5 failed logins → lockout (correct password also rejected after lock), successful login clears `FailedLoginCount` + `LockedUntil`, expired `LockedUntil` is treated as not-locked (clock controlled via direct DB stamp)
+  - `workspace-delete.integration.test.ts` (5 tests) — closes the v1.0.0 vuln test-shaped: owner can soft-delete + row disappears from list, member with no `workspace.delete` is 403'd, non-member 403/404, super-admin (system scope) overrides workspace gate, double-delete is idempotent (404)
+  - `task-transition.integration.test.ts` (5 tests) — happy-path transition with no workflow attached (free movement), 404 on unknown task, 401 unauth, 403 for workspace-viewer (no `task.transition`), DB-level persistence check
+  - `cache-invalidation.integration.test.ts` (6 tests) — regression coverage for `bbd9228` and `9c0215c`. Asserts the `x-cache: HIT|MISS` header transitions correctly across POST/PATCH/DELETE on tasks (epics) + workspace + project writes. Caught a real bug along the way: the cache busts were fire-and-forget, so a read-after-write within the same client could race and HIT-read stale data. Now awaited
+
+### Fixed
+
+- Response cache invalidation in `task.routes.ts`, `workspace.routes.ts`, and `project.routes.ts` is now `await`ed instead of fire-and-forget. The Redis SCAN+DEL is single-digit ms; the prior fire-and-forget pattern returned the write response before Redis had finished invalidating, so a client doing read-after-write within the same connection (most visibly: integration tests, but also a fast SPA refresh) could race and HIT-read stale data. Closes the same class of bug `bbd9228`/`9c0215c` claimed to fix but only partially did
+
+### Removed
+
+- Legacy `test-auth.js`, `test-phase1.js`, `test-tasks.js` smoke scripts (Phase 1 leftovers). They had been failing silently in CI for months — they HTTP-called `localhost:3001`, but the workflow never started an API server, so `req.on('error', console.error)` swallowed every connection refusal and `main().catch` exited 0. Replaced by the Vitest integration suite which covers the same paths via in-process `app.request()`
+- CI's `test` job renamed to `integration`; the broken `node test-*.js` step removed; the new step runs `npm run test:integration` from `apps/api`. `unit` and `integration` are now both first-class jobs after `lint`
+- `server.ts` boot side-effects (MinIO bucket init, env-admin promotion, BullMQ workers, HTTP listener) are gated on `NODE_ENV !== 'test'` so importing `app` in tests is free. The auth + global rate limiters are also skipped in test mode — they target hostile traffic, not the rapid-fire request pattern of an integration suite. Dedicated rate-limiter tests are a follow-up
+- New `closePool()` export on `db.ts` so integration tests can shut the connection pool down in `afterAll`, letting vitest worker processes exit cleanly
+
+#### Phase 6 — Post-launch (Week 34 — Test harness bedrock)
+- **Vitest 4** wired into `apps/api` and `apps/next-web`. API config (`apps/api/vitest.config.ts`) defines two projects: `unit` (no external services, runs every PR) and `integration` (placeholder — populated in Phase 2.B once SQL fixtures land). Web config (`apps/next-web/vitest.config.ts`) uses `jsdom` + `@testing-library/react` + `@testing-library/jest-dom` with the `@/` alias mirroring `tsconfig`
+- Vitest 4 + Vite resolve NodeNext `.js`-suffixed relative imports out of the box — no alias-stripping needed despite `apps/api` using `"type": "module"` and the `import './foo.js'` convention everywhere
+- Three seed test files (40 + 8 = 48 tests, ~1.4 s wall clock total via `npm test` at the repo root):
+  - `apps/api/src/modules/auth/__tests__/auth.service.unit.test.ts` (19 tests) — `login` happy / wrong-password / lockout / MFA-required / no-password (OAuth-only) / unknown-email / expired-lockout, `mfaChallenge` TOTP / recovery-code consumption / already-consumed / invalid-token / disabled-MFA, `refreshAccessToken` rotation / replay (revoked) / expired / unknown, `forgotPassword` token-hash persistence + no-enumeration. `bcrypt` mocked at module scope to keep the suite fast; `mfaService` mocked to drive both factor branches
+  - `apps/api/src/shared/middleware/__tests__/permissions.middleware.unit.test.ts` (21 tests) — every branch of `requirePermission`: 401 unauth / single slug / any-of array / `workspaceParam` (path + query) / `resolveWorkspace` cached across multi-gate routes / 404 on missing resource / `ownerOnly` (owner / non-owner / missing) / `ownerFallback` (primary-only / fallback+owner / fallback non-owner / neither / 404). Plus `loadPermissions` per-workspace caching
+  - `apps/next-web/src/components/admin/__tests__/PermissionPicker.test.tsx` (8 tests) — scope filter, group-by-resource render, single toggle, group toggle (select all / deselect all), partial-selection badge, disabled propagation
+- Test fixtures + `truncateAll` helper (`apps/api/src/__tests__/fixtures/{factories.ts,truncate.ts}`) created as Phase 2.B placeholders. The truncate file documents the FK-safe table order so the eventual implementation can drop straight in
+- `npm test` at the repo root runs both apps in parallel via Turbo; `npm run test:integration` is wired but no-op until 2.B
+- New CI job `unit` runs alongside `lint`, `build`, and `test`. Documented inline that the legacy `node test-*.js` scripts in the `test` job have been failing silently (they HTTP-call `localhost:3001`, but the workflow never starts an API server) — Phase 2.B will replace them with real Vitest integration tests
+
 #### Phase 6 — Post-launch (Week 33 — Workspace soft-delete + Task time-of-day deadlines)
 - **Migration `0023_workspace_deletedat.sql`** — adds `Workspaces.DeletedAt DATETIME2 NULL` plus a filtered non-clustered index `IX_Workspaces_DeletedAt … WHERE DeletedAt IS NULL` to keep "list active workspaces" cheap. Idempotent
 - `usp_Workspace_Delete` now stamps `DeletedAt = SYSUTCDATETIME()` instead of issuing a physical `DELETE`, mirroring the soft-delete pattern Users and Projects already use. `usp_Workspace_GetById` and `usp_Workspace_List` filter `DeletedAt IS NULL` so soft-deleted workspaces disappear from the API surface

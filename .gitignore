@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Turbo cache
+.turbo
+
+# Vitest coverage
+coverage
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

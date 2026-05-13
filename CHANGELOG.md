@@ -10,6 +10,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 36 — Playwright E2E skeleton)
+- **One Playwright E2E spec, ~4 s wall-clock**, exercising the highest-value happy path: register (via API) → login (UI) → create workspace via dialog → create project via dialog → cleanup soft-delete via API. Drag-and-drop and task creation deliberately deferred to a later iteration — `@dnd-kit` needs synthetic mouse events that are notoriously flaky in Playwright; better to ship a stable skeleton than a flaky comprehensive flow
+- `playwright.config.ts` — single chromium project, serial workers, `webServer` auto-starts both `apps/api` and `apps/next-web` (with `reuseExistingServer: !CI` so a developer with `npm run dev` already running skips the cold boot). Trace + screenshot retained on failure
+- `e2e/global-setup.ts` — wipes Redis `rl:*` keys before every run so the auth rate-limiter (10 req / 15 min in dev mode) doesn't 429 the test's own register/login calls after multiple iterations
+- `e2e/smoke.spec.ts` uses **SPA navigation (link clicks) instead of `page.goto`** to traverse from `/board` → `/workspaces` → `/projects`. The in-memory access token in Zustand is intentionally not persisted to localStorage (XSS hardening), so a hard reload would force `AuthBootstrap` to silent-refresh via `/auth/refresh` + the httpOnly cookie — that path turned out flaky in dev (cookie forwarding through Next.js rewrites). SPA-internal nav keeps the token alive
+- New `.github/workflows/e2e-nightly.yml` — runs once a day (03:00 UTC = 10:00 WIB) plus on-demand via `workflow_dispatch`. Brings up SQL Server + Redis services, runs migrations + SP deploys, installs `--with-deps chromium`, then `npm run test:e2e`. Uploads the Playwright HTML report as an artifact on failure
+- `npm run test:e2e` (root) runs the suite; `test:e2e:headed` and `test:e2e:ui` for local debugging
+- `.gitignore` updated for `playwright-report/`, `test-results/`, `.playwright/`
+
 #### Phase 6 — Post-launch (Week 35 — Integration test spine)
 - **31 integration tests** across 5 files run against a real SQL Server + Redis stack via Vitest's `integration` project. Total wall-clock: ~30 s after the one-time SP deploy. All exercise the route boundary in-process via Hono's `app.request()` — no HTTP listener, no supertest dependency
 - `apps/api/src/__tests__/setup/globalSetup.ts` — runs once per `vitest run`. Creates `ProjectFlow_Test` if missing, then re-uses the existing `scripts/db-migrate.ts` and `scripts/db-deploy-sps.ts` as child processes so the schema/SP code-path is identical to production deploys. Test DB is preserved between runs to skip the ~5 s SP deploy on local fast-iteration

@@ -19,6 +19,7 @@ import type {
 } from '@projectflow/types';
 
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -82,6 +83,7 @@ async function api(path: string, token: string | null, init?: RequestInit) {
   });
   if (res.status === 204) return { ok: res.ok, status: res.status, json: {} };
   const json = await res.json().catch(() => ({}));
+  if (!res.ok) notifyApiError(json, res.status);
   return { ok: res.ok, status: res.status, json };
 }
 

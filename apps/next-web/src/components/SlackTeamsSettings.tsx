@@ -14,6 +14,7 @@ import type {
 } from '@projectflow/types';
 
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,7 @@ async function api(path: string, token: string | null, init?: RequestInit) {
   });
   if (res.status === 204) return { ok: res.ok, status: res.status, json: {} };
   const json = await res.json().catch(() => ({}));
+  if (!res.ok) notifyApiError(json, res.status);
   return { ok: res.ok, status: res.status, json };
 }
 

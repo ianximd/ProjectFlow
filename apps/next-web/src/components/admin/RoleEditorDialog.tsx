@@ -10,6 +10,7 @@ import type {
   RoleWithPermissions,
 } from '@projectflow/types';
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,7 +38,10 @@ async function api(path: string, token: string | null, opts?: RequestInit) {
     },
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message ?? 'Request failed');
+  if (!res.ok) {
+    notifyApiError(json, res.status);
+    throw new Error(json.error?.message ?? 'Request failed');
+  }
   return json;
 }
 

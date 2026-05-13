@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, ShieldCheck, Loader2 } from 'lucide-react';
 import type { RoleScope, RoleWithCounts } from '@projectflow/types';
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,7 +18,10 @@ async function api(path: string, token: string | null) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
   const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message ?? 'Request failed');
+  if (!res.ok) {
+    notifyApiError(json, res.status);
+    throw new Error(json.error?.message ?? 'Request failed');
+  }
   return json;
 }
 

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
+import { notifyApiError } from '@/lib/apiErrorToast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -31,7 +32,10 @@ async function api(path: string, token: string | null, init?: RequestInit) {
     },
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+  if (!res.ok) {
+    notifyApiError(json, res.status);
+    throw new Error(json?.error?.message ?? `Request failed (${res.status})`);
+  }
   return json;
 }
 

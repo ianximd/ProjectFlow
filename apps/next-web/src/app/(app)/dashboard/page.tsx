@@ -17,6 +17,7 @@ import type {
 } from '@projectflow/types';
 
 import { useStore }                from '@/store/useStore';
+import { notifyApiError }          from '@/lib/apiErrorToast';
 import { BurndownChart }           from '@/components/charts/BurndownChart';
 import { VelocityChart }           from '@/components/charts/VelocityChart';
 import { SprintSummaryWidget }     from '@/components/charts/SprintSummaryWidget';
@@ -42,6 +43,7 @@ async function api(path: string, token: string | null) {
     credentials: 'include',
   });
   const json = await res.json().catch(() => ({}));
+  if (!res.ok) notifyApiError(json, res.status);
   return { ok: res.ok, status: res.status, json };
 }
 

@@ -7,6 +7,7 @@ import styles from './page.module.css';
 import type { AdminStats, AdminUser, AdminWorkspace, AuditLogEntry } from '@projectflow/types';
 import { RolesTab } from '@/components/admin/RolesTab';
 import { getUserStatus } from '@/lib/userStatus';
+import { getWorkspaceStatus, SETTABLE_STATUSES } from '@/lib/workspaceStatus';
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -172,6 +173,18 @@ export default function AdminPage() {
       apiFetch(`/admin/workspaces?page=${wsPage}&pageSize=${PAGE_SIZE}`, token)
         .then((j) => ({ workspaces: j.data, total: j.meta.total })),
     enabled:  tab === 'workspaces',
+  });
+
+  // W43 — admin can flip the operational Status enum from the table row.
+  // Archived (DeletedAt set) is governed by the existing delete/restore
+  // flow, not by this mutation.
+  const wsStatusMutation = useMutation({
+    mutationFn: ({ workspaceId, status }: { workspaceId: string; status: string }) =>
+      apiFetch(`/admin/workspaces/${workspaceId}/status`, token, {
+        method: 'POST',
+        body:   JSON.stringify({ status }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'workspaces'] }),
   });
 
   // ── Audit log ──────────────────────────────────────────────────────────────
@@ -492,9 +505,32 @@ export default function AdminPage() {
                     <td>{w.projectCount}</td>
                     <td className={styles.mono}>{w.createdAt.slice(0, 10)}</td>
                     <td>
-                      <span className={`${styles.badge} ${w.deletedAt ? styles.badgeRed : styles.badgeGreen}`}>
-                        {w.deletedAt ? 'Archived' : 'Active'}
-                      </span>
+                      {(() => {
+                        const { label, tone } = getWorkspaceStatus(w);
+                        const toneClass = tone === 'red'    ? styles.badgeRed
+                                       : tone === 'orange' ? styles.badgeOrange
+                                       : tone === 'yellow' ? styles.badgeYellow
+                                       : tone === 'blue'   ? styles.badgeBlue
+                                       :                     styles.badgeGreen;
+                        return (
+                          <div className={styles.statusCell}>
+                            <span className={`${styles.badge} ${toneClass}`}>{label}</span>
+                            {!w.deletedAt && (
+                              <select
+                                aria-label={`Change status of ${w.name}`}
+                                className={styles.statusSelect}
+                                value={w.status}
+                                onChange={(e) => wsStatusMutation.mutate({ workspaceId: w.id, status: e.target.value })}
+                                disabled={wsStatusMutation.isPending}
+                              >
+                                {SETTABLE_STATUSES.map((s) => (
+                                  <option key={s} value={s}>{s}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

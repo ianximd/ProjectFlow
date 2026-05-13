@@ -34,6 +34,9 @@ export const adminService = {
   listWorkspaces: (page?: number, pageSize?: number) =>
     adminRepository.listWorkspaces(page, pageSize),
 
+  setWorkspaceStatus: (id: string, status: string) =>
+    adminRepository.setWorkspaceStatus(id, status),
+
   toggleUserActive: (userId: string, suspend: boolean) =>
     adminRepository.toggleUserActive(userId, suspend),
 

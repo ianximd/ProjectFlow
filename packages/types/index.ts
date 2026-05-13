@@ -693,12 +693,20 @@ export interface AdminUser {
   deletedAt:        string | null;
 }
 
+/**
+ * Operational status of a workspace (Phase 6 W43). Orthogonal to
+ * `deletedAt` — an archived workspace still has a Status, but the UI
+ * shows "Archived" because soft-delete wins in the badge composer.
+ */
+export type WorkspaceStatus = 'ACTIVE' | 'TRIAL' | 'FROZEN' | 'SUSPENDED';
+
 export interface AdminWorkspace {
   id:           string;
   name:         string;
   slug:         string;
   avatarUrl:    string | null;
   ownerEmail:   string | null;
+  status:       WorkspaceStatus;
   memberCount:  number;
   projectCount: number;
   createdAt:    string;

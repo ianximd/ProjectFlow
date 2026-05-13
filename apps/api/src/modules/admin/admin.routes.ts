@@ -197,6 +197,26 @@ adminRoutes.get('/workspaces', requirePermission('admin.workspaces.read'), async
   return c.json({ data: workspaces, meta: { total, page, pageSize } });
 });
 
+/** POST /admin/workspaces/:id/status — change operational Status */
+adminRoutes.post(
+  '/workspaces/:id/status',
+  requirePermission('admin.workspaces.update'),
+  zValidator('json', z.object({
+    status: z.enum(['ACTIVE', 'TRIAL', 'FROZEN', 'SUSPENDED']),
+  })),
+  async (c) => {
+    const { status } = c.req.valid('json');
+    try {
+      const ws = await adminService.setWorkspaceStatus(c.req.param('id')!, status);
+      if (!ws) return c.json({ error: { code: 'NOT_FOUND', message: 'Workspace not found' } }, 404);
+      return c.json({ data: ws });
+    } catch (err: any) {
+      log.error({ err: (err as Error).message }, 'setWorkspaceStatus failed');
+      return c.json({ error: { message: 'Internal Server Error' } }, 500);
+    }
+  },
+);
+
 /** GET /admin/audit-log — filterable audit log */
 adminRoutes.get('/audit-log', requirePermission('admin.audit.read'), async (c) => {
   const q        = c.req.query;

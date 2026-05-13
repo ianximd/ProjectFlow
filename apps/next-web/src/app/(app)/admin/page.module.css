@@ -164,7 +164,25 @@
 .badgeYellow { background: #fef9c3; color: #ca8a04; }
 .badgeBlue   { background: #dbeafe; color: #2563eb; }
 .badgeGray   { background: #f1f5f9; color: #475569; }
-.badgeOrange { background: #ffedd5; color: #c2410c; } /* W43 — Locked status */
+.badgeOrange { background: #ffedd5; color: #c2410c; } /* W43 — Locked / Frozen status */
+
+/* W43 — workspace Status cell: badge + change-dropdown side by side */
+.statusCell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.statusSelect {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+.statusSelect:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── Action button ── */
 .actionBtn {

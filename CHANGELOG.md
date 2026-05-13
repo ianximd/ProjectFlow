@@ -10,6 +10,27 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+#### Phase 6 — Post-launch (Week 43 — Workspace Status enum: real DB-backed states)
+
+**The bug we found while reviewing User status.** The admin Workspace badge had a `deletedAt ? 'Archived' : 'Active'` ternary just like Users, but `usp_Admin_ListWorkspaces` was never projecting `DeletedAt` — so every row showed "Active" regardless of soft-delete state. The badge was effectively static. This phase fixes the projection AND adds richer operational states the Workspaces table didn't have before.
+
+- **Migration 0027** — `dbo.Workspaces.Status NVARCHAR(20) NOT NULL DEFAULT 'ACTIVE'` with `CK_Workspaces_Status CHECK (Status IN ('ACTIVE','TRIAL','FROZEN','SUSPENDED'))`. The CHECK is self-documenting (operator can `sp_help dbo.Workspaces` to see the valid set) and a defensive layer the route handler doesn't have to enforce alone. Idempotent
+- **Migration 0028** — `admin.workspaces.update` permission row + grant to super-admin role. Matches the 0018 RBAC seed pattern (idempotent insert + grant)
+- **SP changes**:
+  - `usp_Admin_ListWorkspaces` now projects `Status` AND `DeletedAt` (the DeletedAt omission was the pre-existing static-badge bug)
+  - `usp_Workspace_GetById` does `SELECT *` so it picks up Status automatically — bonus: the audit-diff system (W43 Option A) will now record status transitions in `AuditLog.OldValues` / `NewValues`
+  - **New `usp_Workspace_SetStatus(Id, Status)`** — admin-only mutation; touches only the Status column + UpdatedAt; returns the row including archived workspaces (the audit row can still show a status change on an archived workspace, which is useful for forensic queries). 176 SPs total now
+- **`WorkspaceStatus` type** exported from `packages/types`: `'ACTIVE' | 'TRIAL' | 'FROZEN' | 'SUSPENDED'`. `AdminWorkspace` gains `status` field
+- **`POST /admin/workspaces/:id/status`** — admin route, gated on `admin.workspaces.update`. Body validated with zod (`status: z.enum([…])`). Returns the updated row; 404 when the workspace doesn't exist
+- **`apps/next-web/src/lib/workspaceStatus.ts`** — pure helper mirroring `userStatus.ts`. Composes `Status` + `deletedAt` into one of 5 labels (Archived | Suspended | Frozen | Trial | Active). `deletedAt` always wins. Defensive fallback to `Active` for unknown future status strings so the page never crashes on a forward-compat API change
+- **Admin page workspace badge** — replaces the binary ternary with the helper. Adds a small inline `<select>` per row so an admin can change Status directly from the table; submission goes to the new route and React Query invalidates the workspace list. The select is hidden for archived workspaces (Restore/Delete via the existing soft-delete flow, not via Status)
+- **`.statusCell` + `.statusSelect` CSS** — keeps the badge + dropdown stacked vertically inside the table cell
+- **6 new tests** in `apps/next-web/src/lib/__tests__/workspaceStatus.test.ts`: each status maps to the right label/tone, archived wins over status, unknown future values default to Active
+
+**Trade-off**: Status is intentionally orthogonal to `DeletedAt`. An archived workspace keeps whatever Status it had before archiving — useful for forensics ("what state was this in when we archived it?") but means the badge composition has to know to show "Archived" instead. The composer enforces that by checking `deletedAt` first.
+
+**Future**: `Status='FROZEN'` is a passive label today. A follow-up could wire it into the workspace permission middleware so writes against frozen workspaces 403 with `WORKSPACE_FROZEN`. Right now it's purely an admin annotation.
+
 #### Phase 6 — Post-launch (Week 43 — Richer User status labels in the admin panel)
 
 Until this week the admin "Status" column was a binary `Suspended | Active` ternary computed from `DeletedAt`. Three other states already existed in the data — failed-login lockout (migration 0017), unverified email (migration 0001), MFA-protected — but they weren't surfaced as a single readable label. This phase teaches the admin UI to compute a four-way status from existing fields, without adding a `Status` column or a lookup table.

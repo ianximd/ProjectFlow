@@ -133,12 +133,40 @@ export class AdminRepository {
       slug:         r.Slug,
       avatarUrl:    r.AvatarUrl   ?? null,
       ownerEmail:   r.OwnerEmail  ?? null,
+      status:       (r.Status ?? 'ACTIVE') as AdminWorkspace['status'],
       memberCount:  r.MemberCount ?? 0,
       projectCount: r.ProjectCount ?? 0,
       createdAt:    r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
       deletedAt:    r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
     }));
     return { workspaces, total };
+  }
+
+  /**
+   * Phase 6 W43 — change a workspace's operational Status. The CHECK
+   * constraint in migration 0027 prevents writes outside the allowed
+   * enum at the DB layer; the route validates earlier so the user gets
+   * a clean 400 rather than a SQL error.
+   */
+  async setWorkspaceStatus(id: string, status: string): Promise<AdminWorkspace | null> {
+    const rows = await execSpOne<any>('dbo.usp_Workspace_SetStatus', [
+      { name: 'Id',     type: sql.UniqueIdentifier, value: id },
+      { name: 'Status', type: sql.NVarChar(20),     value: status },
+    ]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      id:           r.Id,
+      name:         r.Name,
+      slug:         r.Slug,
+      avatarUrl:    r.AvatarUrl ?? null,
+      ownerEmail:   null,  // not joined on SetStatus
+      status:       (r.Status ?? 'ACTIVE') as AdminWorkspace['status'],
+      memberCount:  0,
+      projectCount: 0,
+      createdAt:    r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
+      deletedAt:    r.DeletedAt ? (r.DeletedAt instanceof Date ? r.DeletedAt.toISOString() : String(r.DeletedAt)) : null,
+    };
   }
 
   // ─── Admin user CRUD + recovery ─────────────────────────────────────────────

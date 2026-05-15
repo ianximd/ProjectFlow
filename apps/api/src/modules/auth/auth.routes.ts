@@ -144,6 +144,78 @@ authRoutes.get('/me', authMiddleware, async (c) => {
   return c.json({ data: user });
 });
 
+// PATCH /api/v1/auth/me  (protected) — edit own name and/or avatar.
+// Other identity fields (email, password) have their own dedicated endpoints
+// because they need extra verification.
+authRoutes.patch('/me', authMiddleware, async (c) => {
+  const jwtPayload = (c as any).get('user') as any;
+  let body: any;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: { message: 'Invalid JSON body' } }, 400); }
+
+  const fields: { name?: string; avatarUrl?: string | null } = {};
+
+  if (typeof body?.name === 'string') {
+    const n = body.name.trim();
+    if (!n)               return c.json({ error: { message: 'Name cannot be empty' } }, 400);
+    if (n.length > 255)   return c.json({ error: { message: 'Name too long (max 255 chars)' } }, 400);
+    fields.name = n;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'avatarUrl')) {
+    const v = body.avatarUrl;
+    if (v == null || v === '') {
+      fields.avatarUrl = null;
+    } else if (typeof v === 'string' && v.length <= 500) {
+      fields.avatarUrl = v;
+    } else {
+      return c.json({ error: { message: 'avatarUrl must be a string up to 500 chars or null' } }, 400);
+    }
+  }
+
+  if (Object.keys(fields).length === 0) {
+    return c.json({ error: { message: 'No editable fields provided' } }, 400);
+  }
+
+  const updated = await authService.updateProfile(jwtPayload.userId, fields);
+  if (!updated) return c.json({ error: { message: 'User not found' } }, 404);
+  return c.json({ data: updated });
+});
+
+// POST /api/v1/auth/change-password  (protected) — rotate own password.
+// The current password is verified before the new one is written so a stolen
+// access token alone can't lock the real owner out.
+authRoutes.post('/change-password', authMiddleware, async (c) => {
+  const jwtPayload = (c as any).get('user') as any;
+  let body: any;
+  try { body = await c.req.json(); }
+  catch { return c.json({ error: { message: 'Invalid JSON body' } }, 400); }
+
+  const current = String(body?.currentPassword ?? '');
+  const next    = String(body?.newPassword ?? '');
+  if (!current || !next) {
+    return c.json({ error: { message: 'currentPassword and newPassword are required' } }, 400);
+  }
+  if (next.length < 8) {
+    return c.json({ error: { message: 'newPassword must be at least 8 characters' } }, 400);
+  }
+  if (next === current) {
+    return c.json({ error: { message: 'New password must differ from the current one' } }, 400);
+  }
+
+  const result = await authService.changePassword(jwtPayload.userId, current, next);
+  if (result === 'no-user') {
+    return c.json({ error: { message: 'User not found' } }, 404);
+  }
+  if (result === 'no-password') {
+    return c.json({ error: { code: 'NO_PASSWORD_SET', message: 'No password set on this account. Use the forgot-password flow to set one.' } }, 409);
+  }
+  if (result === 'invalid-current') {
+    return c.json({ error: { code: 'INVALID_CREDENTIALS', message: 'Current password is incorrect' } }, 401);
+  }
+  return c.json({ data: { ok: true } });
+});
+
 // GET /api/v1/auth/me/permissions?workspaceId=  (protected)
 // Returns the current user's effective permission slugs (system + given workspace).
 // Drives the frontend <PermissionGate> component.

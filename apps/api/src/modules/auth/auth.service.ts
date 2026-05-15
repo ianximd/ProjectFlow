@@ -217,6 +217,34 @@ export class AuthService {
     return this.repo.getUserById(userId);
   }
 
+  async updateProfile(
+    userId: string,
+    fields: { name?: string; avatarUrl?: string | null },
+  ): Promise<User | null> {
+    return this.repo.updateProfile(userId, fields);
+  }
+
+  /**
+   * Change password while signed in: requires the current password to verify.
+   * Returns 'no-password' if the account has no PasswordHash (OAuth-only user)
+   * — those callers must use the forgot-password flow to set an initial one.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<'ok' | 'no-user' | 'no-password' | 'invalid-current'> {
+    const user = await this.repo.getUserById(userId);
+    if (!user) return 'no-user';
+    const currentHash = (user as any).PasswordHash;
+    if (!currentHash) return 'no-password';
+    const ok = await bcrypt.compare(currentPassword, currentHash);
+    if (!ok) return 'invalid-current';
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.repo.updatePassword(userId, newHash);
+    return 'ok';
+  }
+
   async refreshAccessToken(
     rawToken: string,
   ): Promise<{ accessToken: string; refreshToken: string } | null> {

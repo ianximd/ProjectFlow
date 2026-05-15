@@ -26,6 +26,29 @@ export class AuthRepository {
     return rows[0] ?? null;
   }
 
+  async updateProfile(
+    userId: string,
+    fields: { name?: string; avatarUrl?: string | null },
+  ): Promise<User | null> {
+    // `'avatarUrl' in fields` distinguishes "client did not send the field"
+    // (don't touch it) from "client sent null/empty" (clear it).
+    const updateAvatar = Object.prototype.hasOwnProperty.call(fields, 'avatarUrl');
+    const rows = await execSpOne<User>('usp_User_UpdateProfile', [
+      { name: 'UserId',       type: sql.UniqueIdentifier, value: userId },
+      { name: 'Name',         type: sql.NVarChar(255),    value: fields.name ?? null },
+      { name: 'AvatarUrl',    type: sql.NVarChar(500),    value: fields.avatarUrl ?? null },
+      { name: 'UpdateAvatar', type: sql.Bit,              value: updateAvatar ? 1 : 0 },
+    ]);
+    return rows[0] ?? null;
+  }
+
+  async updatePassword(userId: string, passwordHash: string): Promise<void> {
+    await execSpOne('usp_User_UpdatePassword', [
+      { name: 'UserId',       type: sql.UniqueIdentifier, value: userId },
+      { name: 'PasswordHash', type: sql.NVarChar(255),    value: passwordHash },
+    ]);
+  }
+
   async createRefreshToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
     await execSpOne('usp_RefreshToken_Create', [
       { name: 'UserId', type: sql.UniqueIdentifier, value: userId },

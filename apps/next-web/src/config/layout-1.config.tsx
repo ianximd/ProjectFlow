@@ -9,9 +9,11 @@ import {
   GitPullRequest,
   Layers,
   LayoutDashboard,
+  LifeBuoy,
   List,
   ShieldCheck,
   Tag,
+  UserCog,
   Workflow,
   Zap,
 } from 'lucide-react';
@@ -40,4 +42,10 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Projects',      icon: Folder,         path: '/projects' },
   { title: 'Admin',         icon: ShieldCheck,    path: '/admin' },
   { title: 'GraphQL',       icon: Braces,         path: '/graphql-explorer' },
+
+  { heading: 'Account' },
+  { title: 'My Profile',    icon: UserCog,        path: '/settings/profile' },
+
+  { heading: 'Help' },
+  { title: 'User Guide',    icon: LifeBuoy,       path: '/user-guide' },
 ];

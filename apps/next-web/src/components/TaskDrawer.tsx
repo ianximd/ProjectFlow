@@ -47,6 +47,8 @@ const PRIORITY_COLOR: Record<string, string> = {
   LOWEST:  '#a0aec0',
 };
 
+const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
+
 // <input type="datetime-local"> reads/writes "YYYY-MM-DDTHH:mm" in *local* time.
 // We hand-format because toISOString() returns UTC and would shift the visible
 // hours by the user's offset.
@@ -127,6 +129,25 @@ export function TaskDrawer({ task, onClose }: Props) {
     },
   });
 
+  const updatePriority = useMutation({
+    mutationFn: async (priority: string) => {
+      const token = useStore.getState().accessToken;
+      const res = await fetch(`/api/v1/tasks/${mutationTaskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+        credentials: 'include',
+        body: JSON.stringify({ priority }),
+      });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+    },
+  });
+
   if (!task) return null;
 
   // Normalize — API returns PascalCase, some callers may use camelCase
@@ -161,14 +182,35 @@ export function TaskDrawer({ task, onClose }: Props) {
           <div className={styles.meta}>
             <span className={styles.metaBadge}>{type}</span>
             <span className={styles.metaBadge}>{status}</span>
-            <span
-              className={styles.metaBadge}
-              style={{ color: PRIORITY_COLOR[priority] ?? '#a0aec0' }}
+            <select
+              aria-label="Priority"
+              value={priority || 'MEDIUM'}
+              onChange={(e) => updatePriority.mutate(e.target.value)}
+              disabled={updatePriority.isPending}
+              style={{
+                background:    '#2d3748',
+                border:        '1px solid #4a5568',
+                borderRadius:  6,
+                color:         PRIORITY_COLOR[priority] ?? '#e2e8f0',
+                padding:       '2px 8px',
+                fontSize:      12,
+                fontWeight:    600,
+                letterSpacing: '0.04em',
+                cursor:        updatePriority.isPending ? 'progress' : 'pointer',
+                colorScheme:   'dark',
+              }}
             >
-              {priority}
-            </span>
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
             {storyPoints != null && (
               <span className={styles.metaBadge}>{storyPoints} pts</span>
+            )}
+            {updatePriority.isError && (
+              <span style={{ color: '#fc8181', fontSize: 11 }}>
+                Failed to update priority.
+              </span>
             )}
           </div>
 

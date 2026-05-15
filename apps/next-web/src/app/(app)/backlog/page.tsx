@@ -21,6 +21,9 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -259,6 +262,20 @@ export default function BacklogPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog-tasks', activeProjectId] }),
   });
 
+  const priorityMutation = useMutation({
+    mutationFn: async ({ taskId, priority }: { taskId: string; priority: string }) => {
+      const { ok } = await api(`/tasks/${taskId}`, accessToken, {
+        method: 'PATCH',
+        body:   JSON.stringify({ priority }),
+      }) as any;
+      if (!ok) throw new Error('Priority update failed');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['backlog-tasks', activeProjectId] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
   // ── Derived UI state ───────────────────────────────────────────────────────
   const isInitialLoading = isLoadingWs || isLoadingProj || (!!activeProjectId && isLoadingTasks && !taskList);
   const noProject = !activeProjectId && !isLoadingProj && !isLoadingWs;
@@ -406,6 +423,7 @@ export default function BacklogPage() {
                 onDeleteTask={(id) => {
                   if (window.confirm('Delete this issue?')) deleteMutation.mutate(id);
                 }}
+                onPriorityChange={(id, p) => priorityMutation.mutate({ taskId: id, priority: p })}
               />
             ))}
           </div>
@@ -428,7 +446,7 @@ type SectionData =
 function Section({
   section, assigneesByTaskId, isCollapsed, onToggleCollapse,
   creatingFor, onStartCreate, onCancelCreate, onSubmitCreate, isCreating,
-  onOpenTask, onDeleteTask,
+  onOpenTask, onDeleteTask, onPriorityChange,
 }: {
   section: SectionData;
   assigneesByTaskId: Record<string, AssigneeRow[]>;
@@ -441,6 +459,7 @@ function Section({
   isCreating: boolean;
   onOpenTask: (t: ApiTask) => void;
   onDeleteTask: (id: string) => void;
+  onPriorityChange: (id: string, priority: string) => void;
 }) {
   const totalPoints = section.tasks.reduce(
     (acc, t) => acc + (Number(get(t, 'StoryPoints', 'storyPoints')) || 0),
@@ -512,6 +531,7 @@ function Section({
               assignees={assigneesByTaskId[String(get(t, 'Id', 'id'))] ?? []}
               onOpen={() => onOpenTask(t)}
               onDelete={() => onDeleteTask(String(get(t, 'Id', 'id')))}
+              onPriorityChange={(p) => onPriorityChange(String(get(t, 'Id', 'id')), p)}
             />
           ))}
 
@@ -552,12 +572,13 @@ function SprintMeta({ sprint }: { sprint: ApiSprint }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function Row({
-  task, assignees, onOpen, onDelete,
+  task, assignees, onOpen, onDelete, onPriorityChange,
 }: {
   task: ApiTask;
   assignees: AssigneeRow[];
   onOpen: () => void;
   onDelete: () => void;
+  onPriorityChange: (priority: string) => void;
 }) {
   const type     = String(get(task, 'Type', 'type') ?? 'TASK').toUpperCase();
   const priority = String(get(task, 'Priority', 'priority') ?? 'MEDIUM').toUpperCase();
@@ -637,12 +658,30 @@ function Row({
         {status}
       </span>
 
-      {/* Priority dot */}
-      <span
-        className={cn('inline-block size-2 rounded-full shrink-0', pm.dot)}
-        aria-label={`Priority: ${pm.label}`}
-        title={`Priority: ${pm.label}`}
-      />
+      {/* Priority dot — clicking opens an inline picker. data-row-action stops
+          the row's onClick from also opening the drawer. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          data-row-action
+          aria-label={`Priority: ${pm.label}. Click to change.`}
+          title={`Priority: ${pm.label}`}
+          className="shrink-0 rounded-full p-0.5 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className={cn('inline-block size-2 rounded-full', pm.dot)} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" data-row-action onClick={(e) => e.stopPropagation()}>
+          {(Object.keys(PRIORITY_META) as (keyof typeof PRIORITY_META)[]).map((p) => {
+            const meta = PRIORITY_META[p]!;
+            return (
+              <DropdownMenuItem key={p} onSelect={() => onPriorityChange(p)}>
+                <span className={cn('inline-block size-2 rounded-full', meta.dot)} aria-hidden />
+                <span className={p === priority ? 'font-semibold' : ''}>{meta.label}</span>
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Delete */}
       <button

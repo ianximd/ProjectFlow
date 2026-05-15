@@ -4,7 +4,14 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useStore } from '@/store/useStore';
 import styles from './page.module.css';
-import type { AdminStats, AdminUser, AdminWorkspace, AuditLogEntry } from '@projectflow/types';
+import type {
+  AdminStats,
+  AdminUser,
+  AdminWorkspace,
+  AuditLogEntry,
+  RoleWithCounts,
+  UserRoleAssignment,
+} from '@projectflow/types';
 import { RolesTab } from '@/components/admin/RolesTab';
 import { getUserStatus } from '@/lib/userStatus';
 import { getWorkspaceStatus, SETTABLE_STATUSES } from '@/lib/workspaceStatus';
@@ -83,6 +90,7 @@ export default function AdminPage() {
 
   const [createOpen,   setCreateOpen]   = useState(false);
   const [editingUser,  setEditingUser]  = useState<AdminUser | null>(null);
+  const [rolesUser,    setRolesUser]    = useState<AdminUser | null>(null);
   // After a successful create OR reset-password, we surface the temp password
   // in a one-shot reveal dialog. The admin must capture it then; we never
   // display it again.
@@ -385,6 +393,12 @@ export default function AdminPage() {
                           aria-label={`Edit ${u.email}`}
                         >Edit</button>
 
+                        <button
+                          className={`${styles.actionBtn} ${styles.btnEdit}`}
+                          onClick={() => setRolesUser(u)}
+                          aria-label={`Manage roles for ${u.email}`}
+                        >Roles</button>
+
                         {u.deletedAt ? (
                           <button
                             className={`${styles.actionBtn} ${styles.btnRestore}`}
@@ -472,6 +486,12 @@ export default function AdminPage() {
           <TempPasswordDialog
             data={tempPassword}
             onClose={() => setTempPassword(null)}
+          />
+
+          <UserRolesDialog
+            user={rolesUser}
+            token={token}
+            onClose={() => setRolesUser(null)}
           />
         </div>
       )}
@@ -908,6 +928,189 @@ function TempPasswordDialog({
         </button>
         <button type="button" className={styles.btnPrimary} onClick={onClose}>
           I've saved it
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// ─── Manage user's roles ──────────────────────────────────────────────────────
+// Lists every role the user holds (system + workspace-scoped) and lets the
+// admin assign/revoke. The same /admin/user-roles endpoints back the role-
+// editor's Members section, so changes here invalidate that cache too.
+function UserRolesDialog({
+  user, token, onClose,
+}: {
+  user:    AdminUser | null;
+  token:   string | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const userId = user?.id ?? null;
+
+  const { data: assignments = [] } = useQuery<UserRoleAssignment[]>({
+    queryKey: ['admin', 'user-roles', userId],
+    queryFn:  () => apiFetch(`/admin/user-roles/${userId}`, token).then((j) => j.data),
+    enabled:  !!userId,
+  });
+
+  const { data: roles = [] } = useQuery<RoleWithCounts[]>({
+    queryKey: ['admin', 'roles'],
+    queryFn:  () => apiFetch('/admin/roles', token).then((j) => j.data),
+    enabled:  !!userId,
+  });
+
+  const { data: workspaces = [] } = useQuery<AdminWorkspace[]>({
+    queryKey: ['admin', 'workspaces-all'],
+    queryFn:  () => apiFetch('/admin/workspaces?page=1&pageSize=200', token).then((j) => j.data),
+    enabled:  !!userId,
+  });
+
+  const [pickRoleId, setPickRoleId] = useState('');
+  const [pickWsId,   setPickWsId]   = useState('');
+
+  useEffect(() => { setPickRoleId(''); setPickWsId(''); }, [userId]);
+
+  const pickRole = roles.find((r) => r.id === pickRoleId);
+  const needsWs  = pickRole?.scope === 'WORKSPACE';
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['admin', 'user-roles', userId] });
+    qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
+    if (pickRoleId) qc.invalidateQueries({ queryKey: ['admin', 'role-members', pickRoleId] });
+  };
+
+  const assignMut = useMutation({
+    mutationFn: () =>
+      apiFetch(`/admin/user-roles/${userId}`, token, {
+        method: 'POST',
+        body:   JSON.stringify({ roleId: pickRoleId, workspaceId: needsWs ? pickWsId : null }),
+      }),
+    onSuccess: () => { invalidateAll(); setPickRoleId(''); setPickWsId(''); },
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: ({ roleId, workspaceId }: { roleId: string; workspaceId: string | null }) => {
+      const q = workspaceId ? `?workspaceId=${workspaceId}` : '';
+      return apiFetch(`/admin/user-roles/${userId}/${roleId}${q}`, token, { method: 'DELETE' });
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'user-roles', userId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
+      qc.invalidateQueries({ queryKey: ['admin', 'role-members', vars.roleId] });
+    },
+  });
+
+  // Hide assignments the user already has on the same workspace from the picker.
+  const heldKeys = new Set(assignments.map((a) => `${a.roleId}:${a.workspaceId ?? ''}`));
+  const candidateRoles = roles.filter((r) => {
+    const key = `${r.id}:${r.scope === 'WORKSPACE' ? (pickWsId || '') : ''}`;
+    // For workspace-scoped, only filter once a workspace is picked.
+    if (r.scope === 'WORKSPACE' && !pickWsId) return true;
+    return !heldKeys.has(key);
+  });
+
+  const canAssign = !!pickRoleId && (!needsWs || !!pickWsId) && !assignMut.isPending;
+
+  return (
+    <Dialog open={user !== null} onClose={onClose} title={`Roles for ${user?.email ?? ''}`}>
+      <div className={styles.dialogBody}>
+        {assignments.length === 0 ? (
+          <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
+            This user has no roles assigned yet.
+          </p>
+        ) : (
+          <table className={styles.table} style={{ marginTop: 0 }}>
+            <thead>
+              <tr>
+                <th scope="col">Role</th>
+                <th scope="col">Scope</th>
+                <th scope="col">Workspace</th>
+                <th scope="col">Assigned</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {assignments.map((a) => (
+                <tr key={`${a.roleId}:${a.workspaceId ?? 'sys'}`}>
+                  <td>{a.roleName}</td>
+                  <td>
+                    <span className={`${styles.badge} ${a.roleScope === 'SYSTEM' ? styles.badgeRed : styles.badgeBlue}`}>
+                      {a.roleScope === 'SYSTEM' ? 'System' : 'Workspace'}
+                    </span>
+                  </td>
+                  <td className={styles.mono}>{a.workspaceName ?? '—'}</td>
+                  <td className={styles.mono}>{a.assignedAt.slice(0, 10)}</td>
+                  <td>
+                    <button
+                      className={`${styles.actionBtn} ${styles.btnDelete}`}
+                      disabled={revokeMut.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Revoke "${a.roleName}" from ${user?.email}?`)) {
+                          revokeMut.mutate({ roleId: a.roleId, workspaceId: a.workspaceId });
+                        }
+                      }}
+                      aria-label={`Revoke ${a.roleName}`}
+                    >Revoke</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div style={{ marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem' }}>
+            Assign new role
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <select
+              value={pickRoleId}
+              onChange={(e) => { setPickRoleId(e.target.value); setPickWsId(''); }}
+              className={styles.filterSelect}
+              aria-label="Role to assign"
+            >
+              <option value="">Select role…</option>
+              {candidateRoles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.scope === 'SYSTEM' ? 'System' : 'Workspace'})
+                </option>
+              ))}
+            </select>
+
+            {needsWs && (
+              <select
+                value={pickWsId}
+                onChange={(e) => setPickWsId(e.target.value)}
+                className={styles.filterSelect}
+                aria-label="Workspace"
+              >
+                <option value="">Workspace…</option>
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            )}
+
+            <button
+              type="button"
+              className={styles.btnPrimary}
+              disabled={!canAssign}
+              onClick={() => assignMut.mutate()}
+            >
+              {assignMut.isPending ? 'Assigning…' : 'Assign'}
+            </button>
+          </div>
+          {(assignMut.error as Error | null)?.message && (
+            <div className={styles.dialogWarn} style={{ marginTop: '0.5rem' }}>
+              {(assignMut.error as Error).message}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className={styles.dialogFooter}>
+        <button type="button" className={styles.btnSecondary} onClick={onClose}>
+          Close
         </button>
       </div>
     </Dialog>

@@ -2,10 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trash2, UserPlus } from 'lucide-react';
 import type {
+  AdminUser,
+  AdminWorkspace,
   Permission,
   Role,
+  RoleMember,
   RoleScope,
   RoleWithPermissions,
 } from '@projectflow/types';
@@ -259,6 +262,14 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
                 disabled={isPending}
               />
             </div>
+
+            {isEdit && roleDetail && (
+              <RoleMembersSection
+                roleId={roleId!}
+                scope={roleDetail.scope}
+                token={token}
+              />
+            )}
           </SheetBody>
 
           <SheetFooter className="border-t border-border px-6 py-3 flex items-center justify-between gap-2">
@@ -291,5 +302,237 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
         </form>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ─── Members section ─────────────────────────────────────────────────────────
+
+function RoleMembersSection({
+  roleId, scope, token,
+}: {
+  roleId: string;
+  scope:  RoleScope;
+  token:  string | null;
+}) {
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+
+  const { data: members = [], isLoading } = useQuery<RoleMember[]>({
+    queryKey: ['admin', 'role-members', roleId],
+    queryFn:  () => api(`/admin/roles/${roleId}/members`, token).then((j) => j.data),
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string | null }) => {
+      const q = workspaceId ? `?workspaceId=${workspaceId}` : '';
+      return api(`/admin/user-roles/${userId}/${roleId}${q}`, token, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'role-members', roleId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
+    },
+  });
+
+  const assignMut = useMutation({
+    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string | null }) =>
+      api(`/admin/user-roles/${userId}`, token, {
+        method: 'POST',
+        body:   JSON.stringify({ roleId, workspaceId }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'role-members', roleId] });
+      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
+      setShowAdd(false);
+    },
+  });
+
+  return (
+    <div className="space-y-2 border-t border-border pt-4">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm">
+          Members
+          <span className="ms-2 text-xs font-normal text-muted-foreground">
+            ({members.length})
+          </span>
+        </Label>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setShowAdd((v) => !v)}
+        >
+          <UserPlus className="size-3.5" />
+          {showAdd ? 'Cancel' : 'Assign user'}
+        </Button>
+      </div>
+
+      {showAdd && (
+        <AssignMemberPicker
+          scope={scope}
+          token={token}
+          existing={members}
+          onAssign={(userId, workspaceId) => assignMut.mutate({ userId, workspaceId })}
+          isPending={assignMut.isPending}
+        />
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin" /> Loading members…
+        </div>
+      ) : members.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No one holds this role yet.</p>
+      ) : (
+        <div className="overflow-hidden rounded-md border border-border">
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-border">
+              {members.map((m) => (
+                <tr key={`${m.userId}:${m.workspaceId ?? 'sys'}`} className="hover:bg-muted/30">
+                  <td className="px-3 py-2">
+                    <div className="font-medium text-foreground">{m.name}</div>
+                    <div className="text-xs text-muted-foreground">{m.email}</div>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {scope === 'WORKSPACE' && (
+                      <Badge variant="secondary" size="sm">{m.workspaceName ?? '—'}</Badge>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-end text-xs text-muted-foreground tabular-nums">
+                    {m.assignedAt.slice(0, 10)}
+                  </td>
+                  <td className="px-3 py-2 text-end">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={revokeMut.isPending}
+                      onClick={() => {
+                        if (confirm(`Revoke this role from ${m.email}?`)) {
+                          revokeMut.mutate({ userId: m.userId, workspaceId: m.workspaceId });
+                        }
+                      }}
+                      aria-label={`Revoke role from ${m.email}`}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Inline picker shown when clicking "Assign user". For WORKSPACE-scoped roles
+// the workspace is required; the API enforces this server-side too.
+function AssignMemberPicker({
+  scope, token, existing, onAssign, isPending,
+}: {
+  scope:     RoleScope;
+  token:     string | null;
+  existing:  RoleMember[];
+  onAssign:  (userId: string, workspaceId: string | null) => void;
+  isPending: boolean;
+}) {
+  const [search, setSearch] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [userId, setUserId] = useState<string | null>(null);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const { data: usersData } = useQuery<{ users: AdminUser[] }>({
+    queryKey: ['admin', 'users-picker', debounced],
+    queryFn:  () =>
+      api(`/admin/users?search=${encodeURIComponent(debounced)}&page=1&pageSize=20`, token)
+        .then((j) => ({ users: j.data })),
+  });
+
+  // Hide users who already hold this role in the chosen scope/workspace.
+  const existingKey = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of existing) s.add(`${m.userId}:${m.workspaceId ?? ''}`);
+    return s;
+  }, [existing]);
+
+  const users = (usersData?.users ?? []).filter(
+    (u) => !existingKey.has(`${u.id}:${workspaceId ?? ''}`),
+  );
+
+  const { data: wsData } = useQuery<{ workspaces: AdminWorkspace[] }>({
+    queryKey: ['admin', 'workspaces-picker'],
+    queryFn:  () =>
+      api('/admin/workspaces?page=1&pageSize=200', token)
+        .then((j) => ({ workspaces: j.data })),
+    enabled: scope === 'WORKSPACE',
+  });
+
+  const canAssign = !!userId && (scope === 'SYSTEM' || !!workspaceId);
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs">User</Label>
+          <Input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setUserId(null); }}
+            placeholder="Search by name or email…"
+            className="h-8 text-xs"
+          />
+          {users.length > 0 && (
+            <div className="max-h-40 overflow-y-auto rounded border border-border bg-background">
+              {users.map((u) => (
+                <button
+                  type="button"
+                  key={u.id}
+                  onClick={() => { setUserId(u.id); setSearch(u.email); }}
+                  className={`block w-full px-2 py-1.5 text-start text-xs hover:bg-muted ${
+                    userId === u.id ? 'bg-muted font-medium' : ''
+                  }`}
+                >
+                  <div>{u.name}</div>
+                  <div className="text-muted-foreground">{u.email}</div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {scope === 'WORKSPACE' && (
+          <div className="space-y-1">
+            <Label className="text-xs">Workspace</Label>
+            <select
+              value={workspaceId ?? ''}
+              onChange={(e) => setWorkspaceId(e.target.value || null)}
+              className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="">Choose workspace…</option>
+              {(wsData?.workspaces ?? []).map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canAssign || isPending}
+          onClick={() => onAssign(userId!, workspaceId)}
+        >
+          {isPending && <Loader2 className="size-3.5 animate-spin" />}
+          Assign
+        </Button>
+      </div>
+    </div>
   );
 }

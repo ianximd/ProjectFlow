@@ -82,11 +82,20 @@ export function TaskDrawer({ task, onClose }: Props) {
   const [startInput, setStartInput] = useState<string>(toDateInput(initialStartIso));
   const [dueInput,   setDueInput]   = useState<string>(toLocalInput(initialDueIso));
 
+  // The drawer is opened with a `task` snapshot owned by the parent — that
+  // snapshot is NOT refreshed when ['tasks'] invalidates, so a controlled
+  // priority <select> bound directly to task.Priority would snap back to the
+  // stale value after every PATCH. Mirror it locally instead.
+  const [priorityValue, setPriorityValue] = useState<string>(
+    task?.Priority ?? task?.priority ?? 'MEDIUM',
+  );
+
   // Re-sync the inputs when the drawer swaps to a different task.
   useEffect(() => {
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toLocalInput(task?.DueDate   ?? task?.dueDate   ?? null));
-  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate]);
+    setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
+  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority]);
 
   // Close on Escape
   useEffect(() => {
@@ -146,6 +155,11 @@ export function TaskDrawer({ task, onClose }: Props) {
       queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
     },
+    onError: () => {
+      // Roll back the local select to whatever the task prop says, so the
+      // user sees the unchanged value rather than a phantom selection.
+      setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
+    },
   });
 
   if (!task) return null;
@@ -184,14 +198,17 @@ export function TaskDrawer({ task, onClose }: Props) {
             <span className={styles.metaBadge}>{status}</span>
             <select
               aria-label="Priority"
-              value={priority || 'MEDIUM'}
-              onChange={(e) => updatePriority.mutate(e.target.value)}
+              value={priorityValue}
+              onChange={(e) => {
+                setPriorityValue(e.target.value);
+                updatePriority.mutate(e.target.value);
+              }}
               disabled={updatePriority.isPending}
               style={{
                 background:    '#2d3748',
                 border:        '1px solid #4a5568',
                 borderRadius:  6,
-                color:         PRIORITY_COLOR[priority] ?? '#e2e8f0',
+                color:         PRIORITY_COLOR[priorityValue] ?? '#e2e8f0',
                 padding:       '2px 8px',
                 fontSize:      12,
                 fontWeight:    600,

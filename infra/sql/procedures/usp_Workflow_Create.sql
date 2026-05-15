@@ -19,15 +19,21 @@ BEGIN
         IF @Template = 'DEFAULT'
         BEGIN
             INSERT INTO WorkflowStatuses (Id, WorkflowId, Name, Category, Color, Position) VALUES
-                (NEWID(), @WfId, 'To Do',       'TODO',        '#6b7280', 0),
-                (NEWID(), @WfId, 'In Progress',  'IN_PROGRESS', '#2563eb', 1),
-                (NEWID(), @WfId, 'Done',         'DONE',        '#16a34a', 2);
+                (NEWID(), @WfId, 'Ideas',       'IDEA',        '#f59e0b', 0),
+                (NEWID(), @WfId, 'To Do',       'TODO',        '#6b7280', 1),
+                (NEWID(), @WfId, 'In Progress', 'IN_PROGRESS', '#2563eb', 2),
+                (NEWID(), @WfId, 'Testing',     'TESTING',     '#fb923c', 3),
+                (NEWID(), @WfId, 'Done',        'DONE',        '#16a34a', 4);
 
             INSERT INTO WorkflowTransitions (Id, WorkflowId, FromStatus, ToStatus, Name) VALUES
-                (NEWID(), @WfId, 'To Do',      'In Progress', 'Start'),
-                (NEWID(), @WfId, 'In Progress','Done',        'Complete'),
-                (NEWID(), @WfId, 'In Progress','To Do',       'Reopen'),
-                (NEWID(), @WfId, 'Done',       'In Progress', 'Reopen');
+                (NEWID(), @WfId, 'Ideas',       'To Do',       'Commit'),
+                (NEWID(), @WfId, 'To Do',       'In Progress', 'Start'),
+                (NEWID(), @WfId, 'In Progress', 'Testing',     'Submit for Testing'),
+                (NEWID(), @WfId, 'In Progress', 'Done',        'Complete'),
+                (NEWID(), @WfId, 'Testing',     'Done',        'Pass'),
+                (NEWID(), @WfId, 'Testing',     'In Progress', 'Fail'),
+                (NEWID(), @WfId, 'In Progress', 'To Do',       'Reopen'),
+                (NEWID(), @WfId, 'Done',        'In Progress', 'Reopen');
         END
         ELSE IF @Template = 'BUG'
         BEGIN

@@ -47,8 +47,10 @@ const TYPE_OPTIONS     = ['EPIC', 'STORY', 'TASK', 'BUG', 'SUBTASK', 'IMPROVEMEN
 const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
 const FALLBACK_COLUMNS: BoardColumn[] = [
+  { id: 'Ideas',       title: 'Ideas',       category: 'IDEA' },
   { id: 'To Do',       title: 'To Do',       category: 'TODO' },
   { id: 'In Progress', title: 'In Progress', category: 'IN_PROGRESS' },
+  { id: 'Testing',     title: 'Testing',     category: 'TESTING' },
   { id: 'Done',        title: 'Done',        category: 'DONE' },
 ];
 

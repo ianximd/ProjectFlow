@@ -91,11 +91,14 @@ attachmentRoutes.post(
   }
 });
 
-// GET /api/v1/attachments/:id/download  → redirects to presigned URL
+// GET /api/v1/attachments/:id/download → JSON { data: { url } }
+// Returns the presigned URL rather than a 302 so the frontend can present it
+// with the Bearer token in an Authorization header; an <a href> from the
+// browser wouldn't carry the in-memory access token and would 401.
 attachmentRoutes.get('/:id/download', async (c) => {
   const url = await attachmentService.getDownloadUrl(c.req.param('id'));
   if (!url) return c.json({ error: { message: 'Attachment not found' } }, 404);
-  return c.redirect(url, 302);
+  return c.json({ data: { url } });
 });
 
 // DELETE /api/v1/attachments/:id  — admins (.any) or the uploader (.own)

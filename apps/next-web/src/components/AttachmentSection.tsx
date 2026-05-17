@@ -5,13 +5,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useStore } from '@/store/useStore';
 import styles from './AttachmentSection.module.css';
 
+// API returns rows from MSSQL stored procedures with PascalCase fields.
+// See infra/sql/procedures/usp_Attachment_List.sql.
 interface Attachment {
-  id: string;
-  fileName: string;
-  fileSize: number;
-  mimeType: string;
-  uploaderName: string;
-  createdAt: string;
+  Id:           string;
+  FileName:     string;
+  FileSize:     number;
+  MimeType:     string;
+  UploaderName: string;
+  CreatedAt:    string;
 }
 
 interface Props {
@@ -24,14 +26,15 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function mimeIcon(mime: string) {
-  if (mime.startsWith('image/')) return '🖼️';
-  if (mime === 'application/pdf') return '📄';
-  if (mime.includes('word')) return '📝';
-  if (mime.includes('sheet') || mime.includes('excel')) return '📊';
-  if (mime.includes('presentation') || mime.includes('powerpoint')) return '📑';
-  if (mime.includes('zip')) return '🗜️';
-  if (mime.startsWith('text/')) return '📃';
+function mimeIcon(mime: string | null | undefined) {
+  const m = (mime ?? '').toLowerCase();
+  if (m.startsWith('image/')) return '🖼️';
+  if (m === 'application/pdf') return '📄';
+  if (m.includes('word')) return '📝';
+  if (m.includes('sheet') || m.includes('excel')) return '📊';
+  if (m.includes('presentation') || m.includes('powerpoint')) return '📑';
+  if (m.includes('zip')) return '🗜️';
+  if (m.startsWith('text/')) return '📃';
   return '📎';
 }
 
@@ -97,6 +100,24 @@ export function AttachmentSection({ taskId }: Props) {
     Array.from(files).forEach((f) => uploadMutation.mutate(f));
   };
 
+  // Two-step download: fetch the presigned URL with the in-memory Bearer token
+  // (a plain <a href> wouldn't carry it), then hand the URL to the browser.
+  // The presigned URL is signed and time-limited, so it's safe to open directly.
+  const openDownload = async (id: string) => {
+    const token = useStore.getState().accessToken;
+    const res = await fetch(`/api/v1/attachments/${id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      setUploadError('Failed to open attachment');
+      return;
+    }
+    const json = await res.json();
+    const url  = json?.data?.url as string | undefined;
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setDragover(false);
@@ -139,26 +160,34 @@ export function AttachmentSection({ taskId }: Props) {
       ) : (
         <div className={styles.list}>
           {attachments.map((a) => (
-            <div key={a.id} className={styles.item}>
-              <span className={styles.icon}>{mimeIcon(a.mimeType)}</span>
+            <div key={a.Id} className={styles.item}>
+              <span className={styles.icon}>{mimeIcon(a.MimeType)}</span>
               <div className={styles.info}>
-                <a
-                  href={`/api/v1/attachments/${a.id}/download`}
+                <button
+                  type="button"
+                  onClick={() => openDownload(a.Id)}
                   className={styles.fileName}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={a.fileName}
+                  title={a.FileName}
+                  style={{
+                    background: 'none',
+                    border:     'none',
+                    padding:    0,
+                    cursor:     'pointer',
+                    textAlign:  'left',
+                    font:       'inherit',
+                    color:      'inherit',
+                  }}
                 >
-                  {a.fileName}
-                </a>
+                  {a.FileName}
+                </button>
                 <p className={styles.meta}>
-                  {formatBytes(a.fileSize)} · {a.uploaderName} ·{' '}
-                  {new Date(a.createdAt).toLocaleDateString()}
+                  {formatBytes(a.FileSize)} · {a.UploaderName} ·{' '}
+                  {new Date(a.CreatedAt).toLocaleDateString()}
                 </p>
               </div>
               <button
                 className={styles.deleteBtn}
-                onClick={() => deleteMutation.mutate(a.id)}
+                onClick={() => deleteMutation.mutate(a.Id)}
                 aria-label="Delete attachment"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

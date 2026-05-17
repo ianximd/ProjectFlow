@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CommentSection }  from './CommentSection';
 import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
 import { PullRequestsSection } from './PullRequestsSection';
+import type { AssigneeRow } from './TaskCard';
 import { useStore } from '@/store/useStore';
 import styles from './TaskDrawer.module.css';
 
@@ -36,7 +37,30 @@ interface Task {
 
 interface Props {
   task: Task | null;
+  // The board / backlog pages already hold per-task assignees in their
+  // list-query meta; they pass the slice for this task in. The drawer
+  // owns no fetch for the *current* set — only for the picker dropdown.
+  assignees?: AssigneeRow[];
+  // Parents resolve workspaceId as `currentWorkspaceId ?? workspaces[0].Id`.
+  // If they don't pass it down, the drawer's picker can't load members
+  // because the store value may be null even when the board has a workspace.
+  workspaceId?: string | null;
   onClose: () => void;
+}
+
+interface WorkspaceMember {
+  Id:        string;
+  Email:     string;
+  Name:      string;
+  AvatarUrl: string | null;
+}
+
+function initialsOf(nameOrEmail: string): string {
+  const s = nameOrEmail.trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
 const PRIORITY_COLOR: Record<string, string> = {
@@ -71,9 +95,15 @@ function toDateInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function TaskDrawer({ task, onClose }: Props) {
+export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose }: Props) {
   const drawerRef   = useRef<HTMLDivElement>(null);
+  const pickerRef   = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
+  // Prefer the parent's resolved workspace; fall back to the store. Either
+  // covers the case where currentWorkspaceId hasn't been written yet but the
+  // board still rendered via its workspaces[0] fallback.
+  const storeWorkspaceId = useStore((s) => s.currentWorkspaceId);
+  const workspaceId = workspaceIdProp ?? storeWorkspaceId;
 
   // Seed the editable dates from whichever casing the task arrived in.
   // Hooks must run unconditionally, so this stays above the `!task` short-circuit.
@@ -90,12 +120,29 @@ export function TaskDrawer({ task, onClose }: Props) {
     task?.Priority ?? task?.priority ?? 'MEDIUM',
   );
 
+  // Local mirror of assignees for instant chip feedback on add/remove.
+  // The PUT response carries the authoritative new set; we resync to the
+  // parent's prop on task switch or when the parent re-fetches ['tasks'].
+  const [localAssignees, setLocalAssignees] = useState<AssigneeRow[]>(assignees ?? []);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+
   // Re-sync the inputs when the drawer swaps to a different task.
   useEffect(() => {
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toLocalInput(task?.DueDate   ?? task?.dueDate   ?? null));
     setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
   }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority]);
+
+  // Resync local assignee chips when the parent prop changes (task switch or
+  // ['tasks'] refetch). Compared by stringified user-id list so re-rendering
+  // with an equal-but-new array doesn't clobber an in-flight optimistic add.
+  const assigneesKey = (assignees ?? []).map((a) => a.UserId).sort().join(',');
+  useEffect(() => {
+    setLocalAssignees(assignees ?? []);
+    setPickerOpen(false);
+    setPickerSearch('');
+  }, [task?.Id, task?.id, assigneesKey]);
 
   // Close on Escape
   useEffect(() => {
@@ -161,6 +208,68 @@ export function TaskDrawer({ task, onClose }: Props) {
       setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
     },
   });
+
+  // Members list is fetched lazily — only when the picker opens — so opening
+  // a drawer for a task on a busy workspace doesn't fire an extra round-trip
+  // the user never needed.
+  const membersQuery = useQuery({
+    queryKey: ['workspace-members', workspaceId],
+    queryFn: async () => {
+      const token = useStore.getState().accessToken;
+      const res = await fetch(`/api/v1/workspaces/${workspaceId}/members`, {
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(`Members fetch failed: ${res.status}`);
+      const json = await res.json();
+      return (json.data ?? []) as WorkspaceMember[];
+    },
+    enabled: pickerOpen && !!workspaceId,
+    staleTime: 60_000,
+  });
+
+  // PUT replaces the full assignee set. SP silently drops non-members so a
+  // stale picker can't grant access to someone outside the workspace.
+  const setAssignees = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      const token = useStore.getState().accessToken;
+      const res = await fetch(`/api/v1/tasks/${mutationTaskId}/assignees`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+        credentials: 'include',
+        body: JSON.stringify({ userIds }),
+      });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      const json = await res.json();
+      return (json.data ?? []) as AssigneeRow[];
+    },
+    onSuccess: (rows) => {
+      // The PUT response is the new authoritative set — adopt it locally
+      // so the chip row matches the server even before ['tasks'] refetches.
+      setLocalAssignees(rows);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+    },
+    onError: () => {
+      // Roll back to whatever the parent last told us.
+      setLocalAssignees(assignees ?? []);
+    },
+  });
+
+  // Close the picker when the user clicks outside of it. We listen on the
+  // drawer body (not document) so clicks on the overlay still close the
+  // drawer rather than being eaten by the picker handler.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pickerOpen]);
 
   if (!task) return null;
 
@@ -304,6 +413,234 @@ export function TaskDrawer({ task, onClose }: Props) {
             {updateSchedule.isError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
                 Failed to update schedule.
+              </p>
+            )}
+          </div>
+
+          <div className={styles.section}>
+            <p className={styles.sectionTitle}>Assignees</p>
+            <div
+              ref={pickerRef}
+              style={{
+                display:    'flex',
+                flexWrap:   'wrap',
+                gap:        6,
+                alignItems: 'center',
+                position:   'relative',
+              }}
+            >
+              {localAssignees.map((a) => (
+                <span
+                  key={a.UserId}
+                  title={a.Email}
+                  style={{
+                    display:      'inline-flex',
+                    alignItems:   'center',
+                    gap:          6,
+                    background:   '#2d3748',
+                    border:       '1px solid #4a5568',
+                    borderRadius: 999,
+                    padding:      '2px 8px 2px 2px',
+                    fontSize:     12,
+                    color:        '#e2e8f0',
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width:           20,
+                      height:          20,
+                      borderRadius:    '50%',
+                      background:      a.AvatarUrl ? '#1a202c' : '#4a5568',
+                      backgroundImage: a.AvatarUrl ? `url(${a.AvatarUrl})` : undefined,
+                      backgroundSize:  'cover',
+                      display:         'inline-flex',
+                      alignItems:      'center',
+                      justifyContent:  'center',
+                      fontSize:        9,
+                      fontWeight:      600,
+                      color:           '#e2e8f0',
+                    }}
+                  >
+                    {!a.AvatarUrl && initialsOf(a.Name || a.Email)}
+                  </span>
+                  <span>{a.Name || a.Email}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${a.Name || a.Email}`}
+                    onClick={() => {
+                      const next = localAssignees.filter((x) => x.UserId !== a.UserId);
+                      setLocalAssignees(next);
+                      setAssignees.mutate(next.map((x) => x.UserId));
+                    }}
+                    disabled={setAssignees.isPending}
+                    style={{
+                      background: 'transparent',
+                      color:      '#a0aec0',
+                      border:     'none',
+                      cursor:     setAssignees.isPending ? 'progress' : 'pointer',
+                      padding:    '0 2px',
+                      lineHeight: 1,
+                      fontSize:   16,
+                    }}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+
+              <button
+                type="button"
+                onClick={() => setPickerOpen((v) => !v)}
+                disabled={!workspaceId || setAssignees.isPending}
+                style={{
+                  background:   'transparent',
+                  border:       '1px dashed #4a5568',
+                  borderRadius: 999,
+                  padding:      '3px 10px',
+                  fontSize:     12,
+                  color:        '#a0aec0',
+                  cursor:       (!workspaceId || setAssignees.isPending) ? 'default' : 'pointer',
+                }}
+              >
+                + Assign
+              </button>
+
+              {pickerOpen && (
+                <div
+                  role="dialog"
+                  aria-label="Pick assignee"
+                  style={{
+                    position:     'absolute',
+                    top:          '100%',
+                    left:         0,
+                    marginTop:    4,
+                    width:        300,
+                    maxHeight:    300,
+                    overflowY:    'auto',
+                    background:   '#1a202c',
+                    border:       '1px solid #4a5568',
+                    borderRadius: 6,
+                    zIndex:       10,
+                    padding:      6,
+                    boxShadow:    '0 6px 18px rgba(0,0,0,0.5)',
+                  }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Search members…"
+                    value={pickerSearch}
+                    onChange={(e) => setPickerSearch(e.target.value)}
+                    autoFocus
+                    style={{
+                      width:        '100%',
+                      boxSizing:    'border-box',
+                      marginBottom: 6,
+                      background:   '#2d3748',
+                      border:       '1px solid #4a5568',
+                      borderRadius: 4,
+                      color:        '#e2e8f0',
+                      padding:      '4px 8px',
+                      fontSize:     12,
+                      colorScheme:  'dark',
+                    }}
+                  />
+                  {membersQuery.isPending && (
+                    <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
+                      Loading members…
+                    </p>
+                  )}
+                  {membersQuery.isError && (
+                    <p style={{ fontSize: 12, color: '#fc8181', margin: '4px 6px' }}>
+                      Failed to load members.
+                    </p>
+                  )}
+                  {membersQuery.data && (() => {
+                    const assignedIds = new Set(localAssignees.map((a) => a.UserId));
+                    const q = pickerSearch.trim().toLowerCase();
+                    const filtered = membersQuery.data
+                      .filter((m) => !assignedIds.has(m.Id))
+                      .filter((m) => {
+                        if (!q) return true;
+                        return (m.Name || '').toLowerCase().includes(q)
+                            || (m.Email || '').toLowerCase().includes(q);
+                      });
+                    if (filtered.length === 0) {
+                      return (
+                        <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
+                          {q ? 'No members match.' : 'Everyone is already assigned.'}
+                        </p>
+                      );
+                    }
+                    return filtered.map((m) => (
+                      <button
+                        key={m.Id}
+                        type="button"
+                        onClick={() => {
+                          const optimistic: AssigneeRow = {
+                            TaskId:    mutationTaskId,
+                            UserId:    m.Id,
+                            Email:     m.Email,
+                            Name:      m.Name,
+                            AvatarUrl: m.AvatarUrl,
+                          };
+                          const next = [...localAssignees, optimistic];
+                          setLocalAssignees(next);
+                          setPickerOpen(false);
+                          setPickerSearch('');
+                          setAssignees.mutate(next.map((x) => x.UserId));
+                        }}
+                        style={{
+                          display:    'flex',
+                          alignItems: 'center',
+                          gap:        8,
+                          width:      '100%',
+                          background: 'transparent',
+                          border:     'none',
+                          color:      '#e2e8f0',
+                          padding:    '6px 4px',
+                          borderRadius: 4,
+                          cursor:     'pointer',
+                          textAlign:  'left',
+                          fontSize:   12,
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#2d3748')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width:           22,
+                            height:          22,
+                            borderRadius:    '50%',
+                            background:      m.AvatarUrl ? '#2d3748' : '#4a5568',
+                            backgroundImage: m.AvatarUrl ? `url(${m.AvatarUrl})` : undefined,
+                            backgroundSize:  'cover',
+                            display:         'inline-flex',
+                            alignItems:      'center',
+                            justifyContent:  'center',
+                            fontSize:        10,
+                            fontWeight:      600,
+                            color:           '#e2e8f0',
+                          }}
+                        >
+                          {!m.AvatarUrl && initialsOf(m.Name || m.Email)}
+                        </span>
+                        <span style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span>{m.Name || m.Email}</span>
+                          {m.Name && (
+                            <span style={{ color: '#718096', fontSize: 10 }}>{m.Email}</span>
+                          )}
+                        </span>
+                      </button>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+            {setAssignees.isError && (
+              <p style={{ color: '#fc8181', fontSize: 12, margin: '6px 0 0 0' }}>
+                Failed to update assignees.
               </p>
             )}
           </div>

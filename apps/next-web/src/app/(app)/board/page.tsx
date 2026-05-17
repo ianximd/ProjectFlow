@@ -355,7 +355,12 @@ export default function BoardPage() {
         )}
       </div>
 
-      <TaskDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
+      <TaskDrawer
+        task={selectedTask}
+        assignees={selectedTask ? assigneesByTaskId[String(selectedTask.Id ?? selectedTask.id ?? '')] ?? [] : []}
+        workspaceId={activeWorkspaceId}
+        onClose={() => setSelectedTask(null)}
+      />
     </div>
   );
 }

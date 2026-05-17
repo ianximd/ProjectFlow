@@ -430,7 +430,12 @@ export default function BacklogPage() {
         )}
       </div>
 
-      <TaskDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
+      <TaskDrawer
+        task={selectedTask}
+        assignees={selectedTask ? assigneesByTaskId[String(get(selectedTask, 'Id', 'id'))] ?? [] : []}
+        workspaceId={activeWorkspaceId}
+        onClose={() => setSelectedTask(null)}
+      />
     </div>
   );
 }

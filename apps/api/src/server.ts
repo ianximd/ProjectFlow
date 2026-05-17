@@ -10,6 +10,7 @@ import { projectRoutes } from './modules/projects/project.routes.js';
 import { sprintRoutes } from './modules/sprints/sprint.routes.js';
 import { commentRoutes } from './modules/comments/comment.routes.js';
 import { attachmentRoutes } from './modules/attachments/attachment.routes.js';
+import { avatarRoutes } from './modules/avatars/avatar.routes.js';
 import { notificationRoutes } from './modules/notifications/notification.routes.js';
 import { searchRoutes }   from './modules/search/search.routes.js';
 import { roadmapRoutes }   from './modules/roadmap/roadmap.routes.js';
@@ -175,6 +176,9 @@ app.route('/projects',    projectRoutes);
 app.route('/sprints',     sprintRoutes);
 app.route('/comments',       commentRoutes);
 app.route('/attachments',    attachmentRoutes);
+// Avatars: GET is public (browser <img> can't carry Bearer tokens); the
+// POST/DELETE handlers attach authMiddleware inline.
+app.route('/avatars',        avatarRoutes);
 app.route('/notifications',  notificationRoutes);
 app.route('/search',         searchRoutes);
 app.route('/roadmap',        roadmapRoutes);

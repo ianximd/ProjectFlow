@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import {
   BetweenHorizontalStart,
   Coffee,
@@ -21,6 +21,15 @@ import { useStore } from '@/store/useStore';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+
+function pickUser<T>(o: any, ...keys: string[]): T | undefined {
+  if (!o) return undefined;
+  for (const k of keys) if (o[k] != null) return o[k] as T;
+  return undefined;
+}
+function userInitials(s: string): string {
+  return s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
+}
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,6 +77,13 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
   const router    = useRouter();
   const qc        = useQueryClient();
   const clearAuth = useStore((s) => s.clearAuth);
+  const user      = useStore((s) => s.user) as Record<string, any> | null;
+
+  const displayName = pickUser<string>(user, 'Name', 'name') ?? 'Account';
+  const email       = pickUser<string>(user, 'Email', 'email') ?? '';
+  const avatarUrl   = pickUser<string>(user, 'AvatarUrl', 'avatarUrl') ?? null;
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  useEffect(() => { setAvatarBroken(false); }, [avatarUrl]);
 
   const handleThemeToggle = (checked: boolean) => {
     setTheme(checked ? 'dark' : 'light');
@@ -93,25 +109,37 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
       <DropdownMenuContent className="w-64" side="bottom" align="end">
         {/* Header */}
         <div className="flex items-center justify-between p-3">
-          <div className="flex items-center gap-2">
-            <img
-              className="size-9 rounded-full border-2 border-green-500"
-              src={toAbsoluteUrl('/media/avatars/300-2.png')}
-              alt="User avatar"
-            />
-            <div className="flex flex-col">
+          <div className="flex items-center gap-2 min-w-0">
+            {avatarUrl && !avatarBroken ? (
+              <img
+                className="size-9 rounded-full border-2 border-green-500 object-cover"
+                src={avatarUrl}
+                alt={displayName}
+                onError={() => setAvatarBroken(true)}
+              />
+            ) : (
+              <div
+                className="size-9 rounded-full border-2 border-green-500 bg-muted text-foreground text-xs font-medium flex items-center justify-center"
+                aria-hidden="true"
+              >
+                {userInitials(displayName)}
+              </div>
+            )}
+            <div className="flex flex-col min-w-0">
               <Link
-                href="#"
-                className="text-sm text-mono hover:text-primary font-semibold"
+                href="/settings/profile"
+                className="text-sm text-mono hover:text-primary font-semibold truncate"
               >
-                Sean
+                {displayName}
               </Link>
-              <a
-                href={`mailto:sean@kt.com`}
-                className="text-xs text-muted-foreground hover:text-primary"
-              >
-                sean@kt.com
-              </a>
+              {email && (
+                <a
+                  href={`mailto:${email}`}
+                  className="text-xs text-muted-foreground hover:text-primary truncate"
+                >
+                  {email}
+                </a>
+              )}
             </div>
           </div>
           <Badge variant="primary" appearance="light" size="sm">

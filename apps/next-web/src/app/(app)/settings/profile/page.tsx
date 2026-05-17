@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, UserCog } from 'lucide-react';
+import {
+  CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, Trash2, Upload, UserCog,
+} from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
 import { notifyApiError } from '@/lib/apiErrorToast';
@@ -111,32 +113,72 @@ function ProfileCard({
   token:     string | null;
   onUpdated: (updated: MeUser) => void;
 }) {
-  const email      = get<string>(me, 'Email', 'email') ?? '';
-  const startName  = get<string>(me, 'Name', 'name') ?? '';
-  const startAvUrl = get<string | null>(me, 'AvatarUrl', 'avatarUrl') ?? '';
-  const verified   = !!get<boolean | number>(me, 'IsEmailVerified', 'isEmailVerified');
+  const email     = get<string>(me, 'Email', 'email') ?? '';
+  const startName = get<string>(me, 'Name', 'name') ?? '';
+  const avatarUrl = get<string | null>(me, 'AvatarUrl', 'avatarUrl') ?? '';
+  const verified  = !!get<boolean | number>(me, 'IsEmailVerified', 'isEmailVerified');
 
-  const [name,     setName]     = useState(startName);
-  const [avatarUrl, setAvatarUrl] = useState(startAvUrl ?? '');
+  const [name, setName] = useState(startName);
+  const [avatarErr, setAvatarErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Re-sync if a different user payload arrives (e.g. cache refresh).
-  useEffect(() => { setName(startName); setAvatarUrl(startAvUrl ?? ''); }, [startName, startAvUrl]);
+  // Re-sync the name field if a different user payload arrives (e.g. cache
+  // refresh). Avatar isn't tracked locally — it lives on `me` directly so the
+  // upload/remove mutations swap it in atomically.
+  useEffect(() => { setName(startName); }, [startName]);
 
-  const dirty =
-    name.trim() !== startName ||
-    (avatarUrl || null) !== (startAvUrl || null);
+  const nameDirty = name.trim() !== startName;
 
+  // Save button: name only. Avatar has its own mutations because each upload
+  // also has to clean up the previous MinIO object server-side.
   const updateMut = useMutation({
     mutationFn: () =>
       api('/auth/me', token, {
         method: 'PATCH',
-        body:   JSON.stringify({
-          name:      name.trim(),
-          avatarUrl: avatarUrl.trim() || null,
-        }),
+        body:   JSON.stringify({ name: name.trim() }),
       }),
     onSuccess: (json) => onUpdated(json.data),
   });
+
+  // Avatar upload: multipart POST to /avatars/me. Server uploads to MinIO,
+  // updates the user row, and returns the refreshed user — we hand it
+  // straight to onUpdated so the avatar swaps in immediately.
+  const uploadAvatarMut = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/v1/avatars/me', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token ?? ''}` },
+        credentials: 'include',
+        body: form,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        notifyApiError(json, res.status);
+        throw new Error((json as any)?.error?.message ?? `Upload failed (${res.status})`);
+      }
+      return json;
+    },
+    onSuccess: (json) => { setAvatarErr(null); onUpdated(json.data); },
+    onError:   (err: Error) => setAvatarErr(err.message),
+  });
+
+  const removeAvatarMut = useMutation({
+    mutationFn: () => api('/avatars/me', token, { method: 'DELETE' }),
+    onSuccess: (json) => { setAvatarErr(null); onUpdated(json.data); },
+  });
+
+  const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    // Reset so picking the same file twice still fires onChange.
+    e.target.value = '';
+    if (!f) return;
+    setAvatarErr(null);
+    uploadAvatarMut.mutate(f);
+  };
+
+  const avatarBusy = uploadAvatarMut.isPending || removeAvatarMut.isPending;
 
   return (
     <Card>
@@ -169,6 +211,49 @@ function ProfileCard({
         </div>
 
         <div className="space-y-1.5">
+          <Label>Avatar</Label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={onPickFile}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={avatarBusy}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {uploadAvatarMut.isPending
+                ? <Loader2 className="size-3.5 animate-spin" />
+                : <Upload className="size-3.5" />}
+              {avatarUrl ? 'Replace' : 'Upload'}
+            </Button>
+            {avatarUrl && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={avatarBusy}
+                onClick={() => removeAvatarMut.mutate()}
+              >
+                {removeAvatarMut.isPending
+                  ? <Loader2 className="size-3.5 animate-spin" />
+                  : <Trash2 className="size-3.5" />}
+                Remove
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            JPEG, PNG, GIF, or WebP — up to 3 MB.
+          </p>
+          {avatarErr && <p className="text-xs text-destructive">{avatarErr}</p>}
+        </div>
+
+        <div className="space-y-1.5">
           <Label htmlFor="profile-name">Display name</Label>
           <Input
             id="profile-name"
@@ -179,27 +264,13 @@ function ProfileCard({
           />
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="profile-avatar">Avatar URL</Label>
-          <Input
-            id="profile-avatar"
-            value={avatarUrl}
-            onChange={(e) => setAvatarUrl(e.target.value)}
-            placeholder="https://… (leave blank to clear)"
-            maxLength={500}
-          />
-          <p className="text-xs text-muted-foreground">
-            Paste a public image URL. Cleared when blank.
-          </p>
-        </div>
-
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
             Email cannot be changed here yet.
           </p>
           <Button
             type="button"
-            disabled={!dirty || !name.trim() || updateMut.isPending}
+            disabled={!nameDirty || !name.trim() || updateMut.isPending}
             onClick={() => updateMut.mutate()}
           >
             {updateMut.isPending && <Loader2 className="size-3.5 animate-spin" />}

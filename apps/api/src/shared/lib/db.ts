@@ -1,5 +1,6 @@
 import sql from 'mssql';
 import { subLogger } from './logger.js';
+import { registerCloser } from './shutdown.js';
 
 const log = subLogger('db');
 
@@ -36,6 +37,8 @@ export async function getPool(): Promise<sql.ConnectionPool> {
     pool.on('error', (err) => {
       log.error({ err: err?.message }, 'pool error');
     });
+
+    registerCloser('mssql-pool', () => closePool());
   }
   return pool;
 }

@@ -19,6 +19,32 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    $msg" -ForegroundColor Green }
 function Write-Err($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red }
 
+# Reap any leftover dev-server node.exe children from a previous session before
+# spawning new ones. On Windows each V8 isolate reserves ~70-150 MB of commit
+# charge; piled-up orphans exhaust the commit limit and cause new workers to
+# die with "MemoryChunk allocation failed during deserialization" at startup.
+Write-Step 'Reaping orphan dev-server node processes from prior runs...'
+$orphanPatterns = @('tsx', 'next dev', 'next-server', 'turbo run dev', 'apps\\api', 'apps\\next-web')
+$orphans = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+        $cl = $_.CommandLine
+        if (-not $cl) { return $false }
+        foreach ($p in $orphanPatterns) { if ($cl -like "*$p*") { return $true } }
+        $false
+    }
+if ($orphans) {
+    foreach ($o in $orphans) {
+        try { Stop-Process -Id $o.ProcessId -Force -ErrorAction Stop; Write-Host "    killed PID $($o.ProcessId)" -ForegroundColor Gray }
+        catch { Write-Host "    could not kill PID $($o.ProcessId): $($_.Exception.Message)" -ForegroundColor DarkYellow }
+    }
+} else {
+    Write-Ok 'none found'
+}
+
+# Give the Next.js dev process more headroom than V8's 1.7 GB default. Bounds
+# growth and prevents Scavenge OOM under React 19 + Turbopack + many deps.
+$env:NODE_OPTIONS = '--max-old-space-size=4096'
+
 # 1. Verify Docker is running
 Write-Step 'Checking Docker...'
 docker info --format '{{.ServerVersion}}' *> $null

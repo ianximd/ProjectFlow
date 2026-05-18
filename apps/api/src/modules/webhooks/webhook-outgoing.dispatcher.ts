@@ -10,6 +10,28 @@ export function signPayload(payload: string, secret: string): string {
   return 'sha256=' + hmac.digest('hex');
 }
 
+/** Read up to `max` bytes from a Response body, then cancel the stream. */
+async function readBounded(res: Response, max: number): Promise<string> {
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < max) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = max - total;
+      const slice = value.byteLength > remaining ? value.slice(0, remaining) : value;
+      chunks.push(slice);
+      total += slice.byteLength;
+      if (value.byteLength > remaining) break;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString('utf8');
+}
+
 export interface DeliveryResult {
   statusCode: number | null;
   responseBody: string;
@@ -49,7 +71,7 @@ export async function deliverWebhook(
       signal: AbortSignal.timeout(10_000), // 10-second delivery timeout
     });
 
-    const responseBody = await res.text().catch(() => '');
+    const responseBody = await readBounded(res, 64 * 1024).catch(() => '');
     const durationMs   = Date.now() - start;
 
     return {

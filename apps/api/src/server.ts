@@ -37,6 +37,7 @@ import { securityHeaders } from './shared/middleware/securityHeaders.middleware.
 import { httpLogMiddleware } from './shared/middleware/httpLog.middleware.js';
 import { registerAuditSnapshots } from './shared/middleware/audit-snapshots.bootstrap.js';
 import { logger } from './shared/lib/logger.js';
+import { runShutdown } from './shared/lib/shutdown.js';
 import { isConfigured as oauthCryptoConfigured } from './shared/lib/tokenCrypto.js';
 import { getEnabledProviders } from './modules/auth/oauth/registry.js';
 import { TTL, cachePing } from './shared/lib/cache.js';
@@ -243,6 +244,12 @@ if (process.env.NODE_ENV !== 'test') {
     fetch: app.fetch,
     port,
   });
+
+  const onSignal = (signal: NodeJS.Signals) => {
+    runShutdown(signal).finally(() => process.exit(0));
+  };
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT',  onSignal);
 }
 
 export { app };

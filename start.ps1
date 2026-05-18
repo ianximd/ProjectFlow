@@ -1,7 +1,18 @@
 # start.ps1 — Start ProjectFlow: containers, wait for readiness, then dev servers.
-# Run from the repo root:  .\start.ps1
+# Run from the repo root:
+#   .\start.ps1              # full stack (API + Web)  — ~5+ GB RAM
+#   .\start.ps1 -ApiOnly     # API only (no Next.js)   — ~1 GB RAM, ~5 node.exe
+#   .\start.ps1 -WebOnly     # Web only (no API)       — for pure-frontend work
+#   .\start.ps1 -NoDev       # just containers, no dev server
 
 #requires -Version 5.0
+[CmdletBinding()]
+param(
+    [switch]$ApiOnly,
+    [switch]$WebOnly,
+    [switch]$NoDev
+)
+
 $ErrorActionPreference = 'Stop'
 
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
@@ -70,4 +81,10 @@ Write-Host 'Press Ctrl+C to stop the dev servers, then run .\stop.ps1 to stop co
 Write-Host ''
 
 # 7. Run the dev servers (foreground — Ctrl+C returns control)
-npm run dev
+if ($NoDev) {
+    Write-Host 'Containers up. Run `npm run dev`, `npm run dev:api`, or `npm run dev:web` yourself.' -ForegroundColor Yellow
+    exit 0
+}
+if ($ApiOnly)      { npm run dev:api }
+elseif ($WebOnly)  { npm run dev:web }
+else               { npm run dev }

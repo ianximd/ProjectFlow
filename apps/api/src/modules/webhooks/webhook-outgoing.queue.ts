@@ -1,4 +1,5 @@
 import { Queue } from 'bullmq';
+import { registerCloser } from '../../shared/lib/shutdown.js';
 
 const connection = {
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -23,3 +24,5 @@ export const outgoingWebhookQueue = new Queue<OutgoingWebhookJobData>('outgoing-
     removeOnFail:     { count: 200 },
   },
 });
+
+registerCloser('outgoing-webhook-queue', () => outgoingWebhookQueue.close());

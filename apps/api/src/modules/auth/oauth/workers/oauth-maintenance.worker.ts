@@ -22,6 +22,7 @@ import { isConfigured as cryptoConfigured } from '../../../../shared/lib/tokenCr
 import { runRefreshSweep } from './refreshTokens.service.js';
 import { runRotationSweep } from './keyRotation.service.js';
 import { subLogger } from '../../../../shared/lib/logger.js';
+import { registerCloser } from '../../../../shared/lib/shutdown.js';
 
 const log = subLogger('oauth-maintenance');
 
@@ -105,6 +106,8 @@ export async function startOAuthMaintenanceWorker(): Promise<{ queue: Queue<JobD
     log.error({ err: err?.message }, 'worker error');
   });
 
+  registerCloser('oauth-maintenance-worker', () => worker.close());
+  registerCloser('oauth-maintenance-queue',  () => queue.close());
   log.info({ refreshEveryMs: REFRESH_INTERVAL_MS, rotateEveryMs: ROTATION_INTERVAL_MS }, 'worker started');
   return { queue, worker };
 }

@@ -1,4 +1,5 @@
 import { Queue } from 'bullmq';
+import { registerCloser } from '../../shared/lib/shutdown.js';
 
 const connection = {
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -22,3 +23,5 @@ export const automationQueue = new Queue<AutomationJobData>('automation', {
     removeOnFail:     { count: 100 },
   },
 });
+
+registerCloser('automation-queue', () => automationQueue.close());

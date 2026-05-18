@@ -3,6 +3,7 @@ import { deliverWebhook }            from './webhook-outgoing.dispatcher.js';
 import { WebhookOutgoingRepository } from './webhook-outgoing.repository.js';
 import type { OutgoingWebhookJobData } from './webhook-outgoing.queue.js';
 import { subLogger } from '../../shared/lib/logger.js';
+import { registerCloser } from '../../shared/lib/shutdown.js';
 
 const log = subLogger('webhook-outgoing');
 
@@ -53,6 +54,7 @@ export function startOutgoingWebhookWorker() {
     log.error({ err: err?.message }, 'worker error');
   });
 
+  registerCloser('outgoing-webhook-worker', () => worker.close());
   log.info('worker started');
   return worker;
 }

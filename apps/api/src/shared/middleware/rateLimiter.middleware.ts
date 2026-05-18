@@ -18,6 +18,18 @@ import { getRedis, isRedisDown } from '../lib/redis.js';
 interface RateLimitWindow { count: number; resetAt: number; }
 const memStore = new Map<string, RateLimitWindow>();
 
+const MEM_STORE_MAX = 50_000;
+
+function evictIfOverCap() {
+  if (memStore.size <= MEM_STORE_MAX) return;
+  // Evict the 10% with the soonest resetAt — they would expire next anyway.
+  const target = Math.floor(MEM_STORE_MAX * 0.1);
+  const oldest = [...memStore.entries()]
+    .sort((a, b) => a[1].resetAt - b[1].resetAt)
+    .slice(0, target);
+  for (const [k] of oldest) memStore.delete(k);
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const [k, w] of memStore) {
@@ -59,6 +71,7 @@ async function getCount(key: string, windowMs: number): Promise<{ count: number;
   const existing = memStore.get(key);
   if (!existing || now >= existing.resetAt) {
     memStore.set(key, { count: 1, resetAt: now + windowMs });
+    evictIfOverCap();
     return { count: 1, resetIn: windowSec };
   }
   existing.count += 1;
@@ -155,4 +168,6 @@ export function authRateLimiter() {
   const max = process.env.NODE_ENV === 'production' ? 10 : 200;
   return rateLimiter({ max, windowMs: 15 * 60_000 });
 }
+
+export const _testing = { memStore, MEM_STORE_MAX, evictIfOverCap };
 

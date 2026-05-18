@@ -6,6 +6,7 @@
 
 import { Redis } from 'ioredis';
 import { subLogger } from './logger.js';
+import { registerCloser } from './shutdown.js';
 
 const log = subLogger('redis');
 
@@ -38,6 +39,13 @@ export function getRedis(): Redis {
     _redis.on('ready', () => {
       if (_down) log.info('connection restored');
       _down = false;
+    });
+
+    registerCloser('redis', async () => {
+      if (_redis) {
+        await _redis.quit().catch(() => _redis?.disconnect());
+        _redis = null;
+      }
     });
   }
   return _redis;

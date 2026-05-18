@@ -4,6 +4,7 @@ import { evaluateConditions }   from './automation.conditions.js';
 import { executeAction }        from './automation.actions.js';
 import type { AutomationJobData } from './automation.queue.js';
 import { subLogger } from '../../shared/lib/logger.js';
+import { registerCloser } from '../../shared/lib/shutdown.js';
 
 const log = subLogger('automation');
 
@@ -60,6 +61,7 @@ export function startAutomationWorker() {
     log.error({ err: err?.message }, 'worker error');
   });
 
+  registerCloser('automation-worker', () => worker.close());
   log.info('worker started');
   return worker;
 }

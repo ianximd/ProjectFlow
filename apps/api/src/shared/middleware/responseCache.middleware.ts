@@ -16,6 +16,9 @@
 import type { Context, Next } from 'hono';
 import { cacheGet, cacheSet } from '../lib/cache.js';
 
+/** Don't waste Redis on multi-MB responses (reports, big search dumps). */
+const MAX_CACHE_BODY_BYTES = 256 * 1024;
+
 interface ResponseCacheOptions {
   /** Cache TTL in seconds. Default: 30. */
   ttl?: number;
@@ -86,16 +89,20 @@ export function responseCache(options: ResponseCacheOptions = {}) {
     // Only cache successful responses
     if (c.res && c.res.status < 400) {
       const body = await c.res.clone().text();
-      const headers: Record<string, string> = {};
-      c.res.headers.forEach((v, k) => { headers[k] = v; });
-
-      const toStore: CachedResponse = { body, status: c.res.status, headers };
-      cacheSet(key, toStore, ttl).catch(() => {});
-
-      // Tag the response as a cache miss
       const newHeaders = new Headers(c.res.headers);
-      newHeaders.set('X-Cache', 'MISS');
+
+      if (Buffer.byteLength(body, 'utf8') <= MAX_CACHE_BODY_BYTES) {
+        const headers: Record<string, string> = {};
+        c.res.headers.forEach((v, k) => { headers[k] = v; });
+        const toStore: CachedResponse = { body, status: c.res.status, headers };
+        cacheSet(key, toStore, ttl).catch(() => {});
+        newHeaders.set('X-Cache', 'MISS');
+      } else {
+        newHeaders.set('X-Cache', 'BYPASS-SIZE');
+      }
       c.res = new Response(body, { status: c.res.status, headers: newHeaders });
     }
   };
 }
+
+export const _testing = { MAX_CACHE_BODY_BYTES };

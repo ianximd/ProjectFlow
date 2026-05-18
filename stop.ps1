@@ -8,10 +8,39 @@
 #requires -Version 5.0
 [CmdletBinding()]
 param(
-    [switch]$Wipe
+    [switch]$Wipe,
+    [switch]$NoKillOrphans
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Kill orphan dev-server Node processes from THIS project before bringing
+# containers down. Windows + tsx watch + Next dev are notorious for leaking
+# children. Surgical match: only node.exe whose command line references this
+# repo's dev tooling.
+if (-not $NoKillOrphans) {
+    Write-Host '==> Killing orphan dev-server node processes (this repo only)...' -ForegroundColor Cyan
+    $patterns = @('tsx', 'next dev', 'next-server', 'turbo run dev', 'apps\\api', 'apps\\next-web')
+    $orphans = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $cl = $_.CommandLine
+            if (-not $cl) { return $false }
+            foreach ($p in $patterns) { if ($cl -like "*$p*") { return $true } }
+            $false
+        }
+    if ($orphans) {
+        foreach ($o in $orphans) {
+            try {
+                Stop-Process -Id $o.ProcessId -Force -ErrorAction Stop
+                Write-Host "    killed PID $($o.ProcessId)" -ForegroundColor Gray
+            } catch {
+                Write-Host "    could not kill PID $($o.ProcessId): $($_.Exception.Message)" -ForegroundColor DarkYellow
+            }
+        }
+    } else {
+        Write-Host '    none found' -ForegroundColor Gray
+    }
+}
 
 if ($Wipe) {
     Write-Host '==> Stopping containers AND removing the sqldata volume...' -ForegroundColor Yellow

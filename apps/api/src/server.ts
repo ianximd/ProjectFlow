@@ -245,11 +245,17 @@ if (process.env.NODE_ENV !== 'test') {
     port,
   });
 
-  const onSignal = (signal: NodeJS.Signals) => {
-    runShutdown(signal).finally(() => process.exit(0));
-  };
-  process.on('SIGTERM', onSignal);
-  process.on('SIGINT',  onSignal);
+  // Graceful shutdown only in production. In dev, `tsx watch` restarts the
+  // process on every save — slow shutdown drains race the new child and pile
+  // up orphan node.exe processes on Windows. Default Node Ctrl+C behavior
+  // (instant exit, OS reaps sockets) is what dev wants.
+  if (process.env.NODE_ENV === 'production') {
+    const onSignal = (signal: NodeJS.Signals) => {
+      runShutdown(signal).finally(() => process.exit(0));
+    };
+    process.on('SIGTERM', onSignal);
+    process.on('SIGINT',  onSignal);
+  }
 }
 
 export { app };

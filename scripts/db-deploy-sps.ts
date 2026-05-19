@@ -35,7 +35,7 @@ const config: sql.config = {
 // ── Paths ────────────────────────────────────────────────────────────────────
 
 const PROCEDURES_DIR = path.resolve(
-  path.dirname(decodeURIComponent(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'))),
+  path.dirname(decodeURIComponent(new URL(import.meta.url).pathname.replace(/^\/([a-zA-Z]:)/, '$1'))),
   '../infra/sql/procedures',
 );
 

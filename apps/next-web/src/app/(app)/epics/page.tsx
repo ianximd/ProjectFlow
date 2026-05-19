@@ -226,7 +226,11 @@ export default function EpicsPage() {
     if (!e) return null;
     return {
       Id: e.id, IssueKey: e.issueKey, Title: e.title,
-      Status: e.status, Priority: e.priority, Type: 'EPIC', DueDate: e.dueDate,
+      Status: e.status, Priority: e.priority, Type: 'EPIC',
+      // Pass BOTH dates through — usp_Epic_List surfaces StartDate now, but
+      // without forwarding it here the drawer's Start input would always seed
+      // to '' even when the epic has a start date in the DB.
+      StartDate: e.startDate, DueDate: e.dueDate,
     };
   }, [selectedEpicTaskId, epics]);
 

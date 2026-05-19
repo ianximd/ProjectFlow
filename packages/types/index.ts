@@ -512,6 +512,7 @@ export interface EpicSummary {
   title:             string;
   status:            string;
   priority:          string;
+  startDate:         string | null;
   dueDate:           string | null;
   createdAt:         string;
   totalChildren:     number;

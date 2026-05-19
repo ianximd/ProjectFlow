@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { LayoutGrid, Search, Filter, X } from 'lucide-react';
 
 import { Board } from '@/components/Board';
@@ -55,10 +55,14 @@ const FALLBACK_COLUMNS: BoardColumn[] = [
 ];
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-
-export default function BoardPage() {
+// useSearchParams forces opt-in suspense in Next 16 — the page body must live
+// under a <Suspense> boundary so static rendering can stream around it. The
+// default export below wraps BoardPageInner accordingly.
+function BoardPageInner() {
   const queryClient  = useQueryClient();
   const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
   const accessToken  = useStore((s) => s.accessToken);
 
   const [selectedTask,    setSelectedTask]    = useState<any | null>(null);
@@ -66,9 +70,61 @@ export default function BoardPage() {
   const currentProjectId    = useStore((s) => s.currentProjectId);
   const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
   const setCurrentProject   = useStore((s) => s.setCurrentProject);
-  const [search,          setSearch]          = useState('');
-  const [typeFilter,      setTypeFilter]      = useState<string>('ALL');
-  const [priorityFilter,  setPriorityFilter]  = useState<string>('ALL');
+
+  // Filter state is sourced from the URL so a refresh, a back-button
+  // navigation, and a "share this filtered board" link all restore the same
+  // view. We keep a local mirror for the search input (so typing isn't
+  // throttled by router round-trips) and debounce the URL write.
+  const initialQ        = searchParams.get('q')        ?? '';
+  const initialType     = searchParams.get('type')     ?? 'ALL';
+  const initialPriority = searchParams.get('priority') ?? 'ALL';
+  const [search,         setSearch]         = useState(initialQ);
+  const [typeFilter,     setTypeFilter]     = useState<string>(initialType);
+  const [priorityFilter, setPriorityFilter] = useState<string>(initialPriority);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Single source of truth for writing filter state into the URL. We replace
+  // (not push) so the browser history stays usable — every keystroke as a new
+  // history entry would make the back button useless.
+  const writeFiltersToUrl = useCallback(
+    (next: { q?: string; type?: string; priority?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const setOrDelete = (key: string, value: string, isDefault: boolean) => {
+        if (isDefault) params.delete(key);
+        else           params.set(key, value);
+      };
+      if (next.q        !== undefined) setOrDelete('q',        next.q,        next.q.trim() === '');
+      if (next.type     !== undefined) setOrDelete('type',     next.type,     next.type === 'ALL');
+      if (next.priority !== undefined) setOrDelete('priority', next.priority, next.priority === 'ALL');
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  // Debounce the search box → URL write so we don't push a new entry on every
+  // keystroke. Type/priority Selects commit immediately (one event per change).
+  useEffect(() => {
+    if (search === initialQ) return; // initial mount sync — skip
+    const t = setTimeout(() => writeFiltersToUrl({ q: search }), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Cmd/Ctrl+K focuses the filter input — discoverable productivity boost for
+  // operators who never reach for the mouse. preventDefault stops Firefox's
+  // built-in "search bar" hijack of the same combo.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -286,15 +342,29 @@ export default function BoardPage() {
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
+            ref={searchInputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title or key…"
-            className="h-8 pl-7 text-xs"
+            placeholder="Search title or key…  (Ctrl/⌘+K)"
+            className="h-8 pl-7 pr-12 text-xs"
             aria-label="Filter tasks by title or issue key"
           />
+          {/* Keyboard hint chip — sits on the right of the input so the
+              shortcut is discoverable without cluttering the placeholder
+              once the user has typed something. Hidden on small screens to
+              avoid colliding with the typed text. */}
+          <kbd
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none rounded border border-border bg-background px-1 py-px font-mono text-[9px] text-muted-foreground sm:inline-block"
+          >
+            ⌘K
+          </kbd>
         </div>
 
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
+        <Select
+          value={typeFilter}
+          onValueChange={(v) => { setTypeFilter(v); writeFiltersToUrl({ type: v }); }}
+        >
           <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All types</SelectItem>
@@ -302,7 +372,10 @@ export default function BoardPage() {
           </SelectContent>
         </Select>
 
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+        <Select
+          value={priorityFilter}
+          onValueChange={(v) => { setPriorityFilter(v); writeFiltersToUrl({ priority: v }); }}
+        >
           <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All priorities</SelectItem>
@@ -319,7 +392,12 @@ export default function BoardPage() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => { setSearch(''); setTypeFilter('ALL'); setPriorityFilter('ALL'); }}
+              onClick={() => {
+                setSearch('');
+                setTypeFilter('ALL');
+                setPriorityFilter('ALL');
+                writeFiltersToUrl({ q: '', type: 'ALL', priority: 'ALL' });
+              }}
               className="h-8 px-2 text-xs"
             >
               <X className="size-3.5" /> Clear
@@ -396,5 +474,17 @@ function EmptyProjectState() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Suspense wrapper required because BoardPageInner calls useSearchParams,
+// which opts the route out of fully-static rendering in Next 16. The
+// fallback matches the in-page skeleton so first paint is consistent
+// whether the URL has search params or not.
+export default function BoardPage() {
+  return (
+    <Suspense fallback={<BoardSkeleton />}>
+      <BoardPageInner />
+    </Suspense>
   );
 }

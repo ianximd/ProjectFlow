@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   ChevronLeft, ChevronRight, ChevronDown, Crosshair, Maximize2,
   Bug, Bookmark, CheckSquare, Award, GitBranch, Sparkles, Zap, FlaskConical,
-  AlertTriangle,
+  AlertTriangle, ArrowLeftCircle, ArrowRightCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -36,6 +36,32 @@ interface Props {
   items: GanttItem[];
   deps?: GanttDep[];
   onUpdateDates?: (taskId: string, startDate: string | null, dueDate: string | null) => void;
+  // Open an issue from the timeline. Wired by the page to a TaskDrawer.
+  // Click-vs-drag is disambiguated by movement threshold inside the chart.
+  onOpenTask?: (item: GanttItem) => void;
+}
+
+// ─── Status helpers ──────────────────────────────────────────────────────────
+// Workflow status values are workspace-defined free-form strings ('Done',
+// 'DONE', 'In Progress', 'In Review', etc.). Reduce to three buckets for bar
+// styling so the timeline reads as "what's actually shipping when" rather than
+// just "what type of work it is."
+type StatusCategory = 'done' | 'in_progress' | 'todo';
+
+function getStatusCategory(s: string | null | undefined): StatusCategory {
+  const u = (s ?? '').toString().toUpperCase().replace(/\s+/g, '_');
+  if (u === 'DONE' || u.includes('CLOSED') || u.includes('RESOLVED') || u === 'COMPLETE' || u === 'COMPLETED') {
+    return 'done';
+  }
+  if (u.includes('PROGRESS') || u.includes('REVIEW') || u === 'TESTING' || u === 'BLOCKED' || u === 'DOING') {
+    return 'in_progress';
+  }
+  return 'todo';
+}
+
+const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+function shortDate(d: Date | null): string {
+  return d ? SHORT_DATE.format(d) : '—';
 }
 
 // ─── Zoom configuration ──────────────────────────────────────────────────────
@@ -72,13 +98,27 @@ function daysBetween(a: Date, b: Date): number {
 
 function parseDate(s: string | null | undefined): Date | null {
   if (!s) return null;
+  // Date-only strings ("2026-05-18") MUST be interpreted as local midnight,
+  // not UTC. `new Date("2026-05-18")` parses as UTC midnight, which in any
+  // non-UTC timezone resolves to the wrong calendar day locally — bars would
+  // visually trail the cursor by one day during drag and snap to a different
+  // column on commit.
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s]|$)/.exec(s);
+  if (m) {
+    return startOfDay(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  }
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
   return startOfDay(d);
 }
 
 function toIsoDate(d: Date): string {
-  return d.toISOString().split('T')[0]!;
+  // Use local components so the round-trip is timezone-stable. `toISOString`
+  // would shift the calendar day for any non-UTC user.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function isWeekend(d: Date): boolean {
@@ -152,11 +192,21 @@ interface DragState {
   origStart: Date | null;
   origEnd:   Date | null;
   pxPerDay:  number;
+  // Movement guard: only treat as a drag once the cursor leaves a small dead
+  // zone. Below the threshold, mouseup is interpreted as a click instead so
+  // the bar can double as an "open this issue" target.
+  moved: boolean;
+  // Authoritative latest dates from this drag. Mutated synchronously inside
+  // the move handler so mouseup can commit them without relying on the React
+  // `overrides` state having flushed — a render-scheduling race that made
+  // short/fast drags occasionally not persist.
+  curStart: Date | null;
+  curEnd:   Date | null;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
+export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Props) {
   // Zoom + scroll position live in the store so navigating away and back
   // preserves the user's viewport instead of snapping to today.
   const zoom               = useStore((s) => s.roadmapZoom);
@@ -166,12 +216,47 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [overrides, setOverrides] = useState<Record<string, { startDate?: string; dueDate?: string }>>({});
+  // Track viewport (scrollLeft + clientWidth) so we can position sticky-style
+  // overflow chevrons and decide whether a bar is off-screen. Updated via rAF
+  // inside the scroll listener to coalesce work.
+  const [viewport, setViewport] = useState({ left: 0, width: 0 });
+  // Floating dates+duration label that follows the cursor while dragging.
+  const [dragHint, setDragHint] = useState<{ x: number; y: number; text: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef   = useRef<DragState | null>(null);
+  // Last known mouse X during drag, so the rAF-driven autoscroll loop can keep
+  // panning even when the mouse is held stationary at the viewport edge.
+  const lastMouseXRef    = useRef(0);
+  const autoScrollRafRef = useRef<number | null>(null);
   const didRestoreRef = useRef(false);
 
   const today = today0();
   const cfg   = ZOOM_CFG[zoom];
+
+  // Clear local drag overrides once the server-side items catch up. Without
+  // this, an override would keep "winning" over server data forever (forcing
+  // the user to refresh to see the canonical state) — and any mismatch
+  // between the dragged ISO date and the server's normalized value would be
+  // permanently masked.
+  useEffect(() => {
+    setOverrides((prev) => {
+      const ids = Object.keys(prev);
+      if (ids.length === 0) return prev;
+      const byId = new Map(items.map((it) => [it.id, it]));
+      let changed = false;
+      const next: typeof prev = {};
+      for (const id of ids) {
+        const ov = prev[id]!;
+        const it = byId.get(id);
+        if (it && it.startDate === (ov.startDate ?? null) && it.dueDate === (ov.dueDate ?? null)) {
+          changed = true; // drop entry — server matches the override
+        } else {
+          next[id] = ov;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [items]);
 
   // ── Dynamic range: span all data + zoom-dependent padding, fall back to a
   // sensible window around today when the project has no scheduled work yet.
@@ -257,22 +342,33 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
     didRestoreRef.current = true;
   }, [totalW]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist scroll position as the user pans. Debounced via rAF coalescing so
-  // we don't write to the store on every scroll event.
+  // Persist scroll position as the user pans, and mirror viewport metrics into
+  // local state so off-screen-bar overflow chevrons can re-render. Debounced
+  // via rAF coalescing so we don't write to the store on every scroll event.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // Seed initial viewport now that the ref is attached.
+    setViewport({ left: el.scrollLeft, width: el.clientWidth });
     let raf = 0;
+    const sync = () => {
+      raf = 0;
+      setSavedScrollLeft(el.scrollLeft);
+      setViewport({ left: el.scrollLeft, width: el.clientWidth });
+    };
     const onScroll = () => {
       if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        setSavedScrollLeft(el.scrollLeft);
-      });
+      raf = requestAnimationFrame(sync);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
+    const ro = new ResizeObserver(() => {
+      if (raf) return;
+      raf = requestAnimationFrame(sync);
+    });
+    ro.observe(el);
     return () => {
       el.removeEventListener('scroll', onScroll);
+      ro.disconnect();
       if (raf) cancelAnimationFrame(raf);
     };
   }, [setSavedScrollLeft]);
@@ -306,11 +402,17 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
   };
 
   // ── Drag (resize + move bars) ─────────────────────────────────────────────
+  // Subtle but important: a mousedown that doesn't move beyond DRAG_THRESHOLD
+  // is treated as a click (open the issue), not a zero-length drag. That lets
+  // the same bar element double as both a draggable schedule handle and a
+  // navigation target without breaking either.
+  const DRAG_THRESHOLD = 3;
+  const AUTOSCROLL_EDGE = 80;
+  const AUTOSCROLL_MAX  = 24;
   useEffect(() => {
-    function onMove(e: MouseEvent) {
-      const ds = dragRef.current;
-      if (!ds) return;
-      const deltaDays = Math.round((e.clientX - ds.startX) / ds.pxPerDay);
+    function applyDragDelta(ds: DragState, currentX: number) {
+      const deltaPx   = currentX - ds.startX;
+      const deltaDays = Math.round(deltaPx / ds.pxPerDay);
       let newStart = ds.origStart ? new Date(ds.origStart) : null;
       let newEnd   = ds.origEnd   ? new Date(ds.origEnd)   : null;
       if (ds.handle === 'move') {
@@ -321,11 +423,15 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
       } else {
         if (newEnd) newEnd = addDays(newEnd, deltaDays);
       }
-      // Keep ordered
+      // Keep ordered: if the user drags an edge past the other edge, clamp.
       if (newStart && newEnd && newStart > newEnd) {
         if (ds.handle === 'left')  newStart = new Date(newEnd);
         else                       newEnd   = new Date(newStart);
       }
+      // Synchronous source of truth for mouseup. React state may not have
+      // flushed by the time the user releases the mouse on a short drag.
+      ds.curStart = newStart;
+      ds.curEnd   = newEnd;
       setOverrides((prev) => ({
         ...prev,
         [ds.taskId]: {
@@ -333,30 +439,122 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
           dueDate:   newEnd   ? toIsoDate(newEnd)   : undefined,
         },
       }));
+      // Floating tooltip with the dates the user will commit to on release.
+      const span = (newStart && newEnd) ? Math.max(1, daysBetween(newStart, newEnd) + 1) : null;
+      setDragHint({
+        x: lastMouseXRef.current,
+        y: ds.origStart || ds.origEnd ? (0) : 0, // y is set from the mouse event below
+        text: `${shortDate(newStart)} → ${shortDate(newEnd)}${span ? ` · ${span}d` : ''}`,
+      });
+    }
+
+    function tickAutoScroll() {
+      const ds = dragRef.current;
+      if (!ds) { autoScrollRafRef.current = null; return; }
+      const el = scrollRef.current;
+      if (!el) { autoScrollRafRef.current = requestAnimationFrame(tickAutoScroll); return; }
+      const rect = el.getBoundingClientRect();
+      // The label column is sticky on the left, so the *usable* left edge for
+      // dragging in the timeline starts at rect.left + LABEL_W.
+      const usableLeft  = rect.left + LABEL_W;
+      const usableRight = rect.right;
+      const x = lastMouseXRef.current;
+      let dx = 0;
+      if (x < usableLeft + AUTOSCROLL_EDGE) {
+        const t = Math.min(1, (usableLeft + AUTOSCROLL_EDGE - x) / AUTOSCROLL_EDGE);
+        dx = -AUTOSCROLL_MAX * t;
+      } else if (x > usableRight - AUTOSCROLL_EDGE) {
+        const t = Math.min(1, (x - (usableRight - AUTOSCROLL_EDGE)) / AUTOSCROLL_EDGE);
+        dx = AUTOSCROLL_MAX * t;
+      }
+      if (dx !== 0) {
+        const before = el.scrollLeft;
+        el.scrollLeft = Math.max(0, before + dx);
+        const applied = el.scrollLeft - before;
+        // Shift the drag origin by the same amount so the drag delta keeps
+        // growing as we scroll — the mouse hasn't moved but the timeline has.
+        if (applied !== 0) {
+          ds.startX -= applied;
+          applyDragDelta(ds, lastMouseXRef.current);
+        }
+      }
+      autoScrollRafRef.current = requestAnimationFrame(tickAutoScroll);
+    }
+
+    function onMove(e: MouseEvent) {
+      const ds = dragRef.current;
+      if (!ds) return;
+      lastMouseXRef.current = e.clientX;
+      if (!ds.moved && Math.abs(e.clientX - ds.startX) >= DRAG_THRESHOLD) {
+        ds.moved = true;
+      }
+      if (!ds.moved) return; // below threshold — treat as potential click
+      applyDragDelta(ds, e.clientX);
+      // Mouse-relative tooltip position.
+      setDragHint((prev) => prev ? { ...prev, x: e.clientX, y: e.clientY } : prev);
+      if (autoScrollRafRef.current === null) {
+        autoScrollRafRef.current = requestAnimationFrame(tickAutoScroll);
+      }
     }
     function onUp() {
       const ds = dragRef.current;
       if (!ds) return;
       dragRef.current = null;
-      const ov = overrides[ds.taskId];
-      if (ov && onUpdateDates) onUpdateDates(ds.taskId, ov.startDate ?? null, ov.dueDate ?? null);
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
+      setDragHint(null);
+      if (!ds.moved) {
+        // Click, not a drag — open the issue. Skip if the gesture started on
+        // a resize handle (left/right) to keep handles drag-only.
+        if (ds.handle === 'move' && onOpenTask) {
+          const it = items.find((x) => x.id === ds.taskId);
+          if (it) onOpenTask(it);
+        }
+        return;
+      }
+      // Read final dates from the drag state itself, not from React's
+      // `overrides`. The latter may be one mousemove behind on quick drags
+      // because state updates batch but the mouseup event is synchronous.
+      if (onUpdateDates) {
+        onUpdateDates(
+          ds.taskId,
+          ds.curStart ? toIsoDate(ds.curStart) : null,
+          ds.curEnd   ? toIsoDate(ds.curEnd)   : null,
+        );
+      }
     }
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup',   onUp);
     return () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup',   onUp);
+      if (autoScrollRafRef.current !== null) {
+        cancelAnimationFrame(autoScrollRafRef.current);
+        autoScrollRafRef.current = null;
+      }
     };
-  }, [overrides, onUpdateDates]);
+    // overrides intentionally NOT in deps — onUp now reads from dragRef, and
+    // re-creating listeners on every mousemove was wasteful.
+  }, [onUpdateDates, onOpenTask, items]);
 
   function startDrag(e: React.MouseEvent, item: GanttItem, handle: DragState['handle']) {
     e.stopPropagation();
     e.preventDefault();
     const ov = overrides[item.id];
+    lastMouseXRef.current = e.clientX;
+    const origStart = parseDate(ov?.startDate ?? item.startDate);
+    const origEnd   = parseDate(ov?.dueDate   ?? item.dueDate);
     dragRef.current = {
       taskId: item.id, handle, startX: e.clientX, pxPerDay,
-      origStart: parseDate(ov?.startDate ?? item.startDate),
-      origEnd:   parseDate(ov?.dueDate   ?? item.dueDate),
+      origStart, origEnd,
+      // Seed cur* with the originals so a sub-threshold drag that still
+      // commits (shouldn't happen via the click-vs-drag guard, but defensive)
+      // wouldn't NULL out a task's dates.
+      curStart: origStart,
+      curEnd:   origEnd,
+      moved: false,
     };
   }
 
@@ -372,6 +570,19 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
     const width = Math.max(cfg.colPx * 0.4, daysBetween(s, e) * pxPerDay);
     return { left, width };
   }
+
+  // Per-id geometry + row index, used to draw dependency arrows between bars.
+  // Items in collapsed epics are absent from rowList so their deps drop out
+  // automatically — no need for special-case hiding.
+  const geomById = useMemo(() => {
+    const m = new Map<string, { left: number; width: number; rowIndex: number }>();
+    rowList.forEach((row, i) => {
+      const g = barGeom(row.item);
+      if (g) m.set(row.item.id, { ...g, rowIndex: i });
+    });
+    return m;
+    // barGeom closes over overrides/pxPerDay/range; list those explicitly.
+  }, [rowList, overrides, pxPerDay, range.rangeStart.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Header epoch groupings (month/year ribbon above day/week/month cols) ─
   const epochRibbon = useMemo(() => {
@@ -400,8 +611,18 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
     return out;
   }, [slots, zoom, cfg.colPx]);
 
+  // Scroll a bar into the centre of the visible timeline area. Triggered by
+  // the overflow chevrons rendered when a bar is fully off-screen.
+  function scrollToBar(geom: { left: number; width: number }) {
+    const el = scrollRef.current;
+    if (!el) return;
+    const visibleW   = Math.max(0, el.clientWidth - LABEL_W);
+    const targetLeft = geom.left + geom.width / 2 - visibleW / 2;
+    el.scrollTo({ left: Math.max(0, targetLeft), behavior: 'smooth' });
+  }
+
   return (
-    <div className="flex h-full flex-col bg-card text-sm">
+    <div className="relative flex h-full flex-col bg-card text-sm">
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-background p-0.5">
@@ -518,6 +739,15 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
                   </div>
                 );
               })}
+              {/* Today pill — anchors the today line to a labelled marker so
+                  users orient instantly without scanning the slot ribbon. */}
+              <div
+                className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-sm bg-primary px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-primary-foreground shadow-sm"
+                style={{ left: todayPx, bottom: 2 }}
+                aria-hidden="true"
+              >
+                Today
+              </div>
             </div>
           </div>
         </div>
@@ -528,7 +758,62 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
             No scheduled items in range.
           </div>
         ) : (
-          <div className="relative">
+          <div
+            className="relative"
+            style={{ width: LABEL_W + totalW, minWidth: LABEL_W + totalW }}
+          >
+            {/* Dependency arrows overlay. SVG sits above row backgrounds but
+                below the bars themselves so it never blocks bar clicks. Each
+                arrow goes from the predecessor's right edge to the successor's
+                left edge with a simple manhattan elbow. Violated deps (the
+                successor starts before the predecessor ends) are dashed red
+                so scheduling problems are visible at a glance. */}
+            {deps.length > 0 && (
+              <svg
+                className="pointer-events-none absolute top-0 z-[5]"
+                style={{ left: LABEL_W, width: totalW, height: rowList.length * ROW_H }}
+                aria-hidden="true"
+              >
+                <defs>
+                  <marker
+                    id="gantt-arrow-ok"
+                    viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse"
+                  >
+                    <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground/70" />
+                  </marker>
+                  <marker
+                    id="gantt-arrow-bad"
+                    viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto-start-reverse"
+                  >
+                    <path d="M 0 0 L 10 5 L 0 10 z" className="fill-red-500" />
+                  </marker>
+                </defs>
+                {deps.map((dep, di) => {
+                  const a = geomById.get(dep.dependsOn);
+                  const b = geomById.get(dep.taskId);
+                  if (!a || !b) return null;
+                  const y1 = a.rowIndex * ROW_H + ROW_H / 2;
+                  const y2 = b.rowIndex * ROW_H + ROW_H / 2;
+                  const x1 = a.left + a.width;
+                  const x2 = b.left;
+                  const violated = x2 < x1;
+                  const xm = violated ? x1 + 14 : Math.max(x1 + 8, (x1 + x2) / 2);
+                  return (
+                    <polyline
+                      key={`${dep.taskId}::${dep.dependsOn}::${di}`}
+                      points={`${x1},${y1} ${xm},${y1} ${xm},${y2} ${x2},${y2}`}
+                      fill="none"
+                      strokeWidth={1.5}
+                      className={violated ? 'stroke-red-500' : 'stroke-muted-foreground/60'}
+                      strokeDasharray={violated ? '4 3' : undefined}
+                      markerEnd={violated ? 'url(#gantt-arrow-bad)' : 'url(#gantt-arrow-ok)'}
+                    />
+                  );
+                })}
+              </svg>
+            )}
             {rowList.map(({ item, depth, isEpic, childrenCount }) => {
               const geom = barGeom(item);
               const meta = getTypeMeta(item.type);
@@ -536,9 +821,13 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
               const progressPct = isEpic && item.childCount > 0
                 ? Math.round((item.childDoneCount / item.childCount) * 100)
                 : null;
-              const overflowLeft  = geom !== null && geom.left + geom.width < (scrollRef.current?.scrollLeft ?? 0);
-              const overflowRight = geom !== null && geom.left > (scrollRef.current?.scrollLeft ?? 0) + (scrollRef.current?.clientWidth ?? 0);
+              const visibleRight  = viewport.left + Math.max(0, viewport.width - LABEL_W);
+              const overflowLeft  = geom !== null && geom.left + geom.width < viewport.left;
+              const overflowRight = geom !== null && geom.left > visibleRight;
               const isCollapsed = collapsed[item.id];
+              const statusCat   = getStatusCategory(item.status);
+              const isDone      = statusCat === 'done';
+              const isTodo      = statusCat === 'todo';
 
               return (
                 <div
@@ -565,12 +854,24 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
                     )}
                     <Icon className={cn('size-3.5 shrink-0', meta.iconCls)} />
                     <span className="font-mono text-[10px] shrink-0 text-muted-foreground">{item.issueKey}</span>
-                    <span className={cn('truncate text-xs', isEpic && 'font-semibold')}>{item.title}</span>
-                    {isEpic && progressPct !== null && (
-                      <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                        {progressPct}%
-                      </span>
-                    )}
+                    <span className={cn('truncate text-xs', isEpic && 'font-semibold', isDone && 'line-through text-muted-foreground')}>
+                      {item.title}
+                    </span>
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {!geom && (
+                        <span
+                          title="No start or due date — set dates to place on the timeline"
+                          className="inline-flex items-center gap-1 rounded bg-amber-100 px-1 py-px text-[9px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                        >
+                          <AlertTriangle className="size-2.5" /> No date
+                        </span>
+                      )}
+                      {isEpic && progressPct !== null && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                          {progressPct}%
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Timeline cell */}
@@ -595,27 +896,37 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
                       );
                     })}
 
-                    {/* Today line */}
+                    {/* Today line — thicker & more opaque so it reads at a
+                        glance even on a busy roadmap. */}
                     <div
-                      className="pointer-events-none absolute top-0 bottom-0 z-10 w-px bg-primary/60"
-                      style={{ left: todayPx }}
+                      className="pointer-events-none absolute top-0 bottom-0 z-[8] bg-primary/80"
+                      style={{ left: todayPx - 1, width: 2 }}
                       aria-hidden="true"
                     />
 
                     {/* Bar */}
-                    {geom ? (
+                    {geom && (
                       <div
                         role="button"
                         tabIndex={0}
                         onMouseDown={(e) => startDrag(e, item, 'move')}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onOpenTask?.(item);
+                          }
+                        }}
                         className={cn(
                           'absolute top-1/2 -translate-y-1/2 z-20 flex items-center overflow-hidden rounded-md text-[11px] font-medium text-white shadow-sm cursor-grab active:cursor-grabbing',
-                          'transition-[filter] hover:brightness-110',
+                          'transition-[filter,opacity] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                           isEpic ? 'h-7 ring-1 ring-white/30' : 'h-5',
                           meta.barCls,
+                          isDone && 'opacity-55 saturate-50',
+                          isTodo && 'opacity-90',
                         )}
                         style={{ left: geom.left, width: geom.width }}
                         title={`${item.issueKey} — ${item.title}`}
+                        aria-label={`${item.issueKey} ${item.title}. Status ${item.status}. Press Enter to open.`}
                       >
                         {/* Progress fill for epics */}
                         {progressPct !== null && (
@@ -625,13 +936,22 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
                             aria-hidden="true"
                           />
                         )}
+                        {/* TODO bars get a subtle diagonal hatch overlay so
+                            "not started yet" reads instantly even at a
+                            distance — bar colour still encodes type. */}
+                        {isTodo && (
+                          <div
+                            className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent_0_6px,rgba(255,255,255,0.18)_6px_12px)]"
+                            aria-hidden="true"
+                          />
+                        )}
                         {/* Left resize handle */}
                         <div
                           onMouseDown={(e) => startDrag(e, item, 'left')}
                           className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
                           aria-label="Resize start date"
                         />
-                        <span className="relative z-[1] truncate px-2">
+                        <span className={cn('relative z-[1] truncate px-2', isDone && 'line-through')}>
                           {item.title}
                         </span>
                         {/* Right resize handle */}
@@ -641,10 +961,34 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
                           aria-label="Resize due date"
                         />
                       </div>
-                    ) : (
-                      <span className="absolute left-3 top-1/2 z-10 -translate-y-1/2 inline-flex items-center gap-1 text-[10px] text-muted-foreground/70">
-                        <AlertTriangle className="size-3" /> no dates
-                      </span>
+                    )}
+
+                    {/* Off-screen-bar chevrons. Positioned at the visible
+                        edge of the timeline (just inside the sticky label
+                        column on the left, and the scroll-container's right
+                        edge on the right) using the tracked viewport, so
+                        they stay anchored as the user pans. */}
+                    {geom && overflowLeft && (
+                      <button
+                        type="button"
+                        onClick={() => scrollToBar(geom)}
+                        title={`${item.issueKey} is to the left — click to jump`}
+                        className="absolute top-1/2 z-[15] inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow hover:text-foreground"
+                        style={{ left: viewport.left + 4 }}
+                      >
+                        <ArrowLeftCircle className="size-3.5" />
+                      </button>
+                    )}
+                    {geom && overflowRight && (
+                      <button
+                        type="button"
+                        onClick={() => scrollToBar(geom)}
+                        title={`${item.issueKey} is to the right — click to jump`}
+                        className="absolute top-1/2 z-[15] inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow hover:text-foreground"
+                        style={{ left: viewport.left + Math.max(0, viewport.width - LABEL_W) - 24 }}
+                      >
+                        <ArrowRightCircle className="size-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -653,6 +997,19 @@ export function GanttChart({ items, deps = [], onUpdateDates }: Props) {
           </div>
         )}
       </div>
+
+      {/* Drag tooltip — floats with the cursor while resizing or moving a
+          bar so the user can commit to a date range instead of eyeballing. */}
+      {dragHint && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-md bg-foreground px-2 py-1 text-[11px] font-medium text-background shadow-lg"
+          style={{ left: dragHint.x, top: dragHint.y - 12 }}
+          role="status"
+          aria-live="polite"
+        >
+          {dragHint.text}
+        </div>
+      )}
     </div>
   );
 }

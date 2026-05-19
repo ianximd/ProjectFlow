@@ -1,13 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { GitBranch, CalendarRange, AlertCircle } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
 import { notifyApiError } from '@/lib/apiErrorToast';
-import { GanttChart } from '@/components/GanttChart';
+import { GanttChart, type GanttItem } from '@/components/GanttChart';
+import { TaskDrawer } from '@/components/TaskDrawer';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -98,6 +99,10 @@ export default function RoadmapPage() {
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['roadmap', activeProjectId] }),
   });
+
+  // Drawer state — clicking a bar opens the issue in the same TaskDrawer
+  // used by the board/backlog so the user stays in flow.
+  const [selectedTask, setSelectedTask] = useState<GanttItem | null>(null);
 
   // ── Derived counts for the header pill ─────────────────────────────────────
   const { scheduled, unscheduled } = useMemo(() => {
@@ -211,10 +216,17 @@ export default function RoadmapPage() {
               onUpdateDates={(taskId, startDate, dueDate) =>
                 updateDates.mutate({ taskId, startDate, dueDate })
               }
+              onOpenTask={(it) => setSelectedTask(it)}
             />
           </Card>
         )}
       </div>
+
+      <TaskDrawer
+        task={selectedTask}
+        workspaceId={activeWorkspaceId}
+        onClose={() => setSelectedTask(null)}
+      />
     </div>
   );
 }

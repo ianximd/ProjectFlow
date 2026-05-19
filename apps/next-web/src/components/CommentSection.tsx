@@ -8,7 +8,7 @@ import styles from './CommentSection.module.css';
 interface Comment {
   id: string;
   authorId: string;
-  authorName: string;
+  authorName: string | null;
   authorAvatarUrl: string | null;
   body: string;
   isEdited: boolean;
@@ -20,12 +20,15 @@ interface Props {
   taskId: string;
 }
 
-function initials(name: string) {
-  return name
-    .split(' ')
+function initials(name: string | null | undefined) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return parts
     .map((n) => n[0])
     .slice(0, 2)
-    .join('');
+    .join('')
+    .toUpperCase();
 }
 
 function relativeTime(iso: string) {
@@ -135,8 +138,10 @@ export function CommentSection({ taskId }: Props) {
             <div className={styles.avatar}>{initials(c.authorName)}</div>
             <div className={styles.commentBody}>
               <div className={styles.commentHeader}>
-                <span className={styles.authorName}>{c.authorName}</span>
-                <span className={styles.commentDate}>{relativeTime(c.createdAt)}</span>
+                <span className={styles.authorName}>{c.authorName || 'Unknown'}</span>
+                <span className={styles.commentDate}>
+                  {c.createdAt ? relativeTime(c.createdAt) : ''}
+                </span>
               </div>
 
               {editingId === c.id ? (

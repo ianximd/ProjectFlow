@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   List, Search, Filter, X, Plus, Trash2,
   Bug, Bookmark, CheckSquare, Award, GitBranch, Sparkles, Zap, FlaskConical,
@@ -110,21 +110,71 @@ async function api(path: string, token: string | null, init?: RequestInit) {
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function BacklogPage() {
-  const router      = useRouter();
-  const qc          = useQueryClient();
-  const accessToken = useStore((s) => s.accessToken);
+// Wrapped in <Suspense> at the bottom of the file because useSearchParams
+// forces this route off Next 16's fully-static path.
+function BacklogPageInner() {
+  const router       = useRouter();
+  const pathname     = usePathname();
+  const searchParams = useSearchParams();
+  const qc           = useQueryClient();
+  const accessToken  = useStore((s) => s.accessToken);
 
   const currentWorkspaceId  = useStore((s) => s.currentWorkspaceId);
   const currentProjectId    = useStore((s) => s.currentProjectId);
   const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
   const setCurrentProject   = useStore((s) => s.setCurrentProject);
-  const [search,      setSearch]      = useState('');
-  const [typeFilter,  setTypeFilter]  = useState<string>('ALL');
-  const [priorityFilter, setPriorityFilter] = useState<string>('ALL');
+
+  // URL-persisted filters: a refresh or shared link restores the same view.
+  // Local state mirrors the URL so the search input doesn't lag behind a
+  // router round-trip on every keystroke; the URL write itself is debounced.
+  const initialQ        = searchParams.get('q')        ?? '';
+  const initialType     = searchParams.get('type')     ?? 'ALL';
+  const initialPriority = searchParams.get('priority') ?? 'ALL';
+  const [search,         setSearch]         = useState(initialQ);
+  const [typeFilter,     setTypeFilter]     = useState<string>(initialType);
+  const [priorityFilter, setPriorityFilter] = useState<string>(initialPriority);
   const [selectedTask, setSelectedTask] = useState<ApiTask | null>(null);
   const [collapsed,    setCollapsed]    = useState<Record<string, boolean>>({});
   const [creatingFor,  setCreatingFor]  = useState<string | null>(null);  // sprintId or "BACKLOG"
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const writeFiltersToUrl = useCallback(
+    (next: { q?: string; type?: string; priority?: string }) => {
+      const params = new URLSearchParams(searchParams.toString());
+      const setOrDelete = (key: string, value: string, isDefault: boolean) => {
+        if (isDefault) params.delete(key);
+        else           params.set(key, value);
+      };
+      if (next.q        !== undefined) setOrDelete('q',        next.q,        next.q.trim() === '');
+      if (next.type     !== undefined) setOrDelete('type',     next.type,     next.type === 'ALL');
+      if (next.priority !== undefined) setOrDelete('priority', next.priority, next.priority === 'ALL');
+      const qs = params.toString();
+      // router.replace (not push) so back-button history stays usable — every
+      // keystroke as a new entry would poison the user's history.
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
+  useEffect(() => {
+    if (search === initialQ) return; // initial mount sync — skip URL write
+    const t = setTimeout(() => writeFiltersToUrl({ q: search }), 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Cmd/Ctrl+K focuses the filter input — same shortcut as Board for consistency.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   // ── Workspace / project queries ────────────────────────────────────────────
   const { data: workspaces, isLoading: isLoadingWs } = useQuery<any[]>({
@@ -254,14 +304,39 @@ export default function BacklogPage() {
     },
   });
 
+  // Cache key for the backlog tasks query — used by both optimistic
+  // mutations below so the snapshot/rollback stays in lockstep with the
+  // useQuery above.
+  const backlogQueryKey = ['backlog-tasks', activeProjectId, accessToken] as const;
+
+  // Optimistic delete: pull the row out of the cached list immediately so the
+  // user sees instant feedback. On failure, roll back to the snapshot and
+  // surface the toast (notifyApiError already fired inside api()).
   const deleteMutation = useMutation({
     mutationFn: async (taskId: string) => {
       const { ok } = await api(`/tasks/${taskId}`, accessToken, { method: 'DELETE' }) as any;
       if (!ok) throw new Error('Delete failed');
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['backlog-tasks', activeProjectId] }),
+    onMutate: async (taskId) => {
+      await qc.cancelQueries({ queryKey: backlogQueryKey });
+      const snapshot = qc.getQueryData<{ tasks: ApiTask[]; assigneesByTaskId: Record<string, AssigneeRow[]> }>(backlogQueryKey);
+      if (snapshot) {
+        qc.setQueryData(backlogQueryKey, {
+          ...snapshot,
+          tasks: snapshot.tasks.filter((t) => String(get(t, 'Id', 'id')) !== taskId),
+        });
+      }
+      return { snapshot };
+    },
+    onError: (_err, _taskId, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(backlogQueryKey, ctx.snapshot);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['backlog-tasks', activeProjectId] }),
   });
 
+  // Optimistic priority change: the row's dot recolors instantly. The PATCH
+  // returns the updated row but the visible chip is the only thing the user
+  // cares about, so we only need to swap the Priority field locally.
   const priorityMutation = useMutation({
     mutationFn: async ({ taskId, priority }: { taskId: string; priority: string }) => {
       const { ok } = await api(`/tasks/${taskId}`, accessToken, {
@@ -270,7 +345,28 @@ export default function BacklogPage() {
       }) as any;
       if (!ok) throw new Error('Priority update failed');
     },
-    onSuccess: () => {
+    onMutate: async ({ taskId, priority }) => {
+      await qc.cancelQueries({ queryKey: backlogQueryKey });
+      const snapshot = qc.getQueryData<{ tasks: ApiTask[]; assigneesByTaskId: Record<string, AssigneeRow[]> }>(backlogQueryKey);
+      if (snapshot) {
+        qc.setQueryData(backlogQueryKey, {
+          ...snapshot,
+          // Update whichever casing the row carries — PascalCase is the
+          // canonical API shape but Row() defensively reads both, so we
+          // patch both to keep them in sync.
+          tasks: snapshot.tasks.map((t) =>
+            String(get(t, 'Id', 'id')) === taskId
+              ? { ...t, Priority: priority, priority }
+              : t,
+          ),
+        });
+      }
+      return { snapshot };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(backlogQueryKey, ctx.snapshot);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['backlog-tasks', activeProjectId] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -348,15 +444,25 @@ export default function BacklogPage() {
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
+            ref={searchInputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title or key…"
-            className="h-8 pl-7 text-xs"
+            placeholder="Search title or key…  (Ctrl/⌘+K)"
+            className="h-8 pl-7 pr-12 text-xs"
             aria-label="Filter backlog by title or issue key"
           />
+          <kbd
+            aria-hidden="true"
+            className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 select-none rounded border border-border bg-background px-1 py-px font-mono text-[9px] text-muted-foreground sm:inline-block"
+          >
+            ⌘K
+          </kbd>
         </div>
 
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
+        <Select
+          value={typeFilter}
+          onValueChange={(v) => { setTypeFilter(v); writeFiltersToUrl({ type: v }); }}
+        >
           <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All types</SelectItem>
@@ -364,7 +470,10 @@ export default function BacklogPage() {
           </SelectContent>
         </Select>
 
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+        <Select
+          value={priorityFilter}
+          onValueChange={(v) => { setPriorityFilter(v); writeFiltersToUrl({ priority: v }); }}
+        >
           <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="ALL">All priorities</SelectItem>
@@ -381,7 +490,12 @@ export default function BacklogPage() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => { setSearch(''); setTypeFilter('ALL'); setPriorityFilter('ALL'); }}
+              onClick={() => {
+                setSearch('');
+                setTypeFilter('ALL');
+                setPriorityFilter('ALL');
+                writeFiltersToUrl({ q: '', type: 'ALL', priority: 'ALL' });
+              }}
               className="h-8 px-2 text-xs"
             >
               <X className="size-3.5" /> Clear
@@ -771,5 +885,15 @@ function EmptyProjectState() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Suspense wrapper required because BacklogPageInner calls useSearchParams,
+// which opts the route out of fully-static rendering in Next 16.
+export default function BacklogPage() {
+  return (
+    <Suspense fallback={<BacklogSkeleton />}>
+      <BacklogPageInner />
+    </Suspense>
   );
 }

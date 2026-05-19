@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { CommentSection }  from './CommentSection';
 import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
@@ -120,6 +122,16 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     task?.Priority ?? task?.priority ?? 'MEDIUM',
   );
 
+  // Inline-edit state for title + description. We mirror the parent snapshot
+  // so the UI is responsive on PATCH (no flash of stale text), then resync
+  // on task switch + on successful PATCH so an out-of-band update wins.
+  const initialTitle       = task?.Title ?? task?.title ?? '';
+  const initialDescription = task?.Description ?? task?.description ?? '';
+  const [titleValue,       setTitleValue]       = useState<string>(initialTitle);
+  const [descriptionValue, setDescriptionValue] = useState<string>(initialDescription);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [draftDescription,   setDraftDescription]   = useState<string>(initialDescription);
+
   // Local mirror of assignees for instant chip feedback on add/remove.
   // The PUT response carries the authoritative new set; we resync to the
   // parent's prop on task switch or when the parent re-fetches ['tasks'].
@@ -127,12 +139,21 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
-  // Re-sync the inputs when the drawer swaps to a different task.
+  // Re-sync the inputs when the drawer swaps to a different task. Title +
+  // description follow the same pattern — local mirror so PATCH doesn't
+  // flash stale text, but an out-of-band edit (e.g. someone else changes
+  // the title) still wins on the next list-query refetch.
   useEffect(() => {
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toLocalInput(task?.DueDate   ?? task?.dueDate   ?? null));
     setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
-  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority]);
+    const t = task?.Title ?? task?.title ?? '';
+    const d = task?.Description ?? task?.description ?? '';
+    setTitleValue(t);
+    setDescriptionValue(d);
+    setDraftDescription(d);
+    setEditingDescription(false);
+  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Title, task?.title, task?.Description, task?.description]);
 
   // Resync local assignee chips when the parent prop changes (task switch or
   // ['tasks'] refetch). Compared by stringified user-id list so re-rendering
@@ -184,6 +205,44 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       queryClient.invalidateQueries({ queryKey: ['epics'] });
     },
   });
+
+  // Shared PATCH for {title, description}. We invalidate the same list
+  // queries as updatePriority so board/backlog/dashboard/roadmap pick up the
+  // change without a refresh. On error we roll back to the parent's snapshot
+  // — the toast comes from the api() error pipeline at the page level, but
+  // since the drawer fetches directly we surface a local error too.
+  const updateField = useMutation({
+    mutationFn: async (input: { title?: string; description?: string | null }) => {
+      const token = useStore.getState().accessToken;
+      const res = await fetch(`/api/v1/tasks/${mutationTaskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
+        credentials: 'include',
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['roadmap'] });
+      queryClient.invalidateQueries({ queryKey: ['epics'] });
+    },
+  });
+
+  // Commit-on-blur for the title input. Trims, ignores no-op edits, and
+  // refuses to send empty strings (server schema requires min length 1).
+  const commitTitle = useCallback(() => {
+    const trimmed = titleValue.trim();
+    const original = (task?.Title ?? task?.title ?? '').trim();
+    if (trimmed === '' || trimmed === original) {
+      setTitleValue(original); // reset display in case the user emptied it
+      return;
+    }
+    updateField.mutate({ title: trimmed });
+  }, [titleValue, task?.Title, task?.title, updateField]);
 
   const updatePriority = useMutation({
     mutationFn: async (priority: string) => {
@@ -300,7 +359,40 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
         </div>
 
         <div className={styles.body}>
-          <h2 className={styles.title}>{title}</h2>
+          {/* Click-to-edit title: behaves as an h2 visually but is actually a
+              borderless textarea that grows with content. Enter commits and
+              re-blurs (Shift+Enter for a newline, but titles are single-line
+              so we discard newlines on commit). Escape reverts to the last
+              saved value. */}
+          <textarea
+            className={styles.title}
+            value={titleValue}
+            onChange={(e) => setTitleValue(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              } else if (e.key === 'Escape') {
+                setTitleValue(task.Title ?? task.title ?? '');
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
+            disabled={updateField.isPending}
+            rows={1}
+            aria-label="Issue title"
+            placeholder="Untitled"
+            style={{
+              background:  'transparent',
+              border:      'none',
+              outline:     'none',
+              resize:      'none',
+              width:       '100%',
+              padding:     0,
+              fontFamily:  'inherit',
+              colorScheme: 'dark',
+            }}
+          />
 
           <div className={styles.meta}>
             <span className={styles.metaBadge}>{type}</span>
@@ -645,12 +737,163 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             )}
           </div>
 
-          {description && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>Description</p>
-              <p className={styles.description}>{description}</p>
-            </div>
-          )}
+          {/* Description: markdown-rendered by default, click to edit. Empty
+              state shows an "Add description" hint so the section is always
+              actionable. Cmd/Ctrl+Enter commits, Escape cancels. */}
+          <div className={styles.section}>
+            <p className={styles.sectionTitle}>Description</p>
+            {editingDescription ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <textarea
+                  value={draftDescription}
+                  onChange={(e) => setDraftDescription(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setDraftDescription(descriptionValue);
+                      setEditingDescription(false);
+                    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                      e.preventDefault();
+                      const next = draftDescription;
+                      setDescriptionValue(next);
+                      setEditingDescription(false);
+                      updateField.mutate({ description: next.length === 0 ? null : next });
+                    }
+                  }}
+                  autoFocus
+                  rows={Math.min(20, Math.max(6, draftDescription.split('\n').length + 1))}
+                  placeholder="Write a description… markdown supported (Cmd/Ctrl+Enter to save, Esc to cancel)"
+                  disabled={updateField.isPending}
+                  style={{
+                    background:   '#2d3748',
+                    border:       '1px solid #4a5568',
+                    borderRadius: 6,
+                    color:        '#e2e8f0',
+                    padding:      '10px 12px',
+                    fontSize:     14,
+                    lineHeight:   1.55,
+                    fontFamily:   'inherit',
+                    colorScheme:  'dark',
+                    resize:       'vertical',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = draftDescription;
+                      setDescriptionValue(next);
+                      setEditingDescription(false);
+                      updateField.mutate({ description: next.length === 0 ? null : next });
+                    }}
+                    disabled={updateField.isPending}
+                    style={{
+                      background:   '#3182ce',
+                      color:        '#fff',
+                      border:       'none',
+                      borderRadius: 6,
+                      padding:      '6px 14px',
+                      fontSize:     13,
+                      fontWeight:   500,
+                      cursor:       updateField.isPending ? 'progress' : 'pointer',
+                    }}
+                  >
+                    {updateField.isPending ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDraftDescription(descriptionValue);
+                      setEditingDescription(false);
+                    }}
+                    style={{
+                      background:   'transparent',
+                      color:        '#a0aec0',
+                      border:       '1px solid #4a5568',
+                      borderRadius: 6,
+                      padding:      '6px 14px',
+                      fontSize:     13,
+                      cursor:       'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftDescription(descriptionValue);
+                  setEditingDescription(true);
+                }}
+                aria-label="Edit description"
+                style={{
+                  background: 'transparent',
+                  border:     '1px dashed transparent',
+                  borderRadius: 6,
+                  padding:    '8px 10px',
+                  margin:     '-8px -10px',
+                  textAlign:  'left',
+                  cursor:     'text',
+                  color:      'inherit',
+                  width:      '100%',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#4a5568')}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
+              >
+                {descriptionValue.trim().length > 0 ? (
+                  <div className={`markdown-body ${styles.description}`}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // Match GuideViewer's typography so descriptions feel
+                        // like real markdown, not free text.
+                        p:  (p) => <p style={{ margin: '0 0 0.6em' }} {...p} />,
+                        ul: (p) => <ul style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
+                        ol: (p) => <ol style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
+                        a:  ({ href, ...rest }) => (
+                          <a
+                            href={href}
+                            target={href?.startsWith('http') ? '_blank' : undefined}
+                            rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                            style={{ color: '#63b3ed', textDecoration: 'underline' }}
+                            onClick={(e) => e.stopPropagation()}
+                            {...rest}
+                          />
+                        ),
+                        code: ({ children, ...rest }) => (
+                          <code
+                            style={{
+                              background:   '#2d3748',
+                              borderRadius: 4,
+                              padding:      '1px 6px',
+                              fontSize:     '0.9em',
+                              fontFamily:   'ui-monospace, SFMono-Regular, Menlo, monospace',
+                            }}
+                            {...rest}
+                          >
+                            {children}
+                          </code>
+                        ),
+                      }}
+                    >
+                      {descriptionValue}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <span style={{ color: '#718096', fontSize: 13, fontStyle: 'italic' }}>
+                    Add a description…
+                  </span>
+                )}
+              </button>
+            )}
+            {updateField.isError && (
+              <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
+                Failed to save. Please try again.
+              </p>
+            )}
+          </div>
+
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>Attachments</p>

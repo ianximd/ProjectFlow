@@ -11,6 +11,7 @@ BEGIN
     e.Status,
     e.Priority,
     e.CreatedAt,
+    e.StartDate,
     e.DueDate,
     COUNT(c.Id)                                                    AS TotalChildren,
     SUM(CASE WHEN c.Status IN ('DONE','CLOSED','RELEASED') THEN 1 ELSE 0 END) AS CompletedChildren
@@ -19,7 +20,7 @@ BEGIN
   WHERE e.ProjectId = @ProjectId
     AND e.Type      = 'EPIC'
     AND e.DeletedAt IS NULL
-  GROUP BY e.Id, e.IssueKey, e.Title, e.Status, e.Priority, e.CreatedAt, e.DueDate
+  GROUP BY e.Id, e.IssueKey, e.Title, e.Status, e.Priority, e.CreatedAt, e.StartDate, e.DueDate
   ORDER BY e.CreatedAt DESC;
 END;
 GO

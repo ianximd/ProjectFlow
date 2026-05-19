@@ -7,7 +7,7 @@ import { GitBranch, CalendarRange, AlertCircle } from 'lucide-react';
 
 import { useStore } from '@/store/useStore';
 import { notifyApiError } from '@/lib/apiErrorToast';
-import { GanttChart, type GanttItem } from '@/components/GanttChart';
+import { GanttChart } from '@/components/GanttChart';
 import { TaskDrawer } from '@/components/TaskDrawer';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -101,8 +101,15 @@ export default function RoadmapPage() {
   });
 
   // Drawer state — clicking a bar opens the issue in the same TaskDrawer
-  // used by the board/backlog so the user stays in flow.
-  const [selectedTask, setSelectedTask] = useState<GanttItem | null>(null);
+  // used by the board/backlog so the user stays in flow. We hold the id only
+  // and re-derive the task from the live `data.items` below, so a Gantt-bar
+  // resize (which invalidates ['roadmap']) refreshes the drawer's dates in
+  // place instead of leaving the user on a stale click-time snapshot.
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const selectedTask = useMemo(
+    () => (data?.items ?? []).find((it) => it.id === selectedTaskId) ?? null,
+    [data?.items, selectedTaskId],
+  );
 
   // ── Derived counts for the header pill ─────────────────────────────────────
   const { scheduled, unscheduled } = useMemo(() => {
@@ -216,7 +223,7 @@ export default function RoadmapPage() {
               onUpdateDates={(taskId, startDate, dueDate) =>
                 updateDates.mutate({ taskId, startDate, dueDate })
               }
-              onOpenTask={(it) => setSelectedTask(it)}
+              onOpenTask={(it) => setSelectedTaskId(it.id)}
             />
           </Card>
         )}
@@ -225,7 +232,7 @@ export default function RoadmapPage() {
       <TaskDrawer
         task={selectedTask}
         workspaceId={activeWorkspaceId}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
       />
     </div>
   );

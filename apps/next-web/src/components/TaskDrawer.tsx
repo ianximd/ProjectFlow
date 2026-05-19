@@ -75,20 +75,8 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
-// <input type="datetime-local"> reads/writes "YYYY-MM-DDTHH:mm" in *local* time.
-// We hand-format because toISOString() returns UTC and would shift the visible
-// hours by the user's offset.
-function toLocalInput(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-       + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// <input type="date"> expects "YYYY-MM-DD". Tasks.StartDate is a DATE column
-// (day-granular), so we drop any time component.
+// <input type="date"> expects "YYYY-MM-DD". Used for both Start and Due — the
+// drawer is day-granular end-to-end now.
 function toDateInput(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
@@ -112,7 +100,10 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const initialStartIso = task?.StartDate ?? task?.startDate ?? null;
   const initialDueIso   = task?.DueDate   ?? task?.dueDate   ?? null;
   const [startInput, setStartInput] = useState<string>(toDateInput(initialStartIso));
-  const [dueInput,   setDueInput]   = useState<string>(toLocalInput(initialDueIso));
+  // Due is day-granular in the UI to match Start — operators were confused by
+  // the mixed precision. The server column is DATETIME2 but the Gantt has
+  // always sent day-only strings to this same endpoint, so the API accepts it.
+  const [dueInput,   setDueInput]   = useState<string>(toDateInput(initialDueIso));
 
   // The drawer is opened with a `task` snapshot owned by the parent — that
   // snapshot is NOT refreshed when ['tasks'] invalidates, so a controlled
@@ -145,7 +136,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   // the title) still wins on the next list-query refetch.
   useEffect(() => {
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
-    setDueInput  (toLocalInput(task?.DueDate   ?? task?.dueDate   ?? null));
+    setDueInput  (toDateInput(task?.DueDate   ?? task?.dueDate   ?? null));
     setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
     const t = task?.Title ?? task?.title ?? '';
     const d = task?.Description ?? task?.description ?? '';
@@ -432,7 +423,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             )}
           </div>
 
-          {/* Editable schedule — Start (DATE) + Due (DATETIME2). Single Save
+          {/* Editable schedule — both Start and Due are day-granular. The
+              server's DueDate column is DATETIME2, but the API has always
+              accepted day-only strings (Gantt sends them on drag). Single Save
               hits PATCH /roadmap/tasks/:id/dates so the bar on the Gantt and
               the deadline chip on the board both refresh from one request. */}
           <div className={styles.section}>
@@ -448,14 +441,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   setStartInput('');
                   updateSchedule.mutate({
                     startIso: null,
-                    dueIso:   dueInput ? new Date(dueInput).toISOString() : null,
+                    dueIso:   dueInput || null,
                   });
                 }}
                 disabled={updateSchedule.isPending}
               />
               <ScheduleRow
                 label="Due date"
-                kind="datetime"
+                kind="date"
                 value={dueInput}
                 onChange={setDueInput}
                 hasValue={!!dueDate}
@@ -473,11 +466,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   type="button"
                   onClick={() => updateSchedule.mutate({
                     startIso: startInput || null,
-                    dueIso:   dueInput ? new Date(dueInput).toISOString() : null,
+                    dueIso:   dueInput || null,
                   })}
                   disabled={
                     updateSchedule.isPending
-                    || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate))
+                    || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate))
                   }
                   style={{
                     background:   '#3182ce',
@@ -488,18 +481,15 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                     fontSize:     13,
                     fontWeight:   500,
                     cursor:       (updateSchedule.isPending
-                                   || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate)))
+                                   || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
                                   ? 'default' : 'pointer',
                     opacity:      (updateSchedule.isPending
-                                   || (startInput === toDateInput(startDate) && dueInput === toLocalInput(dueDate)))
+                                   || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
                                   ? 0.5 : 1,
                   }}
                 >
                   {updateSchedule.isPending ? 'Saving…' : 'Save schedule'}
                 </button>
-                <span style={{ fontSize: 11, color: '#718096' }}>
-                  Start is day-granular; due supports time.
-                </span>
               </div>
             </div>
             {updateSchedule.isError && (

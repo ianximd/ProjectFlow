@@ -7,7 +7,7 @@ import {
   CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, Trash2, Upload, UserCog,
 } from 'lucide-react';
 
-import { useStore } from '@/store/useStore';
+import { useStore, type AuthUser as MeUser } from '@/store/useStore';
 import { notifyApiError } from '@/lib/apiErrorToast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -35,20 +35,8 @@ async function api(path: string, token: string | null, init?: RequestInit) {
   return json;
 }
 
-interface MeUser {
-  id?:              string;
-  Id?:              string;
-  email?:           string;
-  Email?:           string;
-  name?:            string;
-  Name?:            string;
-  avatarUrl?:       string | null;
-  AvatarUrl?:       string | null;
-  isEmailVerified?: boolean;
-  IsEmailVerified?: boolean | number;
-  mfaEnabled?:      boolean;
-  MfaEnabled?:      boolean | number;
-}
+// MeUser is now AuthUser from the store, aliased on the import above so the
+// rest of this file (ProfileCard, SecurityCard) keeps its existing references.
 
 const get = <T,>(o: any, pascal: string, camel: string): T | undefined =>
   o?.[pascal] ?? o?.[camel];

@@ -5,7 +5,8 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import type { ProjectType } from '../queries/normalize';
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+import type { ActionResult } from './result';
+export type { ActionResult };
 
 export interface CreateProjectInput {
   workspaceId: string;

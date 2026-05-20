@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useTransition } from 'react';
+import { useCallback, useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
 import { setSelection } from '@/server/actions/selection';
@@ -22,7 +22,12 @@ export function useSelectionBridge(ctx: Ctx) {
   const legacyProjectId = useStore((s) => s.currentProjectId);
 
   useEffect(() => {
-    if (ctx.cookieWorkspaceId === null && legacyWorkspaceId && ctx.workspaceIds.includes(legacyWorkspaceId)) {
+    if (
+      ctx.cookieWorkspaceId === null &&
+      legacyWorkspaceId &&
+      legacyWorkspaceId !== ctx.activeWorkspaceId &&
+      ctx.workspaceIds.includes(legacyWorkspaceId)
+    ) {
       const seedProject = legacyProjectId && ctx.projectIds.includes(legacyProjectId) ? legacyProjectId : undefined;
       startTransition(async () => {
         await setSelection({ workspaceId: legacyWorkspaceId, ...(seedProject ? { projectId: seedProject } : {}) });
@@ -42,14 +47,15 @@ export function useSelectionSwitch() {
   const [, startTransition] = useTransition();
   const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
   const setCurrentProject = useStore((s) => s.setCurrentProject);
-  const switchWorkspace = (id: string) => {
+  const switchWorkspace = useCallback((id: string) => {
     setCurrentWorkspace(id);
+    // projectId: null clears any project scoped to the previous workspace
     startTransition(async () => { await setSelection({ workspaceId: id, projectId: null }); router.refresh(); });
-  };
-  const switchProject = (id: string) => {
+  }, [router, setCurrentWorkspace]);
+  const switchProject = useCallback((id: string) => {
     setCurrentProject(id);
     startTransition(async () => { await setSelection({ projectId: id }); router.refresh(); });
-  };
+  }, [router, setCurrentProject]);
   return { switchWorkspace, switchProject };
 }
 

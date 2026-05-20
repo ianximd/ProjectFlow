@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   BarChart3, TrendingDown, Activity, Users, GitCompare,
@@ -45,6 +45,7 @@ export function DashboardView({
   burndown, velocity, sprintSummary, workload, createdVsResolved,
 }: Props) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   // ── Selection bridge — keeps zustand in sync with server cookie truth ────────
   useSelectionBridge({
@@ -64,18 +65,14 @@ export function DashboardView({
 
     const isDone = (t: Task) => {
       const s = t.status ?? '';
-      return s === 'Done' || s === 'DONE';
+      return s === 'Done' || s === 'DONE' || !!t.resolvedAt;
     };
 
     const open       = all.filter((t) => !isDone(t));
     const inProgress = all.filter((t) => t.status === 'In Progress');
     const doneThisWeek = all.filter((t) => {
-      // Task shape has no ResolvedAt; proxy with dueDate for tasks that are Done
-      // and whose dueDate falls within the last 7 days.
-      if (!isDone(t)) return false;
-      const d = t.dueDate;
-      if (!d) return false;
-      const ts = new Date(d).getTime();
+      if (!t.resolvedAt) return false;
+      const ts = new Date(t.resolvedAt).getTime();
       return Number.isFinite(ts) && ts >= weekAgo;
     });
     const overdue = open.filter((t) => {
@@ -102,7 +99,7 @@ export function DashboardView({
   function handleSprintChange(id: string) {
     const url = new URL(window.location.href);
     url.searchParams.set('sprint', id);
-    router.push(url.pathname + url.search);
+    startTransition(() => { router.push(url.pathname + url.search); });
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -141,6 +138,7 @@ export function DashboardView({
             <Select
               value={activeSprintId ?? undefined}
               onValueChange={handleSprintChange}
+              disabled={isPending}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
                 <SelectValue placeholder="Sprint" />
@@ -191,7 +189,7 @@ export function DashboardView({
           </div>
 
           {/* ── Gadget grid ──────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div className={cn('grid grid-cols-1 lg:grid-cols-2 gap-3', isPending && 'opacity-60 transition-opacity')}>
             <Gadget
               icon={TrendingDown}
               title="Burndown"

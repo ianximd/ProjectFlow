@@ -24,6 +24,7 @@ export interface Task {
   storyPoints: number | null;
   startDate: string | null;
   dueDate: string | null;
+  resolvedAt: string | null;
   position: number | null;
 }
 
@@ -50,6 +51,7 @@ export function normalizeTask(r: any): Task {
     storyPoints: n(r?.StoryPoints      ?? r?.storyPoints),
     startDate:   s(r?.StartDate        ?? r?.startDate),
     dueDate:     s(r?.DueDate          ?? r?.dueDate),
+    resolvedAt:  s(r?.ResolvedAt       ?? r?.resolvedAt),
     position:    n(r?.Position         ?? r?.position),
   };
 }

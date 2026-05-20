@@ -21,4 +21,16 @@ describe('decideAuth', () => {
     expect(decideAuth('/board', true)).toBe('allow');
     expect(decideAuth('/oauth/mfa', true)).toBe('allow');
   });
+  it('does not treat prefix-colliding paths as public', () => {
+    expect(decideAuth('/loginx', false)).toBe('redirect-login');
+    expect(decideAuth('/registrations', false)).toBe('redirect-login');
+    expect(decideAuth('/oauthx', false)).toBe('redirect-login');
+  });
+  it('allows unauthenticated users on /oauth (exact prefix)', () => {
+    expect(decideAuth('/oauth', false)).toBe('allow');
+  });
+  it('keeps authenticated users on /oauth/* and prefix-colliding paths', () => {
+    expect(decideAuth('/oauth/finish', true)).toBe('allow');
+    expect(decideAuth('/loginx', true)).toBe('allow');
+  });
 });

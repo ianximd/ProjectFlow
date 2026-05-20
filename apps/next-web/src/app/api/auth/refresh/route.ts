@@ -32,7 +32,13 @@ export async function POST() {
     res.cookies.delete(COOKIE.refresh);
     return res;
   }
-  const j = await r.json();
+  const j = await r.json().catch(() => null);
+  if (!j?.data?.token || !j?.data?.refreshToken) {
+    const res = NextResponse.json({ error: { message: 'Refresh failed' } }, { status: 401 });
+    res.cookies.delete(COOKIE.access);
+    res.cookies.delete(COOKIE.refresh);
+    return res;
+  }
   const newClaims = decodeJwt(j.data.token);
   const res = NextResponse.json({
     data: { token: j.data.token, user: { id: newClaims?.userId, email: newClaims?.email } },

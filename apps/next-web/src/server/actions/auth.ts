@@ -10,6 +10,8 @@ function bffHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', 'X-BFF-Secret': BFF_SECRET };
 }
 
+// TODO(migration): stop returning `token` to the client once the in-memory CSR
+// store is removed (Phase 3) — the httpOnly cookie should be the only token store.
 export type LoginResult =
   | { ok: true; token: string; user: unknown }
   | { ok: false; mfaRequired: true; mfaToken: string }
@@ -44,7 +46,7 @@ export async function register(
   email: string, name: string, password: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: bffHeaders(),
     body: JSON.stringify({ email, name, password }), cache: 'no-store',
   });
   const json = await res.json().catch(() => ({}));

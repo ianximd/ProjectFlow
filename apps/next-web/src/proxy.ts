@@ -23,15 +23,23 @@ export async function proxy(req: NextRequest) {
         headers: { 'X-BFF-Secret': BFF_SECRET, Cookie: `refresh_token=${refresh}` },
       });
       if (r.ok) {
-        const j = await r.json();
-        access = j.data.token;
-        refreshed = { token: j.data.token, refreshToken: j.data.refreshToken };
+        const j = await r.json().catch(() => null);
+        if (j?.data?.token && j?.data?.refreshToken) {
+          access = j.data.token;
+          refreshed = { token: j.data.token, refreshToken: j.data.refreshToken };
+        } else {
+          // 200 but malformed body — refresh genuinely failed.
+          access = undefined;
+          cleared = true;
+        }
       } else {
         access = undefined;
         cleared = true;
       }
     } catch {
-      // API unreachable — treat as unauthenticated for this request only.
+      // API unreachable — treat as unauthenticated for THIS request only. We do
+      // NOT clear cookies here: a transient outage must not delete a still-valid
+      // refresh token and force re-login. The next request retries the refresh.
       access = undefined;
     }
   }

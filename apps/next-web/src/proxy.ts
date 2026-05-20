@@ -56,7 +56,9 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
-  const isAuthed = !!access && !isJwtExpired(decodeJwt(access));
+  // Decode once here (covers the freshly-refreshed token too) for the auth check.
+  const claims = decodeJwt(access);
+  const isAuthed = !!claims && !isJwtExpired(claims);
   const decision = decideAuth(pathname, isAuthed);
 
   if (decision === 'redirect-login') {

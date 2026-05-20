@@ -25,6 +25,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   if (!res.ok) return { ok: false, error: json?.error?.message ?? 'Login failed' };
   const data = json.data;
   if (data?.mfaRequired) return { ok: false, mfaRequired: true, mfaToken: data.mfaToken };
+  if (!data?.token || !data?.refreshToken) return { ok: false, error: 'Login failed: malformed server response' };
   await setSessionCookies(data.token, data.refreshToken);
   return { ok: true, token: data.token, user: data.user };
 }
@@ -38,6 +39,7 @@ export async function mfaChallenge(
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: json?.error?.message ?? 'Verification failed' };
+  if (!json.data?.token || !json.data?.refreshToken) return { ok: false, error: 'Verification failed: malformed server response' };
   await setSessionCookies(json.data.token, json.data.refreshToken);
   return { ok: true, token: json.data.token, user: json.data.user };
 }

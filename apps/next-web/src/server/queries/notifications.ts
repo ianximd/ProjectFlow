@@ -5,6 +5,9 @@ import { serverFetchEnvelope } from '../api';
 // The API service layer normalises the DB PascalCase row (Id, UserId, Type,
 // Payload, IsRead, CreatedAt) into camelCase before sending — so the wire
 // shape is already camelCase.
+
+export const NOTIFICATIONS_PAGE_SIZE = 20;
+
 export interface NotificationRow {
   id:        string;
   userId:    string;

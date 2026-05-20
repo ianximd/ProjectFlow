@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useTransition } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   Bell, BellOff, Check, CheckCheck, MessageSquare, UserPlus, AtSign,
@@ -18,10 +17,6 @@ import {
 } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { NotificationRow } from '@/server/queries/notifications';
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const PAGE_SIZE = 20;
 
 // ── Type → icon + summary mapping ────────────────────────────────────────────
 
@@ -75,17 +70,19 @@ export function NotificationsView({
   unreadCount,
   page,
   unreadOnly,
+  pageSize,
 }: {
   items: NotificationRow[];
   unreadCount: number;
   page: number;
   unreadOnly: boolean;
+  pageSize: number;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   // hasNextPage heuristic: if we filled the page, assume there is a next one.
-  const hasNextPage = items.length === PAGE_SIZE;
+  const hasNextPage = items.length === pageSize;
 
   // ── URL navigation helpers ────────────────────────────────────────────────
   function buildHref(opts: { tab?: string; page?: number }) {
@@ -185,24 +182,20 @@ export function NotificationsView({
       {(items.length > 0 || page > 1) && (
         <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
           <span>Page {page}</span>
-          <Link href={buildHref({ page: Math.max(1, page - 1) })}>
-            <Button
-              size="sm" variant="outline"
-              disabled={page <= 1 || isPending}
-              aria-disabled={page <= 1 || isPending}
-            >
-              <ChevronLeft className="size-3.5" /> Prev
-            </Button>
-          </Link>
-          <Link href={buildHref({ page: page + 1 })}>
-            <Button
-              size="sm" variant="outline"
-              disabled={!hasNextPage || isPending}
-              aria-disabled={!hasNextPage || isPending}
-            >
-              Next <ChevronRight className="size-3.5" />
-            </Button>
-          </Link>
+          <Button
+            size="sm" variant="outline"
+            disabled={page <= 1 || isPending}
+            onClick={() => router.push(buildHref({ page: page - 1 }))}
+          >
+            <ChevronLeft className="size-3.5" /> Prev
+          </Button>
+          <Button
+            size="sm" variant="outline"
+            disabled={!hasNextPage || isPending}
+            onClick={() => router.push(buildHref({ page: page + 1 }))}
+          >
+            Next <ChevronRight className="size-3.5" />
+          </Button>
         </div>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { requireSession } from '@/server/session';
-import { getNotifications } from '@/server/queries/notifications';
+import { getNotifications, NOTIFICATIONS_PAGE_SIZE } from '@/server/queries/notifications';
 import { NotificationsView } from './notifications-view';
 
 export default async function NotificationsPage({
@@ -13,7 +13,7 @@ export default async function NotificationsPage({
   const page      = Math.max(1, Number(sp.page ?? '1') || 1);
   const unreadOnly = sp.tab === 'unread';
 
-  const { items, unreadCount } = await getNotifications({ page, unreadOnly });
+  const { items, unreadCount } = await getNotifications({ page, unreadOnly, pageSize: NOTIFICATIONS_PAGE_SIZE });
 
   return (
     <NotificationsView
@@ -21,6 +21,7 @@ export default async function NotificationsPage({
       unreadCount={unreadCount}
       page={page}
       unreadOnly={unreadOnly}
+      pageSize={NOTIFICATIONS_PAGE_SIZE}
     />
   );
 }

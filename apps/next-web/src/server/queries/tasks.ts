@@ -10,7 +10,7 @@ export const getTasks = cache(async (
   opts: { pageSize?: number } = {},
 ): Promise<{ tasks: Task[]; assigneesByTaskId: Record<string, AssigneeRow[]> }> => {
   const qs = new URLSearchParams({ projectId });
-  if (opts.pageSize) qs.set('pageSize', String(opts.pageSize));
+  if (opts.pageSize != null) qs.set('pageSize', String(opts.pageSize));
 
   const { data, meta } = await serverFetchEnvelope<
     any[],

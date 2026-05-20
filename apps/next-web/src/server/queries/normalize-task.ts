@@ -31,9 +31,12 @@ export interface Task {
 const s = (v: unknown): string | null =>
   typeof v === 'string' && v.length > 0 ? v : null;
 
-/** Numeric coercion: null/undefined/'' → null, anything else → Number(). */
-const n = (v: unknown): number | null =>
-  v === null || v === undefined || v === '' ? null : Number(v);
+/** Numeric coercion: null/undefined/'' → null, NaN → null, anything else → Number(). */
+const n = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const num = Number(v);
+  return Number.isNaN(num) ? null : num;
+};
 
 export function normalizeTask(r: any): Task {
   return {

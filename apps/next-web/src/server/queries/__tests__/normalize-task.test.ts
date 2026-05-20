@@ -8,6 +8,6 @@ describe('normalizeTask', () => {
   });
   it('reads camelCase and defaults', () => {
     const t = normalizeTask({ id: 't2' });
-    expect(t).toMatchObject({ id: 't2', status: 'To Do', priority: 'Medium', type: 'TASK' });
+    expect(t).toMatchObject({ id: 't2', title: '(untitled)', status: 'To Do', priority: 'Medium', type: 'TASK' });
   });
 });

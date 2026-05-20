@@ -36,6 +36,45 @@ export async function createProject(input: CreateProjectInput): Promise<ActionRe
   return { ok: true };
 }
 
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  type?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+export async function updateProject(id: string, changed: UpdateProjectInput): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body:   JSON.stringify(changed),
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+  revalidatePath(`/projects/${id}/settings`);
+  revalidatePath('/projects');
+  return { ok: true };
+}
+
+export async function restoreProject(id: string): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch(`/projects/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ status: 'ACTIVE' }),
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+  revalidatePath(`/projects/${id}/settings`);
+  revalidatePath('/projects');
+  return { ok: true };
+}
+
 export async function archiveProject(id: string): Promise<ActionResult> {
   await requireSession();
   try {
@@ -43,6 +82,7 @@ export async function archiveProject(id: string): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
+  revalidatePath(`/projects/${id}/settings`);
   revalidatePath('/projects');
   return { ok: true };
 }
@@ -54,6 +94,7 @@ export async function deleteProject(id: string): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
+  revalidatePath(`/projects/${id}/settings`);
   revalidatePath('/projects');
   return { ok: true };
 }

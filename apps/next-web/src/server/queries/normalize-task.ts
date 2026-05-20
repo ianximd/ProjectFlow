@@ -26,6 +26,7 @@ export interface Task {
   dueDate: string | null;
   resolvedAt: string | null;
   position: number | null;
+  sprintId: string | null;
 }
 
 /** Non-empty string → string, otherwise null. */
@@ -53,5 +54,6 @@ export function normalizeTask(r: any): Task {
     dueDate:     s(r?.DueDate          ?? r?.dueDate),
     resolvedAt:  s(r?.ResolvedAt       ?? r?.resolvedAt),
     position:    n(r?.Position         ?? r?.position),
+    sprintId:    s(r?.SprintId         ?? r?.sprintId),
   };
 }

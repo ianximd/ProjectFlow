@@ -5,8 +5,11 @@ import { serverFetch } from '../api';
 import { setSelection } from './selection';
 import type { ActionResult } from './result';
 
+// Append a short random suffix so onboarding never fails on a duplicate slug
+// (workspace slug has a UNIQUE constraint; it is editable later in workspace settings).
 function slugify(s: string) {
-  return s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const base = s.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace';
+  return `${base}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
 function keyify(s: string) {

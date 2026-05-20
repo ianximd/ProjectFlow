@@ -102,6 +102,7 @@ export function ProjectsView({
     setCurrentWorkspace(id);                 // legacy pages
     startTransition(async () => {
       await setSelection({ workspaceId: id }); // cookie → revalidate → server re-render
+      router.refresh();
     });
   }
 

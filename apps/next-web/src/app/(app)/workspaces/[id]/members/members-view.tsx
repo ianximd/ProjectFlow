@@ -126,6 +126,7 @@ export function MembersView({
                 <tr className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   <th className="px-4 py-2">User</th>
                   <th className="px-4 py-2">Role</th>
+                  <th className="px-4 py-2">Joined</th>
                   <th className="px-4 py-2 w-[1%]"></th>
                 </tr>
               </thead>
@@ -174,6 +175,9 @@ export function MembersView({
                             </SelectContent>
                           </Select>
                         )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                        {m.joinedAt?.slice(0, 10) ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {!m.isOwner && (

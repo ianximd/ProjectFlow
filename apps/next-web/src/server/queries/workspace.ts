@@ -28,6 +28,7 @@ export interface MemberRow {
   avatarUrl: string | null;
   roleSlugs: string;
   isOwner: boolean;
+  joinedAt: string | null;
 }
 
 export const getWorkspaceMembers = cache(async (id: string): Promise<MemberRow[]> => {
@@ -39,5 +40,6 @@ export const getWorkspaceMembers = cache(async (id: string): Promise<MemberRow[]
     avatarUrl: (r?.AvatarUrl ?? r?.avatarUrl) || null,
     roleSlugs: String(r?.RoleSlugs ?? r?.roleSlugs ?? ''),
     isOwner:   Boolean(r?.IsOwner ?? r?.isOwner),
+    joinedAt:  (r?.JoinedAt ?? r?.joinedAt) || null,
   }));
 });

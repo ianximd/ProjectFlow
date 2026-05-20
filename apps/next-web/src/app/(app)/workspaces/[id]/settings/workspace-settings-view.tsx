@@ -19,17 +19,19 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
   const [avatarUrl, setAvatarUrl] = useState(workspace.avatarUrl ?? '');
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Re-seed the form if the workspace prop changes (e.g. after a revalidation).
-  useEffect(() => {
-    setName(workspace.name);
-    setSlug(workspace.slug);
-    setAvatarUrl(workspace.avatarUrl ?? '');
-  }, [workspace.name, workspace.slug, workspace.avatarUrl]);
-
   const dirty =
     name !== workspace.name ||
     slug !== workspace.slug ||
     avatarUrl !== (workspace.avatarUrl ?? '');
+
+  // Re-seed the form if the workspace prop changes (e.g. after a revalidation),
+  // but only when there are no unsaved edits so we don't stomp in-progress work.
+  useEffect(() => {
+    if (dirty) return; // eslint-disable-line react-hooks/exhaustive-deps
+    setName(workspace.name);
+    setSlug(workspace.slug);
+    setAvatarUrl(workspace.avatarUrl ?? '');
+  }, [workspace.name, workspace.slug, workspace.avatarUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +45,8 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
       if (!res.ok) {
         setSaveError(res.error);
         notifyActionError(res);
+      } else {
+        setSaveError(null);
       }
     });
   }
@@ -58,8 +62,8 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
     <div className="flex h-full flex-col gap-4 max-w-3xl">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <Link href="/workspaces" className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" />
+        <Link href="/workspaces" className="text-muted-foreground hover:text-foreground" aria-label="Back to workspaces">
+          <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
           <Building2 className="size-5" />

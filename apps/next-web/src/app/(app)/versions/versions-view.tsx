@@ -149,10 +149,10 @@ export function VersionsView({ ctx, versions }: Props) {
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span>Versions</span>
-              {(activeProject as any)?.key && (
+              {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
-                  <span className="font-mono">{(activeProject as any).key}</span>
+                  <span className="font-mono">{activeProject.key}</span>
                 </>
               )}
             </div>
@@ -172,7 +172,7 @@ export function VersionsView({ ctx, versions }: Props) {
           <Button
             size="sm"
             variant="primary"
-            onClick={() => setCreateOpen(true)}
+            onClick={() => { setCreateOpen(true); setActionError(null); }}
             disabled={!ctx.activeProjectId}
           >
             <Plus className="size-4" /> New version
@@ -250,7 +250,7 @@ export function VersionsView({ ctx, versions }: Props) {
                   key={v.id}
                   version={v}
                   busy={isPending}
-                  onEdit={() => setEditing(v)}
+                  onEdit={() => { setEditing(v); setActionError(null); }}
                   onRelease={() => runAction(() => releaseVersion(v.id))}
                   onArchive={() => runAction(() => archiveVersion(v.id))}
                   onDelete={() => {
@@ -269,6 +269,7 @@ export function VersionsView({ ctx, versions }: Props) {
 
       {/* ── Create dialog ───────────────────────────────────────────────────── */}
       <VersionDialog
+        key="create"
         mode="create"
         open={createOpen}
         initial={null}
@@ -296,6 +297,7 @@ export function VersionsView({ ctx, versions }: Props) {
 
       {/* ── Edit dialog ─────────────────────────────────────────────────────── */}
       <VersionDialog
+        key={editing?.id ?? 'edit'}
         mode="edit"
         open={!!editing}
         initial={editing}
@@ -490,7 +492,7 @@ function VersionDialog({
         }
       }}
     >
-      <DialogContent key={initial?.id ?? mode}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{mode === 'create' ? 'New version' : `Edit ${initial?.name ?? 'version'}`}</DialogTitle>
         </DialogHeader>

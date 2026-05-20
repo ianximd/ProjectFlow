@@ -40,7 +40,7 @@ export function SetupView() {
         </CardHeader>
         <CardContent>
           {errorMsg && (
-            <div className="mb-4 rounded-md border-l-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <div role="alert" className="mb-4 rounded-md border-l-2 border-destructive bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {errorMsg}
             </div>
           )}

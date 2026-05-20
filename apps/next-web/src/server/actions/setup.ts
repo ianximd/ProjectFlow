@@ -16,29 +16,22 @@ function keyify(s: string) {
   return (s.trim().split(/\s+/).map((p) => p[0]).join('') || s.slice(0, 4)).slice(0, 4).toUpperCase();
 }
 
-export async function bootstrapWorkspace(
-  input: { workspaceName: string; projectName: string },
-): Promise<ActionResult> {
+export async function bootstrapWorkspace(input: { workspaceName: string; projectName: string }): Promise<ActionResult> {
   await requireSession();
+  let workspaceId = '';
   try {
     const ws = await serverFetch<{ Id?: string; id?: string }>('/workspaces', {
-      method: 'POST',
-      body: JSON.stringify({ name: input.workspaceName, slug: slugify(input.workspaceName) }),
+      method: 'POST', body: JSON.stringify({ name: input.workspaceName, slug: slugify(input.workspaceName) }),
     });
-    const workspaceId = String(ws?.Id ?? ws?.id ?? '');
+    workspaceId = String(ws?.Id ?? ws?.id ?? '');           // API returns PascalCase Id (camelCase fallback)
+    if (!workspaceId) return { ok: false, error: 'Workspace created but no ID was returned.' };
     await serverFetch('/projects', {
       method: 'POST',
-      body: JSON.stringify({
-        workspaceId,
-        name: input.projectName,
-        key: keyify(input.projectName),
-        type: 'SCRUM',
-      }),
+      body: JSON.stringify({ workspaceId, name: input.projectName, key: keyify(input.projectName), type: 'SCRUM' }),
     });
-    await setSelection({ workspaceId, projectId: null });
-  } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Setup failed' };
-  }
+  } catch (e) { unstable_rethrow(e); return { ok: false, error: e instanceof Error ? e.message : 'Setup failed' }; }
+  // Best-effort: the workspace + project already exist; a selection-cookie failure must not
+  // report failure (a retry would create a duplicate workspace).
+  try { await setSelection({ workspaceId, projectId: null }); } catch { /* non-blocking */ }
   return { ok: true };
 }

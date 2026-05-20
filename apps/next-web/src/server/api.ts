@@ -12,6 +12,8 @@ const API_BASE =
  * Returns the unwrapped `data` field. Throws on non-OK; redirects to /login on 401.
  */
 export async function serverFetch<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  // Guard against a missing leading slash silently producing `/api/v1projects`.
+  if (!path.startsWith('/')) throw new Error(`serverFetch: path must start with "/" (got "${path}")`);
   const token = (await cookies()).get(COOKIE.access)?.value;
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     ...init,

@@ -12,7 +12,11 @@ export async function getSelection(): Promise<Selection> {
   if (!raw) return { workspaceId: null, projectId: null };
   try {
     const v = JSON.parse(raw) as Partial<Selection>;
-    return { workspaceId: v.workspaceId ?? null, projectId: v.projectId ?? null };
+    // Whitelist + type-check fields so a tampered cookie can't inject non-strings.
+    return {
+      workspaceId: typeof v.workspaceId === 'string' ? v.workspaceId : null,
+      projectId:   typeof v.projectId   === 'string' ? v.projectId   : null,
+    };
   } catch {
     return { workspaceId: null, projectId: null };
   }

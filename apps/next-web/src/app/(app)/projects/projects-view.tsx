@@ -1,18 +1,16 @@
 // apps/next-web/src/app/(app)/projects/projects-view.tsx
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   Folder, Plus, Search, Filter, X, LayoutGrid, Settings, Archive,
   Trash2, Briefcase, ArchiveX, Workflow, Kanban,
 } from 'lucide-react';
 
-import { useStore } from '@/store/useStore';
 import { notifyApiError } from '@/lib/apiErrorToast';
-import { setSelection } from '@/server/actions/selection';
 import { createProject, archiveProject, deleteProject } from '@/server/actions/projects';
+import { useSelectionBridge, useSelectionSwitch } from '@/app/(app)/_components/selection-bridge';
 import type { Project, ProjectType, ProjectStatus, Workspace } from '@/server/queries/normalize';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -57,7 +55,6 @@ export function ProjectsView({
   activeWorkspaceId: string;
   cookieWorkspaceId: string | null;
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const [search,       setSearch]       = useState('');
@@ -66,45 +63,22 @@ export function ProjectsView({
   const [createOpen,   setCreateOpen]   = useState(false);
   const [createError,  setCreateError]  = useState<string | null>(null);
 
-  // ── Selection bridge ────────────────────────────────────────────────────────
-  // The cookie (pf_sel) is authoritative for migrated (server) pages; the other
-  // 10 pages still read currentWorkspaceId from zustand. Keep them in sync until
-  // Phase 3 removes zustand selection.
-  const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
-  const legacyWorkspaceId   = useStore((s) => s.currentWorkspaceId);
+  // ── Selection bridge (shared) ───────────────────────────────────────────────
+  // Keeps the legacy zustand selection in sync with the cookie/server truth
+  // until Phase 3 removes zustand selection. Projects page is workspace-only
+  // (no project switcher), so activeProjectId and projectIds are empty.
+  useSelectionBridge({
+    activeWorkspaceId,
+    activeProjectId: null,
+    cookieWorkspaceId,
+    cookieProjectId: null,
+    workspaceIds: workspaces.map((w) => w.id),
+    projectIds: [],
+  });
 
-  useEffect(() => {
-    // First migrated visit with an empty selection cookie: seed it from the
-    // legacy localStorage selection, then refresh so the server renders that ws.
-    if (
-      cookieWorkspaceId === null &&
-      legacyWorkspaceId &&
-      legacyWorkspaceId !== activeWorkspaceId &&
-      workspaces.some((w) => w.id === legacyWorkspaceId)
-    ) {
-      startTransition(async () => {
-        await setSelection({ workspaceId: legacyWorkspaceId });
-        router.refresh();
-      });
-      return;
-    }
-    // Otherwise make zustand reflect the cookie/server truth for legacy pages.
-    if (legacyWorkspaceId !== activeWorkspaceId) setCurrentWorkspace(activeWorkspaceId);
-    // Deps are intentionally minimal: re-run only when the server-authoritative
-    // values change (activeWorkspaceId, cookieWorkspaceId). Including
-    // legacyWorkspaceId would create a feedback loop.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspaceId, cookieWorkspaceId]);
+  const { switchWorkspace } = useSelectionSwitch();
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? workspaces[0];
-
-  function switchWorkspace(id: string) {
-    setCurrentWorkspace(id);                 // legacy pages
-    startTransition(async () => {
-      await setSelection({ workspaceId: id }); // cookie → revalidate → server re-render
-      router.refresh();
-    });
-  }
 
   // ── Mutations via Server Actions ─────────────────────────────────────────────
   function handleCreate(input: { name: string; key: string; type: ProjectType; description: string }) {

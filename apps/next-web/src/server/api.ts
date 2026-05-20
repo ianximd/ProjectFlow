@@ -49,3 +49,10 @@ export async function serverFetchEnvelope<T = unknown, M = Record<string, unknow
   const { envelope } = await call<T>(path, init);
   return { data: envelope.data as T, meta: (envelope.meta ?? {}) as M };
 }
+
+/** Returns the raw parsed response body as-is (for endpoints that don't use
+ *  the `{ data }` envelope pattern, e.g. `{ epics: [...] }`). */
+export async function serverFetchBody<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const { envelope } = await call<never>(path, init);
+  return envelope as unknown as T;
+}

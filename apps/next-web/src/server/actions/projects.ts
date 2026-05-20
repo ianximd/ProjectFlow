@@ -40,7 +40,7 @@ export interface UpdateProjectInput {
   name?: string;
   description?: string | null;
   avatarUrl?: string | null;
-  type?: string;
+  type?: ProjectType;
   startDate?: string | null;
   endDate?: string | null;
 }
@@ -60,6 +60,9 @@ export async function updateProject(id: string, changed: UpdateProjectInput): Pr
   return { ok: true };
 }
 
+// NOTE: The API has no dedicated project-restore endpoint and its PATCH handler
+// ignores `status`, so this currently succeeds without actually restoring.
+// Preserves the pre-existing CSR behavior; a real restore needs an API change (Phase 3).
 export async function restoreProject(id: string): Promise<ActionResult> {
   await requireSession();
   try {
@@ -94,7 +97,6 @@ export async function deleteProject(id: string): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
-  revalidatePath(`/projects/${id}/settings`);
   revalidatePath('/projects');
   return { ok: true };
 }

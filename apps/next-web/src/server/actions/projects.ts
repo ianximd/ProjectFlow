@@ -1,8 +1,8 @@
 'use server';
 import { revalidatePath } from 'next/cache';
-import { unstable_rethrow } from 'next/navigation';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
+import { toActionError } from './error';
 import type { ProjectType } from '../queries/normalize';
 
 import type { ActionResult } from './result';
@@ -30,8 +30,7 @@ export async function createProject(input: CreateProjectInput): Promise<ActionRe
       }),
     });
   } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Create failed' };
+    return toActionError(e);
   }
   revalidatePath('/projects');
   return { ok: true };
@@ -42,8 +41,7 @@ export async function archiveProject(id: string): Promise<ActionResult> {
   try {
     await serverFetch(`/projects/${encodeURIComponent(id)}/archive`, { method: 'POST' });
   } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Archive failed' };
+    return toActionError(e);
   }
   revalidatePath('/projects');
   return { ok: true };
@@ -54,8 +52,7 @@ export async function deleteProject(id: string): Promise<ActionResult> {
   try {
     await serverFetch(`/projects/${encodeURIComponent(id)}`, { method: 'DELETE' });
   } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Delete failed' };
+    return toActionError(e);
   }
   revalidatePath('/projects');
   return { ok: true };

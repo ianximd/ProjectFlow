@@ -7,7 +7,7 @@ import {
   FileText, AlertCircle, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
-import { notifyApiError } from '@/lib/apiErrorToast';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { markNotificationRead, markAllNotificationsRead } from '@/server/actions/notifications';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -103,14 +103,14 @@ export function NotificationsView({
   function handleMarkRead(id: string) {
     startTransition(async () => {
       const res = await markNotificationRead(id);
-      if (!res.ok) notifyApiError({ error: { message: res.error } }, 0);
+      if (!res.ok) notifyActionError(res);
     });
   }
 
   function handleMarkAllRead() {
     startTransition(async () => {
       const res = await markAllNotificationsRead();
-      if (!res.ok) notifyApiError({ error: { message: res.error } }, 0);
+      if (!res.ok) notifyActionError(res);
     });
   }
 

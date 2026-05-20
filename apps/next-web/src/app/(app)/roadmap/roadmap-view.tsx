@@ -4,10 +4,9 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { GitBranch, CalendarRange, AlertCircle } from 'lucide-react';
 
-import { notifyApiError } from '@/lib/apiErrorToast';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { updateTaskDates } from '@/server/actions/roadmap';
-import { useSelectionBridge } from '@/app/(app)/_components/selection-bridge';
-import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import { GanttChart } from '@/components/GanttChart';
 import type { GanttItem } from '@/components/GanttChart';
@@ -63,7 +62,7 @@ export function RoadmapView({ ctx, items, deps }: Props) {
         clearDueDate: dueDate === null,
       });
       if (!res.ok) {
-        notifyApiError({ error: { message: res.error } }, 0);
+        notifyActionError(res);
         return;
       }
       router.refresh();
@@ -137,7 +136,7 @@ export function RoadmapView({ ctx, items, deps }: Props) {
         ) : !hasItems ? (
           <EmptyRoadmapState />
         ) : (
-          <Card className="h-full overflow-hidden p-0">
+          <Card className={isPending ? 'h-full overflow-hidden p-0 opacity-60 pointer-events-none' : 'h-full overflow-hidden p-0'}>
             <GanttChart
               items={items as GanttItem[]}
               deps={deps}

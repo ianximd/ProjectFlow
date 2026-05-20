@@ -7,7 +7,14 @@ import { COOKIE } from './cookies';
 const API_BASE =
   process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-interface Envelope<T> { data?: T; meta?: Record<string, unknown>; error?: { message?: string }; }
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+interface Envelope<T> { data?: T; meta?: Record<string, unknown>; error?: { message?: string; code?: string }; }
 
 async function call<T>(path: string, init: RequestInit): Promise<{ envelope: Envelope<T>; status: number }> {
   if (!path.startsWith('/')) throw new Error(`serverFetch: path must start with "/" (got "${path}")`);
@@ -25,7 +32,7 @@ async function call<T>(path: string, init: RequestInit): Promise<{ envelope: Env
   if (res.status === 401) redirect('/login');
   if (res.status === 204) return { envelope: {}, status: 204 };
   const envelope = (await res.json().catch(() => ({}))) as Envelope<T>;
-  if (!res.ok) throw new Error(envelope?.error?.message ?? `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(envelope?.error?.message ?? `Request failed (${res.status})`, res.status, envelope?.error?.code);
   return { envelope, status: res.status };
 }
 

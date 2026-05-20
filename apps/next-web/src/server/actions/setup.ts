@@ -1,7 +1,7 @@
 'use server';
-import { unstable_rethrow } from 'next/navigation';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
+import { toActionError } from './error';
 import { setSelection } from './selection';
 import type { ActionResult } from './result';
 
@@ -29,7 +29,7 @@ export async function bootstrapWorkspace(input: { workspaceName: string; project
       method: 'POST',
       body: JSON.stringify({ workspaceId, name: input.projectName, key: keyify(input.projectName), type: 'SCRUM' }),
     });
-  } catch (e) { unstable_rethrow(e); return { ok: false, error: e instanceof Error ? e.message : 'Setup failed' }; }
+  } catch (e) { return toActionError(e); }
   // Best-effort: the workspace + project already exist; a selection-cookie failure must not
   // report failure (a retry would create a duplicate workspace).
   try { await setSelection({ workspaceId, projectId: null }); } catch { /* non-blocking */ }

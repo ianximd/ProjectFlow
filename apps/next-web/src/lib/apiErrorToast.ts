@@ -57,3 +57,8 @@ export function notifyApiError(json: ApiErrorBody | null | undefined, status: nu
       : 'The request failed. Please try again.',
   });
 }
+
+/** Surface a failed Server Action result as a toast, preserving the backend code. */
+export function notifyActionError(res: { error: string; code?: string; status?: number }): void {
+  notifyApiError({ error: { code: res.code, message: res.error } }, res.status ?? 0);
+}

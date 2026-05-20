@@ -1,8 +1,8 @@
 'use server';
 import { revalidatePath } from 'next/cache';
-import { unstable_rethrow } from 'next/navigation';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
+import { toActionError } from './error';
 import type { ActionResult } from './result';
 export type { ActionResult };
 
@@ -12,8 +12,7 @@ export async function markNotificationRead(id: string): Promise<ActionResult> {
   try {
     await serverFetch(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
   } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Mark-read failed' };
+    return toActionError(e);
   }
   revalidatePath('/notifications');
   return { ok: true };
@@ -25,8 +24,7 @@ export async function markAllNotificationsRead(): Promise<ActionResult> {
   try {
     await serverFetch('/notifications/mark-all-read', { method: 'PATCH' });
   } catch (e) {
-    unstable_rethrow(e);
-    return { ok: false, error: e instanceof Error ? e.message : 'Mark-all-read failed' };
+    return toActionError(e);
   }
   revalidatePath('/notifications');
   return { ok: true };

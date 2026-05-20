@@ -5,7 +5,6 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-
 export type { ActionResult };
 
 /** Run a task mutation: gate the session, call the API, revalidate the affected
@@ -44,19 +43,26 @@ export async function reorderTask(id: string, position: number, status?: string)
   );
 }
 
-/** POST /tasks — create an issue (Board column or Backlog/sprint section). */
-export async function createTask(input: CreateTaskInput): Promise<ActionResult> {
+/** POST /tasks — create an issue (Board column or Backlog/sprint section).
+ *  Returns the new task's id so callers can follow up with a position/status
+ *  move (the create endpoint does not accept `status` in its Zod schema, so
+ *  placing a card in a non-default column requires a separate PATCH). */
+export async function createTask(input: CreateTaskInput): Promise<ActionResult<{ id: string }>> {
+  await requireSession();
+  let created: { id?: string } = {};
   const body: Record<string, unknown> = {
     title:       input.title,
     projectId:   input.projectId,
     workspaceId: input.workspaceId,
   };
-  if (input.status) body.status = input.status;
   if (input.sprintId) body.sprintId = input.sprintId;
-  return run(
-    () => serverFetch('/tasks', { method: 'POST', body: JSON.stringify(body) }),
-    ['/board', '/backlog'],
-  );
+  try {
+    created = (await serverFetch<{ id: string }>('/tasks', { method: 'POST', body: JSON.stringify(body) })) ?? {};
+  } catch (e) {
+    return toActionError(e);
+  }
+  for (const p of ['/board', '/backlog']) revalidatePath(p);
+  return { ok: true, data: { id: created.id ?? '' } };
 }
 
 /** DELETE /tasks/:id */

@@ -16,6 +16,14 @@ describe('decodeJwt', () => {
     expect(decodeJwt(undefined)).toBeNull();
     expect(decodeJwt('not-a-jwt')).toBeNull();
   });
+  it('returns null for null input', () => {
+    expect(decodeJwt(null)).toBeNull();
+  });
+  it('returns null when payload lacks a string userId', () => {
+    const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const t = `${b64({ alg: 'none' })}.${b64({ email: 'a@b.c' })}.sig`;
+    expect(decodeJwt(t)).toBeNull();
+  });
 });
 
 describe('isJwtExpired', () => {
@@ -33,5 +41,10 @@ describe('isJwtExpired', () => {
   it('true when claims are null or exp missing', () => {
     expect(isJwtExpired(null)).toBe(true);
     expect(isJwtExpired({ userId: 'u' })).toBe(true);
+  });
+  it('respects skewSeconds = 0 at the exact boundary', () => {
+    const now = Math.floor(Date.now() / 1000);
+    expect(isJwtExpired({ userId: 'u', exp: now }, 0)).toBe(true);
+    expect(isJwtExpired({ userId: 'u', exp: now + 60 }, 0)).toBe(false);
   });
 });

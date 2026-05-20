@@ -6,13 +6,18 @@ export interface JwtClaims {
 }
 
 /** Decode (NOT verify) a JWT payload. Signature is enforced by the API on every
- *  request; here we only need the claims for an optimistic expiry check. */
+ *  request; here we only need the claims for an optimistic expiry check.
+ *  Returns null unless the payload is an object carrying a string `userId`, so a
+ *  non-null result is always a usable session claim set. */
 export function decodeJwt(token: string | undefined | null): JwtClaims | null {
   if (!token) return null;
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   try {
-    return JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as JwtClaims;
+    const raw = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as unknown;
+    if (typeof raw !== 'object' || raw === null) return null;
+    if (typeof (raw as Record<string, unknown>).userId !== 'string') return null;
+    return raw as JwtClaims;
   } catch {
     return null;
   }

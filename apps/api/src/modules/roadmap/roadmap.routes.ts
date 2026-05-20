@@ -2,9 +2,25 @@ import { Hono } from 'hono';
 import { RoadmapService } from './roadmap.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { cacheDelPattern } from '../../shared/lib/cache.js';
 
 const svc    = new RoadmapService();
 export const roadmapRoutes = new Hono();
+
+// Roadmap writes (date drags, dependency edges) mutate task data that the
+// cached GET /roadmap (and /epics, /sprints) responses surface. Without this,
+// a successful PATCH leaves the stale cached roadmap in place for the whole
+// TTL — the dragged bar appears to "snap back" because the refetch is served
+// from cache. Mirrors invalidateTaskCaches() in task.routes.ts.
+async function invalidateRoadmapCaches(): Promise<void> {
+  try {
+    await Promise.all([
+      cacheDelPattern('http:*:/api/v1/roadmap*'),
+      cacheDelPattern('http:*:/api/v1/epics*'),
+      cacheDelPattern('http:*:/api/v1/sprints*'),
+    ]);
+  } catch { /* cache invalidation is best-effort — never fail the write */ }
+}
 
 // Roadmap operations are all task mutations (date changes, dependency edges),
 // so we reuse the task.update permission and look up workspace from the task.
@@ -66,6 +82,7 @@ roadmapRoutes.patch(
       clearStartDate,
       clearDueDate,
     );
+    await invalidateRoadmapCaches();
     return c.json({ data: row });
   } catch (err: any) {
     const status = err.message?.includes('not found') ? 404 : 400;
@@ -91,6 +108,7 @@ roadmapRoutes.post(
 
   try {
     const dep = await svc.addDependency(taskId, dependsOn, type);
+    await invalidateRoadmapCaches();
     return c.json({ data: dep }, 201);
   } catch (err: any) {
     const status = err.message?.includes('Circular') ? 409 : 400;
@@ -105,5 +123,6 @@ roadmapRoutes.delete(
   async (c) => {
   const { taskId, dependsOn } = c.req.param();
   await svc.removeDependency(taskId, dependsOn);
+  await invalidateRoadmapCaches();
   return c.body(null, 204);
 });

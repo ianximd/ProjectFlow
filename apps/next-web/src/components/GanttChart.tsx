@@ -9,6 +9,11 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/useStore';
+import {
+  type ZoomLevel, ZOOM_CFG, MONTHS,
+  startOfDay, addDays, daysBetween, parseDate, toIsoDate, isWeekend,
+  buildSlots, computeRange, dateToPx, barGeometry,
+} from './gantt/geometry';
 
 // ─── Types (matches the API shape) ───────────────────────────────────────────
 
@@ -64,87 +69,16 @@ function shortDate(d: Date | null): string {
   return d ? SHORT_DATE.format(d) : '—';
 }
 
-// ─── Zoom configuration ──────────────────────────────────────────────────────
+// ─── Layout constants ────────────────────────────────────────────────────────
+// Zoom config + date/geometry helpers now live in ./gantt/geometry so the
+// pixel↔date mapping can be unit-tested in isolation — that mapping is exactly
+// where the timeline used to drift in week/month zoom.
 
-type ZoomLevel = 'day' | 'week' | 'month';
+const ROW_H    = 38;
+const LABEL_W  = 280;
+const HEADER_H = 56;
 
-const ZOOM_CFG = {
-  day:   { label: 'Day',   colPx: 36,  unitDays: 1,  padDays: 14  },
-  week:  { label: 'Week',  colPx: 70,  unitDays: 7,  padDays: 28  },
-  month: { label: 'Month', colPx: 120, unitDays: 30, padDays: 90  },
-} as const satisfies Record<string, { label: string; colPx: number; unitDays: number; padDays: number }>;
-
-const ROW_H        = 38;
-const LABEL_W      = 280;
-const HEADER_H     = 56;
-
-// ─── Date helpers ────────────────────────────────────────────────────────────
-
-const DAY_MS = 86_400_000;
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function startOfDay(d: Date): Date {
-  const r = new Date(d); r.setHours(0, 0, 0, 0); return r;
-}
 function today0(): Date { return startOfDay(new Date()); }
-
-function addDays(d: Date, n: number): Date {
-  const r = new Date(d); r.setDate(r.getDate() + n); return r;
-}
-
-function daysBetween(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / DAY_MS);
-}
-
-function parseDate(s: string | null | undefined): Date | null {
-  if (!s) return null;
-  // Date-only strings ("2026-05-18") MUST be interpreted as local midnight,
-  // not UTC. `new Date("2026-05-18")` parses as UTC midnight, which in any
-  // non-UTC timezone resolves to the wrong calendar day locally — bars would
-  // visually trail the cursor by one day during drag and snap to a different
-  // column on commit.
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s]|$)/.exec(s);
-  if (m) {
-    return startOfDay(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  }
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return null;
-  return startOfDay(d);
-}
-
-function toIsoDate(d: Date): string {
-  // Use local components so the round-trip is timezone-stable. `toISOString`
-  // would shift the calendar day for any non-UTC user.
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function isWeekend(d: Date): boolean {
-  return d.getDay() === 0 || d.getDay() === 6;
-}
-
-// Build a list of column starts spanning [rangeStart, rangeEnd] for the chosen zoom.
-function buildSlots(zoom: ZoomLevel, rangeStart: Date, rangeEnd: Date): Date[] {
-  const slots: Date[] = [];
-  if (zoom === 'day') {
-    const cur = new Date(rangeStart);
-    while (cur <= rangeEnd) { slots.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
-  } else if (zoom === 'week') {
-    // Start from the Monday of the week containing rangeStart.
-    const cur = new Date(rangeStart);
-    const dow = cur.getDay();
-    cur.setDate(cur.getDate() - (dow === 0 ? 6 : dow - 1));
-    while (cur <= rangeEnd) { slots.push(new Date(cur)); cur.setDate(cur.getDate() + 7); }
-  } else {
-    // month: start of each calendar month.
-    const cur = new Date(rangeStart);
-    cur.setDate(1);
-    while (cur <= rangeEnd) { slots.push(new Date(cur)); cur.setMonth(cur.getMonth() + 1); }
-  }
-  return slots;
-}
 
 // Primary label per column (Day=`5`, Week=`Sep 8`, Month=`Sep`).
 function slotPrimary(d: Date, zoom: ZoomLevel): string {
@@ -227,10 +161,12 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
   // Last known mouse X during drag, so the rAF-driven autoscroll loop can keep
   // panning even when the mouse is held stationary at the viewport edge.
   const lastMouseXRef    = useRef(0);
+  const lastMouseYRef    = useRef(0);
   const autoScrollRafRef = useRef<number | null>(null);
   const didRestoreRef = useRef(false);
 
   const today = today0();
+  const todayMs = today.getTime(); // stable per-day primitive for memo deps
   const cfg   = ZOOM_CFG[zoom];
 
   // Clear local drag overrides once the server-side items catch up. Without
@@ -260,29 +196,17 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
 
   // ── Dynamic range: span all data + zoom-dependent padding, fall back to a
   // sensible window around today when the project has no scheduled work yet.
-  const range = useMemo(() => {
-    const dates: number[] = [];
-    for (const it of items) {
-      const s = parseDate(it.startDate);
-      const e = parseDate(it.dueDate);
-      if (s) dates.push(s.getTime());
-      if (e) dates.push(e.getTime());
-    }
-    let dataMin = dates.length ? new Date(Math.min(...dates)) : addDays(today, -7);
-    let dataMax = dates.length ? new Date(Math.max(...dates)) : addDays(today, 30);
-    // Always include today so the today-line is visible
-    if (today < dataMin) dataMin = new Date(today);
-    if (today > dataMax) dataMax = new Date(today);
-    return {
-      rangeStart: addDays(dataMin, -cfg.padDays),
-      rangeEnd:   addDays(dataMax,  cfg.padDays),
-    };
-  }, [items, zoom, today.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const range = useMemo(
+    () => computeRange(items, today, cfg.padDays),
+    [items, cfg.padDays, todayMs], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const slots    = useMemo(() => buildSlots(zoom, range.rangeStart, range.rangeEnd), [zoom, range]);
   const pxPerDay = cfg.colPx / cfg.unitDays;
   const totalW   = slots.length * cfg.colPx;
-  const todayPx  = daysBetween(range.rangeStart, today) * pxPerDay;
+  // Position the today-line through the same slot-interpolated mapping the bars
+  // use, so it stays locked to the grid at every zoom.
+  const todayPx  = dateToPx(today, slots, cfg.colPx, cfg.unitDays);
 
   // ── Group rows by epic for hierarchical display ───────────────────────────
   // Epics first (with their children indented below), then orphan items.
@@ -323,7 +247,11 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
   const scrollToToday = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const next = Math.max(0, todayPx - el.clientWidth / 2 + LABEL_W);
+    // Centre today in the *visible timeline* — the area right of the sticky
+    // label column — so it lands mid-screen instead of LABEL_W/2 off to the
+    // side. Matches scrollToBar's framing.
+    const visibleW = Math.max(0, el.clientWidth - LABEL_W);
+    const next = Math.max(0, todayPx - visibleW / 2);
     el.scrollLeft = next;
     setSavedScrollLeft(next);
   }, [todayPx, setSavedScrollLeft]);
@@ -336,8 +264,9 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
     if (savedScrollLeft > 0 && savedScrollLeft <= el.scrollWidth) {
       el.scrollLeft = savedScrollLeft;
     } else {
-      // First-ever load — centre on today.
-      el.scrollLeft = Math.max(0, todayPx - el.clientWidth / 2 + LABEL_W);
+      // First-ever load — centre on today within the visible timeline.
+      const visibleW = Math.max(0, el.clientWidth - LABEL_W);
+      el.scrollLeft = Math.max(0, todayPx - visibleW / 2);
     }
     didRestoreRef.current = true;
   }, [totalW]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -397,7 +326,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
       return acc;
     }, null);
     if (!firstDataDay) { scrollToToday(); return; }
-    const px = daysBetween(range.rangeStart, firstDataDay) * pxPerDay;
+    const px = dateToPx(firstDataDay, slots, cfg.colPx, cfg.unitDays);
     el.scrollLeft = Math.max(0, px - cfg.colPx);
   };
 
@@ -443,7 +372,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
       const span = (newStart && newEnd) ? Math.max(1, daysBetween(newStart, newEnd) + 1) : null;
       setDragHint({
         x: lastMouseXRef.current,
-        y: ds.origStart || ds.origEnd ? (0) : 0, // y is set from the mouse event below
+        y: lastMouseYRef.current,
         text: `${shortDate(newStart)} → ${shortDate(newEnd)}${span ? ` · ${span}d` : ''}`,
       });
     }
@@ -485,13 +414,14 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
       const ds = dragRef.current;
       if (!ds) return;
       lastMouseXRef.current = e.clientX;
+      lastMouseYRef.current = e.clientY;
       if (!ds.moved && Math.abs(e.clientX - ds.startX) >= DRAG_THRESHOLD) {
         ds.moved = true;
       }
       if (!ds.moved) return; // below threshold — treat as potential click
+      // applyDragDelta reads lastMouse*Ref for the tooltip position, so the
+      // hint follows the cursor (and stays put during edge autoscroll).
       applyDragDelta(ds, e.clientX);
-      // Mouse-relative tooltip position.
-      setDragHint((prev) => prev ? { ...prev, x: e.clientX, y: e.clientY } : prev);
       if (autoScrollRafRef.current === null) {
         autoScrollRafRef.current = requestAnimationFrame(tickAutoScroll);
       }
@@ -544,6 +474,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
     e.preventDefault();
     const ov = overrides[item.id];
     lastMouseXRef.current = e.clientX;
+    lastMouseYRef.current = e.clientY;
     const origStart = parseDate(ov?.startDate ?? item.startDate);
     const origEnd   = parseDate(ov?.dueDate   ?? item.dueDate);
     dragRef.current = {
@@ -561,14 +492,26 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
   // ── Bar geometry (handles items with only-start or only-due dates) ───────
   function barGeom(item: GanttItem): { left: number; width: number } | null {
     const ov = overrides[item.id];
-    const sd = parseDate(ov?.startDate ?? item.startDate);
-    const ed = parseDate(ov?.dueDate   ?? item.dueDate);
-    const s  = sd ?? ed;
-    const e  = ed ?? sd;
-    if (!s || !e) return null;
-    const left  = daysBetween(range.rangeStart, s) * pxPerDay;
-    const width = Math.max(cfg.colPx * 0.4, daysBetween(s, e) * pxPerDay);
-    return { left, width };
+    return barGeometry(
+      {
+        startDate: ov?.startDate ?? item.startDate,
+        dueDate:   ov?.dueDate   ?? item.dueDate,
+      },
+      slots, cfg.colPx, cfg.unitDays,
+    );
+  }
+
+  // Human-readable date range for a bar's hover tooltip + a11y label.
+  function barDateLabel(item: GanttItem): string | null {
+    const ov = overrides[item.id];
+    const s = parseDate(ov?.startDate ?? item.startDate);
+    const e = parseDate(ov?.dueDate   ?? item.dueDate);
+    if (!s && !e) return null;
+    if (s && e) {
+      const span = Math.max(1, daysBetween(s, e) + 1);
+      return `${shortDate(s)} → ${shortDate(e)} · ${span}d`;
+    }
+    return shortDate(s ?? e);
   }
 
   // Per-id geometry + row index, used to draw dependency arrows between bars.
@@ -581,8 +524,8 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
       if (g) m.set(row.item.id, { ...g, rowIndex: i });
     });
     return m;
-    // barGeom closes over overrides/pxPerDay/range; list those explicitly.
-  }, [rowList, overrides, pxPerDay, range.rangeStart.getTime()]); // eslint-disable-line react-hooks/exhaustive-deps
+    // barGeom closes over overrides + slot geometry; list those explicitly.
+  }, [rowList, overrides, slots, cfg.colPx, cfg.unitDays]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Header epoch groupings (month/year ribbon above day/week/month cols) ─
   const epochRibbon = useMemo(() => {
@@ -925,8 +868,8 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                           isTodo && 'opacity-90',
                         )}
                         style={{ left: geom.left, width: geom.width }}
-                        title={`${item.issueKey} — ${item.title}`}
-                        aria-label={`${item.issueKey} ${item.title}. Status ${item.status}. Press Enter to open.`}
+                        title={`${item.issueKey} — ${item.title}${barDateLabel(item) ? `\n${barDateLabel(item)}` : ''}`}
+                        aria-label={`${item.issueKey} ${item.title}. Status ${item.status}.${barDateLabel(item) ? ` Scheduled ${barDateLabel(item)}.` : ''} Press Enter to open.`}
                       >
                         {/* Progress fill for epics */}
                         {progressPct !== null && (

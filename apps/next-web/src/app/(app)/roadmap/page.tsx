@@ -97,7 +97,39 @@ export default function RoadmapPage() {
           clearDueDate:   dueDate   === null,
         }),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['roadmap', activeProjectId] }),
+    // Optimistically write the dragged dates into the cached roadmap items
+    // so the open TaskDrawer (which derives `selectedTask` from `data.items`)
+    // reflects the new schedule immediately on mouseup — the refetch that
+    // follows onSettled then reconciles with the authoritative server values.
+    // Without this, the drawer would visually trail by one network round-trip
+    // and on a slow connection the user reads it as "drag didn't update the
+    // schedule." Rollback on error restores the prior view.
+    onMutate: async ({ taskId, startDate, dueDate }) => {
+      await qc.cancelQueries({ queryKey: ['roadmap', activeProjectId] });
+      const prev = qc.getQueriesData<{ items: any[]; deps: any[] }>(
+        { queryKey: ['roadmap', activeProjectId] },
+      );
+      qc.setQueriesData<{ items: any[]; deps: any[] } | undefined>(
+        { queryKey: ['roadmap', activeProjectId] },
+        (old) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((it) =>
+              it.id === taskId ? { ...it, startDate, dueDate } : it,
+            ),
+          };
+        },
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (!ctx?.prev) return;
+      for (const [key, data] of ctx.prev) {
+        qc.setQueryData(key, data);
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['roadmap', activeProjectId] }),
   });
 
   // Drawer state — clicking a bar opens the issue in the same TaskDrawer

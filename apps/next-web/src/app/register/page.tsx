@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useMutation } from '@tanstack/react-query';
+import { register as registerAction } from '@/server/actions/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -11,30 +11,19 @@ export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
-
-  const registerMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('http://localhost:3001/api/v1/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Registration failed');
-      return data.data;
-    },
-    onSuccess: () => {
-      router.push('/login');
-    },
-    onError: (error: Error) => {
-      setErrorMsg(error.message);
-    },
-  });
+  const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
-    registerMutation.mutate();
+    startTransition(async () => {
+      const result = await registerAction(email, name, password);
+      if (result.ok) {
+        router.push('/login?registered=1');
+      } else {
+        setErrorMsg(result.error ?? 'Registration failed');
+      }
+    });
   };
 
   return (
@@ -126,10 +115,10 @@ export default function RegisterPage() {
           <div>
             <button
               type="submit"
-              disabled={registerMutation.isPending}
+              disabled={isPending}
               className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              {registerMutation.isPending ? 'Creating account...' : 'Sign up'}
+              {isPending ? 'Creating account...' : 'Sign up'}
             </button>
           </div>
         </form>

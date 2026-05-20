@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useMutation } from '@tanstack/react-query';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/store/useStore';
+import { login as loginAction } from '@/server/actions/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,31 +38,22 @@ export default function LoginPage() {
       .catch(() => setProviders([]));
   }, []);
 
-  const loginMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Login failed');
-      return data.data;
-    },
-    onSuccess: (data) => {
-      setAuth(data.token, data.user);
-      router.push('/board');
-    },
-    onError: (error: Error) => {
-      setErrorMsg(error.message);
-    },
-  });
+  const [isPending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg('');
-    loginMutation.mutate();
+    startTransition(async () => {
+      const result = await loginAction(email, password);
+      if (result.ok) {
+        setAuth(result.token, result.user as any); // legacy in-memory hydration
+        router.push('/board');
+      } else if ('mfaRequired' in result) {
+        router.push(`/oauth/mfa?token=${encodeURIComponent(result.mfaToken)}&returnTo=/board`);
+      } else {
+        setErrorMsg(result.error);
+      }
+    });
   }
 
   return (
@@ -162,12 +153,12 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={loginMutation.isPending}
+                disabled={isPending}
               >
-                {loginMutation.isPending && (
+                {isPending && (
                   <Loader2 className="size-4 animate-spin" />
                 )}
-                {loginMutation.isPending ? 'Signing in...' : 'Sign in'}
+                {isPending ? 'Signing in...' : 'Sign in'}
               </Button>
             </form>
 

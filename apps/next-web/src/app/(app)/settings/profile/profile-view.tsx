@@ -57,7 +57,8 @@ export function ProfileView({ me }: { me: MeProfile }) {
 
 function ProfileCard({ me }: { me: MeProfile }) {
   const router = useRouter();
-  const [isPending, startTransition] = useTransition();
+  const [avatarPending, startAvatar] = useTransition();
+  const [namePending,   startName]   = useTransition();
 
   const [name, setName]           = useState(me.name);
   const [avatarErr, setAvatarErr] = useState<string | null>(null);
@@ -72,7 +73,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
   // ── save name ──────────────────────────────────────────────────────────────
   function handleSaveName() {
     setSaveSuccess(false);
-    startTransition(async () => {
+    startName(async () => {
       const res = await updateMyName(name.trim());
       if (!res.ok) {
         notifyActionError(res);
@@ -88,8 +89,9 @@ function ProfileCard({ me }: { me: MeProfile }) {
     // Reset immediately so picking the same file twice re-fires onChange.
     e.target.value = '';
     if (!f) return;
+    setSaveSuccess(false);
     setAvatarErr(null);
-    startTransition(async () => {
+    startAvatar(async () => {
       const formData = new FormData();
       formData.append('file', f);
       const res = await uploadMyAvatar(formData);
@@ -105,8 +107,9 @@ function ProfileCard({ me }: { me: MeProfile }) {
 
   // ── avatar remove ──────────────────────────────────────────────────────────
   function handleRemoveAvatar() {
+    setSaveSuccess(false);
     setAvatarErr(null);
-    startTransition(async () => {
+    startAvatar(async () => {
       const res = await removeMyAvatar();
       if (!res.ok) {
         setAvatarErr(res.error);
@@ -118,7 +121,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
     });
   }
 
-  const avatarBusy = isPending;
+  const avatarBusy = avatarPending;
 
   return (
     <Card>
@@ -159,6 +162,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
             type="file"
             accept="image/jpeg,image/png,image/gif,image/webp"
             className="hidden"
+            aria-label="Upload avatar"
             onChange={onPickFile}
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -169,7 +173,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
               disabled={avatarBusy}
               onClick={() => fileInputRef.current?.click()}
             >
-              {isPending ? (
+              {avatarPending ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
                 <Upload className="size-3.5" />
@@ -184,7 +188,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
                 disabled={avatarBusy}
                 onClick={handleRemoveAvatar}
               >
-                {isPending ? (
+                {avatarPending ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
                   <Trash2 className="size-3.5" />
@@ -217,10 +221,10 @@ function ProfileCard({ me }: { me: MeProfile }) {
           </p>
           <Button
             type="button"
-            disabled={!nameDirty || !name.trim() || isPending}
+            disabled={!nameDirty || !name.trim() || namePending}
             onClick={handleSaveName}
           >
-            {isPending && <Loader2 className="size-3.5 animate-spin" />}
+            {namePending && <Loader2 className="size-3.5 animate-spin" />}
             Save changes
           </Button>
         </div>

@@ -38,16 +38,17 @@ export function useSelectionBridge(ctx: Ctx) {
 
 /** Switch handlers: write the cookie (server re-render) + mirror zustand. */
 export function useSelectionSwitch() {
+  const router = useRouter();
   const [, startTransition] = useTransition();
   const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
   const setCurrentProject = useStore((s) => s.setCurrentProject);
   const switchWorkspace = (id: string) => {
     setCurrentWorkspace(id);
-    startTransition(async () => { await setSelection({ workspaceId: id, projectId: null }); });
+    startTransition(async () => { await setSelection({ workspaceId: id, projectId: null }); router.refresh(); });
   };
   const switchProject = (id: string) => {
     setCurrentProject(id);
-    startTransition(async () => { await setSelection({ projectId: id }); });
+    startTransition(async () => { await setSelection({ projectId: id }); router.refresh(); });
   };
   return { switchWorkspace, switchProject };
 }

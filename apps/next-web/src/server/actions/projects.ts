@@ -6,7 +6,6 @@ import { toActionError } from './error';
 import type { ProjectType } from '../queries/normalize';
 
 import type { ActionResult } from './result';
-export type { ActionResult };
 
 export interface CreateProjectInput {
   workspaceId: string;

@@ -5,7 +5,6 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-export type { ActionResult };
 
 /** Run a task mutation: gate the session, call the API, revalidate the affected
  *  routes, and map any thrown ApiError into an ActionFail (rethrowing Next

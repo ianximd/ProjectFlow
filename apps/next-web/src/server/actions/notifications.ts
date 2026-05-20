@@ -4,7 +4,6 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-export type { ActionResult };
 
 /** Mark a single notification as read. PATCH /notifications/:id/read → 204 */
 export async function markNotificationRead(id: string): Promise<ActionResult> {

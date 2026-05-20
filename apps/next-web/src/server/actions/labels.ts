@@ -6,7 +6,6 @@ import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
 
-export type { ActionResult };
 
 export interface CreateLabelInput {
   projectId: string;

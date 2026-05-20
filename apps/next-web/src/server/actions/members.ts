@@ -6,7 +6,6 @@ import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
 
-export type { ActionResult };
 
 /** POST /workspaces/{id}/members/by-email — invite an existing user by email. */
 export async function inviteMember(

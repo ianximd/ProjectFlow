@@ -7,7 +7,6 @@ import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
 
-export type { ActionResult };
 
 /** POST /workspaces — create a workspace. Refreshes the page list and the
  *  app-shell layout (sidebar workspace switcher). */

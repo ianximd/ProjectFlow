@@ -3,6 +3,7 @@ import { setCookie, getCookie, deleteCookie } from 'hono/cookie';
 import { AuthRepository } from './auth.repository.js';
 import { AuthService } from './auth.service.js';
 import { authMiddleware } from './auth.middleware.js';
+import { isTrustedBff } from './bff.js';
 import { roleService } from '../roles/role.service.js';
 import { OAuthService } from './oauth/service.js';
 import { getEnabledProviders } from './oauth/registry.js';
@@ -82,9 +83,12 @@ authRoutes.post('/login', async (c) => {
     return c.json({ data: { mfaRequired: true, mfaToken: result.mfaToken } });
   }
 
-  // Refresh token is delivered via httpOnly cookie — never exposed in the response body
+  // Refresh token is delivered via httpOnly cookie — never exposed to browsers.
+  // Trusted BFF callers also get it in the body so Next can own the session.
   setRefreshCookie(c, result.refreshToken);
-  return c.json({ data: { user: result.user, token: result.accessToken } });
+  const loginBody: any = { user: result.user, token: result.accessToken };
+  if (isTrustedBff(c.req.header('X-BFF-Secret'))) loginBody.refreshToken = result.refreshToken;
+  return c.json({ data: loginBody });
 });
 
 // POST /api/v1/auth/mfa/challenge
@@ -99,7 +103,9 @@ authRoutes.post('/mfa/challenge', async (c) => {
   if (result === 'invalid-code')  return c.json({ error: { message: 'Invalid MFA code' } }, 401);
 
   setRefreshCookie(c, result.refreshToken);
-  return c.json({ data: { user: result.user, token: result.accessToken } });
+  const mfaBody: any = { user: result.user, token: result.accessToken };
+  if (isTrustedBff(c.req.header('X-BFF-Secret'))) mfaBody.refreshToken = result.refreshToken;
+  return c.json({ data: mfaBody });
 });
 
 // POST /api/v1/auth/mfa/setup  (protected) — generates pending TOTP secret + otpauth URI
@@ -253,7 +259,9 @@ authRoutes.post('/refresh', async (c) => {
   }
 
   setRefreshCookie(c, result.refreshToken);
-  return c.json({ data: { token: result.accessToken } });
+  const refreshBody: any = { token: result.accessToken };
+  if (isTrustedBff(c.req.header('X-BFF-Secret'))) refreshBody.refreshToken = result.refreshToken;
+  return c.json({ data: refreshBody });
 });
 
 // POST /api/v1/auth/logout

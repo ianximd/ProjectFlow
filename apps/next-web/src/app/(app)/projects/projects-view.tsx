@@ -90,6 +90,9 @@ export function ProjectsView({
     }
     // Otherwise make zustand reflect the cookie/server truth for legacy pages.
     if (legacyWorkspaceId !== activeWorkspaceId) setCurrentWorkspace(activeWorkspaceId);
+    // Deps are intentionally minimal: re-run only when the server-authoritative
+    // values change (activeWorkspaceId, cookieWorkspaceId). Including
+    // legacyWorkspaceId would create a feedback loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId, cookieWorkspaceId]);
 
@@ -181,7 +184,7 @@ export function ProjectsView({
         <div className="flex flex-wrap items-center gap-2">
           {workspaces.length > 1 && (
             <Select value={activeWorkspaceId} onValueChange={switchWorkspace}>
-              <SelectTrigger className="h-8 w-[200px] text-xs">
+              <SelectTrigger className="h-8 w-[200px] text-xs" disabled={isPending}>
                 <SelectValue placeholder="Workspace" />
               </SelectTrigger>
               <SelectContent>

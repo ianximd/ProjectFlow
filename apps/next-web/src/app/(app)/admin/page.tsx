@@ -1,9 +1,6 @@
 import { Suspense } from 'react';
 import { requireSession } from '@/server/session';
-import { getAdminStats } from '@/server/queries/admin';
-import { getAdminUsers } from '@/server/queries/admin';
-import { getAdminWorkspaces } from '@/server/queries/admin';
-import { getAuditLog } from '@/server/queries/admin';
+import { getAdminStats, getAdminUsers, getAdminWorkspaces, getAuditLog } from '@/server/queries/admin';
 import { AdminView } from './admin-view';
 import AdminLoading from './loading';
 
@@ -27,8 +24,12 @@ export default async function AdminPage({
   await requireSession();
 
   const sp  = await searchParams;
-  const tab = (sp.tab ?? 'stats') as Tab;
-  const page = Math.max(1, parseInt(sp.page ?? '1', 10));
+
+  const VALID_TABS = ['stats', 'users', 'workspaces', 'audit', 'roles'] as const;
+  const tab: Tab = (VALID_TABS as readonly string[]).includes(sp.tab ?? '') ? (sp.tab as Tab) : 'stats';
+
+  const rawPage = parseInt(sp.page ?? '1', 10);
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
 
   // Fetch only the active tab's data.
   let statsData      = null;

@@ -2,12 +2,17 @@
 
 import { useState, useCallback, useRef, useEffect, useTransition } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useStore } from '@/store/useStore';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import styles from './page.module.css';
 import type {
   AdminStats,
   AdminUser,
   AdminWorkspace,
   AuditLogEntry,
+  RoleWithCounts,
+  UserRoleAssignment,
+  WorkspaceStatus,
 } from '@projectflow/types';
 import { RolesTab } from '@/components/admin/RolesTab';
 import { getUserStatus } from '@/lib/userStatus';
@@ -76,7 +81,7 @@ function useAdminNav() {
       if (v === undefined || v === '') params.delete(k);
       else params.set(k, v);
     }
-    router.push(`${pathname}?${params.toString()}`);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [router, pathname, sp]);
 
   return navigate;
@@ -99,6 +104,7 @@ export function AdminView({
 }: AdminViewProps) {
   const navigate = useAdminNav();
   const [isPending, startTransition] = useTransition();
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   // ── Tab switching ──────────────────────────────────────────────────────────
 
@@ -123,6 +129,7 @@ export function AdminView({
       navigate({ q: val || undefined, page: undefined });
     }, 300);
   };
+  useEffect(() => () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); }, []);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -170,23 +177,29 @@ export function AdminView({
     if (!window.confirm(
       `Permanently delete ${u.email}?\n\nThis cannot be undone. The action will be refused if the user owns workspaces, has reported tasks, comments, attachments, or work logs — suspend them and reassign their work first.`,
     )) return;
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await deleteUser(u.id);
+      setPendingId(null);
       if (!res.ok) { notifyActionError(res); return; }
       setSelected(new Set());
     });
   };
 
   const handleSuspendUser = (u: AdminUser) => {
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await suspendUser(u.id);
+      setPendingId(null);
       if (!res.ok) notifyActionError(res);
     });
   };
 
   const handleRestoreUser = (u: AdminUser) => {
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await restoreUser(u.id);
+      setPendingId(null);
       if (!res.ok) notifyActionError(res);
     });
   };
@@ -195,8 +208,10 @@ export function AdminView({
     if (!window.confirm(
       `Generate a new temporary password for ${u.email}?\n\nThe current password will stop working immediately.`,
     )) return;
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await resetPassword(u.id);
+      setPendingId(null);
       if (!res.ok) { notifyActionError(res); return; }
       setTempPassword({ email: u.email, password: res.data.tempPassword });
     });
@@ -206,15 +221,19 @@ export function AdminView({
     if (!window.confirm(
       `Disable MFA for ${u.email}?\n\nThe user will be able to sign in with just their password.`,
     )) return;
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await disableMfa(u.id);
+      setPendingId(null);
       if (!res.ok) notifyActionError(res);
     });
   };
 
   const handleUnlockUser = (u: AdminUser) => {
+    setPendingId(u.id);
     startTransition(async () => {
       const res = await unlockUser(u.id);
+      setPendingId(null);
       if (!res.ok) notifyActionError(res);
     });
   };
@@ -227,9 +246,11 @@ export function AdminView({
     });
   };
 
-  const handleWsStatusChange = (workspaceId: string, status: string) => {
+  const handleWsStatusChange = (workspaceId: string, status: WorkspaceStatus) => {
+    setPendingId(workspaceId);
     startTransition(async () => {
       const res = await setWorkspaceStatus(workspaceId, status);
+      setPendingId(null);
       if (!res.ok) notifyActionError(res);
     });
   };
@@ -402,7 +423,7 @@ export function AdminView({
                           className={`${styles.actionBtn} ${styles.btnEdit}`}
                           onClick={() => setEditingUser(u)}
                           aria-label={`Edit ${u.email}`}
-                          disabled={isPending}
+                          disabled={pendingId === u.id}
                         >Edit</button>
 
                         <button
@@ -416,14 +437,14 @@ export function AdminView({
                             className={`${styles.actionBtn} ${styles.btnRestore}`}
                             onClick={() => handleRestoreUser(u)}
                             aria-label={`Restore ${u.email}`}
-                            disabled={isPending}
+                            disabled={pendingId === u.id}
                           >Restore</button>
                         ) : (
                           <button
                             className={`${styles.actionBtn} ${styles.btnSuspend}`}
                             onClick={() => handleSuspendUser(u)}
                             aria-label={`Suspend ${u.email}`}
-                            disabled={isPending}
+                            disabled={pendingId === u.id}
                           >Suspend</button>
                         )}
 
@@ -431,7 +452,7 @@ export function AdminView({
                           className={`${styles.actionBtn} ${styles.btnRecover}`}
                           onClick={() => handleResetPassword(u)}
                           aria-label={`Reset password for ${u.email}`}
-                          disabled={isPending}
+                          disabled={pendingId === u.id}
                         >Reset PW</button>
 
                         {u.mfaEnabled && (
@@ -439,7 +460,7 @@ export function AdminView({
                             className={`${styles.actionBtn} ${styles.btnRecover}`}
                             onClick={() => handleDisableMfa(u)}
                             aria-label={`Disable MFA for ${u.email}`}
-                            disabled={isPending}
+                            disabled={pendingId === u.id}
                           >Disable MFA</button>
                         )}
 
@@ -448,14 +469,14 @@ export function AdminView({
                           onClick={() => handleUnlockUser(u)}
                           aria-label={`Unlock ${u.email}`}
                           title="Clear failed-login lockout"
-                          disabled={isPending}
+                          disabled={pendingId === u.id}
                         >Unlock</button>
 
                         <button
                           className={`${styles.actionBtn} ${styles.btnDelete}`}
                           onClick={() => handleDeleteUser(u)}
                           aria-label={`Delete ${u.email}`}
-                          disabled={isPending}
+                          disabled={pendingId === u.id}
                         >Delete</button>
                       </div>
                     </td>
@@ -545,8 +566,8 @@ export function AdminView({
                                 aria-label={`Change status of ${w.name}`}
                                 className={styles.statusSelect}
                                 value={w.status}
-                                onChange={(e) => handleWsStatusChange(w.id, e.target.value)}
-                                disabled={isPending}
+                                onChange={(e) => handleWsStatusChange(w.id, e.target.value as WorkspaceStatus)}
+                                disabled={pendingId === w.id}
                               >
                                 {SETTABLE_STATUSES.map((s) => (
                                   <option key={s} value={s}>{s}</option>
@@ -946,10 +967,6 @@ function TempPasswordDialog({
 // in a 'use client' component we can still read it. However, to DEFER this
 // self-fetching dialog (per plan), we keep it using the store token directly.
 // The rest of the page (stats/users/workspaces/audit) is RSC-driven.
-
-import { useStore } from '@/store/useStore';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { RoleWithCounts, UserRoleAssignment } from '@projectflow/types';
 
 async function apiFetch(path: string, token: string | null, opts?: RequestInit) {
   const res = await fetch(`/api/v1${path}`, {

@@ -6,6 +6,7 @@ import { requireSession } from '../session';
 import { serverFetch, serverFetchEnvelope } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
+import type { WorkspaceStatus } from '@projectflow/types';
 
 const ADMIN = '/admin';
 
@@ -142,7 +143,7 @@ export async function bulkSuspend(
 
 export async function setWorkspaceStatus(
   id: string,
-  status: string,
+  status: WorkspaceStatus,
 ): Promise<ActionResult> {
   await requireSession();
   try {

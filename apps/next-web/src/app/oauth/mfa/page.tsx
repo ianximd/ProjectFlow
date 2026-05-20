@@ -13,18 +13,20 @@
  * up the access token (same as /oauth/finish does) and route on.
  */
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/store/useStore';
+import { mfaChallenge } from '@/server/actions/auth';
 
 function MfaInner() {
   const router  = useRouter();
   const params  = useSearchParams();
   const setAuth = useStore((s) => s.setAuth);
 
+  const [isPending, startTransition] = useTransition();
+
   const [mode,    setMode]    = useState<'totp' | 'recovery'>('totp');
   const [code,    setCode]    = useState('');
-  const [busy,    setBusy]    = useState(false);
   const [error,   setError]   = useState<string | null>(null);
 
   // Bail to /login if we don't have a token — usually means a stale
@@ -34,40 +36,26 @@ function MfaInner() {
     if (!mfaToken) router.replace('/login');
   }, [mfaToken, router]);
 
-  async function submit(e: React.FormEvent) {
+  const returnTo = params.get('returnTo');
+
+  function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!mfaToken || !code) return;
-    setBusy(true);
     setError(null);
-
-    try {
-      const body = mode === 'totp'
-        ? { mfaToken, code }
-        : { mfaToken, recoveryCode: code };
-      const res = await fetch('/api/v1/auth/mfa/challenge', {
-        method:  'POST',
-        headers: { 'content-type': 'application/json' },
-        body:    JSON.stringify(body),
-        credentials: 'include',
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error((json as any)?.error?.message ?? `MFA failed (${res.status})`);
+    const isTotp = mode === 'totp';
+    startTransition(async () => {
+      const result = await mfaChallenge(
+        mfaToken,
+        isTotp ? code : undefined,
+        isTotp ? undefined : code,
+      );
+      if (result.ok) {
+        setAuth(result.token, result.user as any);
+        router.replace(returnTo || '/board');
+      } else {
+        setError('error' in result ? result.error : 'Verification failed');
       }
-
-      // /mfa/challenge already set the refresh cookie. Pick up the
-      // access token via /auth/refresh — same shape the /oauth/finish
-      // page uses on the password+OAuth happy path.
-      const r = await fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' });
-      if (!r.ok) throw new Error(`refresh failed (${r.status})`);
-      const refreshed = await r.json();
-      setAuth(refreshed.data.token, refreshed.data.user ?? {});
-
-      router.replace(params.get('returnTo') || '/board');
-    } catch (err) {
-      setError((err as Error).message);
-      setBusy(false);
-    }
+    });
   }
 
   if (!mfaToken) return null;
@@ -106,10 +94,10 @@ function MfaInner() {
 
         <button
           type="submit"
-          disabled={busy || !code}
+          disabled={isPending || !code}
           className="w-full rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium disabled:opacity-60"
         >
-          {busy ? 'Verifying…' : 'Verify and continue'}
+          {isPending ? 'Verifying…' : 'Verify and continue'}
         </button>
 
         <button

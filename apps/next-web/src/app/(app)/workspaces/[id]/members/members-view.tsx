@@ -57,9 +57,9 @@ export function MembersView({
 }) {
   const [inviteOpen, setInviteOpen]     = useState(false);
   const [inviteError, setInviteError]   = useState<string | null>(null);
+  const [pendingId,   setPendingId]     = useState<string | null>(null);
   const [isPendingInvite, startInvite]  = useTransition();
-  const [isPendingRemove, startRemove]  = useTransition();
-  const [isPendingRole,   startRole]    = useTransition();
+  const [, startRowAction]              = useTransition();
 
   function handleInvite(input: { email: string; role: RoleInput }) {
     setInviteError(null);
@@ -79,16 +79,20 @@ export function MembersView({
     if (!window.confirm(
       `Remove ${email} from this workspace?\n\nThey will lose access to all projects and their workspace role assignments will be cleared.`,
     )) return;
-    startRemove(async () => {
+    setPendingId(userId);
+    startRowAction(async () => {
       const res = await removeMember(workspace.id, userId);
       if (!res.ok) notifyActionError(res);
+      setPendingId(null);
     });
   }
 
   function handleRoleChange(userId: string, role: RoleInput) {
-    startRole(async () => {
+    setPendingId(userId);
+    startRowAction(async () => {
       const res = await updateMemberRole(workspace.id, userId, role);
       if (!res.ok) notifyActionError(res);
+      setPendingId(null);
     });
   }
 
@@ -96,8 +100,8 @@ export function MembersView({
     <div className="flex h-full flex-col gap-4">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <Link href="/workspaces" className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="size-4" />
+        <Link href="/workspaces" aria-label="Back to workspaces" className="text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
           <Users className="size-5" />
@@ -161,7 +165,7 @@ export function MembersView({
                           <Select
                             value={role as RoleInput}
                             onValueChange={(v) => handleRoleChange(m.id, v as RoleInput)}
-                            disabled={isPendingRole}
+                            disabled={pendingId === m.id}
                           >
                             <SelectTrigger className="h-8 w-[130px] text-xs">
                               <SelectValue />
@@ -185,7 +189,7 @@ export function MembersView({
                             size="sm"
                             variant="ghost"
                             onClick={() => handleRemove(m.id, m.email)}
-                            disabled={isPendingRemove}
+                            disabled={pendingId === m.id}
                             aria-label={`Remove ${m.email}`}
                             className="text-destructive hover:text-destructive"
                           >
@@ -231,7 +235,7 @@ function InviteDialog({
         <DialogHeader>
           <DialogTitle>Invite a member</DialogTitle>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); onSubmit({ email: email.trim(), role }); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (!isPending) onSubmit({ email: email.trim(), role }); }}>
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="inv-email" className="text-xs font-medium text-muted-foreground">Email</label>

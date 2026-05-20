@@ -15,6 +15,9 @@ describe('isTrustedBff', () => {
   it('returns false when header is missing', () => {
     expect(isTrustedBff(undefined)).toBe(false);
   });
+  it('returns false when header is an empty string', () => {
+    expect(isTrustedBff('')).toBe(false);
+  });
   it('returns false when BFF_SECRET is unset', () => {
     delete process.env.BFF_SECRET;
     expect(isTrustedBff('shh')).toBe(false);

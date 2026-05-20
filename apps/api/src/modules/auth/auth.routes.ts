@@ -86,7 +86,8 @@ authRoutes.post('/login', async (c) => {
   // Refresh token is delivered via httpOnly cookie — never exposed to browsers.
   // Trusted BFF callers also get it in the body so Next can own the session.
   setRefreshCookie(c, result.refreshToken);
-  const loginBody: any = { user: result.user, token: result.accessToken };
+  const loginBody: { user: typeof result.user; token: string; refreshToken?: string } =
+    { user: result.user, token: result.accessToken };
   if (isTrustedBff(c.req.header('X-BFF-Secret'))) loginBody.refreshToken = result.refreshToken;
   return c.json({ data: loginBody });
 });
@@ -103,7 +104,8 @@ authRoutes.post('/mfa/challenge', async (c) => {
   if (result === 'invalid-code')  return c.json({ error: { message: 'Invalid MFA code' } }, 401);
 
   setRefreshCookie(c, result.refreshToken);
-  const mfaBody: any = { user: result.user, token: result.accessToken };
+  const mfaBody: { user: typeof result.user; token: string; refreshToken?: string } =
+    { user: result.user, token: result.accessToken };
   if (isTrustedBff(c.req.header('X-BFF-Secret'))) mfaBody.refreshToken = result.refreshToken;
   return c.json({ data: mfaBody });
 });
@@ -259,7 +261,7 @@ authRoutes.post('/refresh', async (c) => {
   }
 
   setRefreshCookie(c, result.refreshToken);
-  const refreshBody: any = { token: result.accessToken };
+  const refreshBody: { token: string; refreshToken?: string } = { token: result.accessToken };
   if (isTrustedBff(c.req.header('X-BFF-Secret'))) refreshBody.refreshToken = result.refreshToken;
   return c.json({ data: refreshBody });
 });

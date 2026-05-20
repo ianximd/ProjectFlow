@@ -11,7 +11,7 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const setAuth = useStore((s) => s.setAuth);
 
   useEffect(() => {
-    fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' })
+    fetch('/api/auth/refresh', { method: 'POST' })
       .then(async (res) => {
         if (res.ok) {
           const json = await res.json();

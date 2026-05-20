@@ -25,9 +25,6 @@ export interface CreateTaskInput {
   title:       string;
   projectId:   string;
   workspaceId: string;
-  /** Board: place the card in a column. (Ignored by the create endpoint today;
-   *  kept for the Board's call site — see D3.) */
-  status?:     string;
   /** Backlog: drop the issue into a sprint section instead of the backlog. */
   sprintId?:   string | null;
 }
@@ -43,6 +40,8 @@ export async function reorderTask(id: string, position: number, status?: string)
   );
 }
 
+// Not using run(): we need the created task's id from the response body to place
+// the card in a non-default column (see board handleAdd).
 /** POST /tasks — create an issue (Board column or Backlog/sprint section).
  *  Returns the new task's id so callers can follow up with a position/status
  *  move (the create endpoint does not accept `status` in its Zod schema, so

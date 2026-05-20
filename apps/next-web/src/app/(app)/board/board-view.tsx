@@ -17,7 +17,6 @@ import {
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Task, AssigneeRow } from '@/server/queries/tasks';
 
-import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -122,6 +121,11 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
   }, []);
 
   // ── Optimistic reorder ─────────────────────────────────────────────────────
+  // Drag visual feedback is owned by Board.tsx's internal arrayMove state. This
+  // parent useOptimistic update changes the dragged card's position/status so the
+  // move survives the action's round-trip; revalidatePath('/board') in reorderTask
+  // then delivers the canonical ordering, which Board.tsx re-syncs via its
+  // initialTasks useEffect. (Same double-buffering the prior react-query board used.)
   const [optimisticTasks, applyMove] = useOptimistic(
     tasks,
     (state: Task[], m: OptimisticMove) =>
@@ -185,6 +189,9 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
         return;
       }
       // If the target column is not the default, move the new card into it.
+      // If this follow-up reorderTask fails after createTask already succeeded,
+      // the card lands in the default column and a toast fires — acceptable
+      // degradation; the canonical position is reconciled on the next full load.
       if (columnId !== DEFAULT_STATUS && res.data?.id) {
         const moveRes = await reorderTask(res.data.id, 0, columnId);
         if (!moveRes.ok) notifyActionError(moveRes);

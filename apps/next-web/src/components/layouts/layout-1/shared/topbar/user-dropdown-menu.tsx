@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useEffect, useState, useTransition } from 'react';
 import {
   BetweenHorizontalStart,
   Coffee,
@@ -15,18 +15,12 @@ import {
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
-import { useStore } from '@/store/useStore';
+import { logout } from '@/server/actions/auth';
+import { useLayout } from '@/components/layouts/layout-1/components/context';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-function pickUser<T>(o: any, ...keys: string[]): T | undefined {
-  if (!o) return undefined;
-  for (const k of keys) if (o[k] != null) return o[k] as T;
-  return undefined;
-}
 function userInitials(s: string): string {
   return s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 }
@@ -74,14 +68,12 @@ const I18N_LANGUAGES = [
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
   const currenLanguage = I18N_LANGUAGES[0];
   const { theme, setTheme } = useTheme();
-  const router    = useRouter();
-  const qc        = useQueryClient();
-  const clearAuth = useStore((s) => s.clearAuth);
-  const user      = useStore((s) => s.user) as Record<string, any> | null;
+  const { user } = useLayout();
+  const [, startLogout] = useTransition();
 
-  const displayName = pickUser<string>(user, 'Name', 'name') ?? 'Account';
-  const email       = pickUser<string>(user, 'Email', 'email') ?? '';
-  const avatarUrl   = pickUser<string>(user, 'AvatarUrl', 'avatarUrl') ?? null;
+  const displayName = user?.name ?? 'Account';
+  const email       = user?.email ?? '';
+  const avatarUrl   = user?.avatarUrl ?? null;
   const [avatarBroken, setAvatarBroken] = useState(false);
   useEffect(() => { setAvatarBroken(false); }, [avatarUrl]);
 
@@ -89,19 +81,9 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
     setTheme(checked ? 'dark' : 'light');
   };
 
-  // Best-effort logout: hit the server (clears the refresh-token cookie),
-  // then drop in-memory auth + cached queries and bounce to /login. Server
-  // failure shouldn't strand the user — we always clear locally.
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {
-      // network failures are tolerated — local cleanup proceeds anyway
-    }
-    clearAuth();
-    qc.clear();
-    router.replace('/login');
-  };
+  // Logout via Server Action: it clears the session cookies server-side and
+  // redirects to /login. No in-memory store or react-query cache to clear.
+  const handleLogout = () => startLogout(async () => { await logout(); });
 
   return (
     <DropdownMenu>

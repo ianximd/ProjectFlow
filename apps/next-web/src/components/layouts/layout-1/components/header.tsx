@@ -14,18 +14,11 @@ import {
 import { SearchDialog } from '@/components/layouts/layout-1/shared/dialogs/search/search-dialog';
 import { NotificationsSheet } from '@/components/layouts/layout-1/shared/topbar/notifications-sheet';
 import { UserDropdownMenu } from '@/components/layouts/layout-1/shared/topbar/user-dropdown-menu';
-import { useStore } from '@/store/useStore';
+import { useLayout } from './context';
 import { SidebarMenu } from './sidebar-menu';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 
-// Auth store returns user records with Pascal or camelCase keys depending
-// on the endpoint that produced them (SP rows vs. service responses).
-function pick<T>(o: any, ...keys: string[]): T | undefined {
-  if (!o) return undefined;
-  for (const k of keys) if (o[k] != null) return o[k] as T;
-  return undefined;
-}
 function initials(s: string): string {
   return s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('') || '?';
 }
@@ -39,12 +32,12 @@ export function Header() {
   const scrollPosition = useScrollPosition();
   const headerSticky: boolean = scrollPosition > 0;
 
-  // Live avatar — kept in the auth store, refreshed by the profile page's
-  // upload/remove mutations via setAuth(). Falls back to initials when the
-  // image fails to load (legacy http URL, expired key, MinIO down).
-  const user        = useStore((s) => s.user) as Record<string, any> | null;
-  const avatarUrl   = pick<string>(user, 'AvatarUrl', 'avatarUrl') ?? null;
-  const displayName = pick<string>(user, 'Name', 'name') ?? '';
+  // Avatar/name come from the layout context (server-derived via getMe in the
+  // (app) layout). Falls back to initials when the image fails to load
+  // (legacy http URL, expired key, MinIO down).
+  const { user }    = useLayout();
+  const avatarUrl   = user?.avatarUrl ?? null;
+  const displayName = user?.name ?? '';
   const [avatarBroken, setAvatarBroken] = useState(false);
   useEffect(() => { setAvatarBroken(false); }, [avatarUrl]);
 

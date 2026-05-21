@@ -154,6 +154,10 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const [members, setMembers] = useState<MemberRow[] | null>(null);
   const [loadingMembers, startMembers] = useTransition();
   const [membersError, setMembersError] = useState(false);
+  // Remember which workspace `members` was loaded for, so re-opening the picker
+  // reuses the in-session cache instead of re-fetching every time (the old
+  // react-query query had staleTime: 60_000).
+  const loadedMembersWs = useRef<string | null>(null);
 
   // Re-sync the inputs when the drawer swaps to a different task. Title +
   // description follow the same pattern — local mirror so PATCH doesn't
@@ -258,13 +262,17 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       setLocalAssignees(r.data);
     });
 
-  // Load workspace members when the picker opens.
+  // Load workspace members when the picker opens — once per workspace per
+  // session (re-opening reuses the cached list).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!pickerOpen || !workspaceId) return;
+    if (loadedMembersWs.current === workspaceId && members) return;
     setMembersError(false);
     startMembers(async () => {
       try {
         setMembers(await loadWorkspaceMembers(workspaceId));
+        loadedMembersWs.current = workspaceId;
       } catch {
         setMembersError(true);
       }

@@ -1,10 +1,17 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import { getAttachments, type Attachment } from '../queries/attachments';
 import type { ActionResult } from './result';
+
+// Attachment counts can surface on list views — keep them fresh.
+function revalidateAttachmentViews(): void {
+  revalidatePath('/board');
+  revalidatePath('/backlog');
+}
 
 /** POST /attachments (multipart) — form carries `taskId` + `file`.
  *  serverFetch omits the JSON Content-Type for FormData bodies so fetch sets
@@ -16,6 +23,7 @@ export async function uploadAttachment(form: FormData): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
+  revalidateAttachmentViews();
   return { ok: true };
 }
 
@@ -27,6 +35,7 @@ export async function deleteAttachment(id: string): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
+  revalidateAttachmentViews();
   return { ok: true };
 }
 

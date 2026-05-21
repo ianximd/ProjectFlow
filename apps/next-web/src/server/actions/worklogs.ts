@@ -1,11 +1,18 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import { getWorkLogs } from '../queries/worklogs';
 import type { WorkLogListResult } from '@projectflow/types';
 import type { ActionResult } from './result';
+
+// Worklog time can surface as totals on list views — keep them fresh.
+function revalidateWorkLogViews(): void {
+  revalidatePath('/board');
+  revalidatePath('/backlog');
+}
 
 export interface AddWorkLogInput {
   timeSpentSeconds: number;
@@ -29,6 +36,7 @@ export async function addWorkLog(taskId: string, input: AddWorkLogInput): Promis
   } catch (e) {
     return toActionError(e);
   }
+  revalidateWorkLogViews();
   return { ok: true };
 }
 
@@ -43,6 +51,7 @@ export async function editWorkLog(id: string, input: EditWorkLogInput): Promise<
   } catch (e) {
     return toActionError(e);
   }
+  revalidateWorkLogViews();
   return { ok: true };
 }
 
@@ -54,6 +63,7 @@ export async function deleteWorkLog(id: string): Promise<ActionResult> {
   } catch (e) {
     return toActionError(e);
   }
+  revalidateWorkLogViews();
   return { ok: true };
 }
 

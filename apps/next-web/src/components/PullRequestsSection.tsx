@@ -32,6 +32,7 @@ interface Props {
 export function PullRequestsSection({ taskId }: Props) {
   const [prs, setPrs] = useState<GitPullRequest[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [, start] = useTransition();
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -41,9 +42,15 @@ export function PullRequestsSection({ taskId }: Props) {
       const [p, c] = await Promise.all([getPullRequests(taskId), getCommits(taskId)]);
       setPrs(p);
       setCommits(c);
+      setLoaded(true);
     });
   }, [taskId]);
 
+  // Hold the empty state until the first load resolves, so a task that has
+  // links doesn't flash "No linked pull requests" for the round-trip.
+  if (!loaded) {
+    return <p className={styles.empty}>Loading…</p>;
+  }
   if (prs.length === 0 && commits.length === 0) {
     return <p className={styles.empty}>No linked pull requests or commits.</p>;
   }

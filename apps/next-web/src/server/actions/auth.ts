@@ -14,10 +14,10 @@ function bffHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', 'X-BFF-Secret': BFF_SECRET };
 }
 
-// TODO(migration): stop returning `token` to the client once the in-memory CSR
-// store is removed (Phase 3) — the httpOnly cookie should be the only token store.
+// Auth is cookie-only (Phase 3): the action sets httpOnly pf_at/pf_rt via
+// setSessionCookies; the client never sees the token, it just navigates on ok.
 export type LoginResult =
-  | { ok: true; token: string; user: unknown }
+  | { ok: true }
   | { ok: false; mfaRequired: true; mfaToken: string }
   | { ok: false; error: string };
 
@@ -31,7 +31,7 @@ export async function login(email: string, password: string): Promise<LoginResul
   if (data?.mfaRequired) return { ok: false, mfaRequired: true, mfaToken: data.mfaToken };
   if (!data?.token || !data?.refreshToken) return { ok: false, error: 'Login failed: malformed server response' };
   await setSessionCookies(data.token, data.refreshToken);
-  return { ok: true, token: data.token, user: data.user };
+  return { ok: true };
 }
 
 export async function mfaChallenge(
@@ -45,7 +45,7 @@ export async function mfaChallenge(
   if (!res.ok) return { ok: false, error: json?.error?.message ?? 'Verification failed' };
   if (!json.data?.token || !json.data?.refreshToken) return { ok: false, error: 'Verification failed: malformed server response' };
   await setSessionCookies(json.data.token, json.data.refreshToken);
-  return { ok: true, token: json.data.token, user: json.data.user };
+  return { ok: true };
 }
 
 export async function register(

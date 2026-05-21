@@ -1,13 +1,13 @@
 'use client';
 
 /**
- * Landing page for the OAuth callback's final hop. The API has already
- * set the httpOnly refresh cookie; we trade it for an in-memory access
- * token via /auth/refresh and then route to the original `returnTo`.
+ * Landing page for the OAuth callback's final hop. The API has already set the
+ * httpOnly refresh cookie; we POST the Next /api/auth/refresh route handler to
+ * mint + set the pf_at/pf_rt session cookies, then route to `returnTo`.
  *
- * Mirrors the silent-refresh path AuthBootstrap takes on every cold
- * load, but runs OUTSIDE the (app) layout so the user sees a brief
- * "Signing you in…" screen rather than the AuthBootstrap loader.
+ * Auth is cookie-only now (Phase 3) — there is no in-memory token. This page
+ * runs OUTSIDE the (app) layout so the user sees a brief "Signing you in…"
+ * screen while the cookie session is established.
  */
 
 import { Suspense, useEffect, useState } from 'react';

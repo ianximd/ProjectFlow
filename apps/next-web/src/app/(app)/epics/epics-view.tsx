@@ -309,7 +309,11 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
         error={createError}
       />
 
-      <TaskDrawer task={selectedTask as any} onClose={() => setSelectedEpicId(null)} />
+      <TaskDrawer
+        task={selectedTask as any}
+        workspaceId={ctx.activeWorkspaceId}
+        onClose={() => setSelectedEpicId(null)}
+      />
     </div>
   );
 }

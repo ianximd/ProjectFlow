@@ -8,7 +8,6 @@ import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
 import { PullRequestsSection } from './PullRequestsSection';
 import type { AssigneeRow } from './TaskCard';
-import { useStore } from '@/store/useStore';
 import {
   updateTaskFields,
   updateTaskSchedule,
@@ -89,12 +88,10 @@ function toDateInput(iso: string | null | undefined): string {
 export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose }: Props) {
   const drawerRef   = useRef<HTMLDivElement>(null);
   const pickerRef   = useRef<HTMLDivElement>(null);
-  // Prefer the parent's resolved workspace; fall back to the persisted
-  // selection store. Either covers the case where currentWorkspaceId hasn't
-  // been written yet but the board still rendered via its workspaces[0]
-  // fallback. (Selection state is removed from the store in Phase 3 Batch K.)
-  const storeWorkspaceId = useStore((s) => s.currentWorkspaceId);
-  const workspaceId = workspaceIdProp ?? storeWorkspaceId;
+  // Workspace comes from the opener as a prop (every render site passes
+  // `ctx.activeWorkspaceId`). The drawer only opens on a task, which always
+  // belongs to an active workspace, so a null prop is not expected here.
+  const workspaceId = workspaceIdProp ?? null;
 
   // Viewer identity now comes from the server (the access-token cookie) instead
   // of the in-memory auth store. Threaded to the comment + worklog sections so

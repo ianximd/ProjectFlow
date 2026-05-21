@@ -243,6 +243,24 @@ call actions): `Board.tsx`, `Column.tsx`, `TaskCard.tsx`, `TaskDrawer.tsx`, `Gan
 - Remove react-query, `providers.tsx` QueryClient, in-memory auth from `useStore.ts`, dead client
   `api()` helpers, and the client `/api/v1` rewrite if unused.
 
+> **Phase 3 execution refinements (decided 2026-05-21):**
+> 1. **Scope = full teardown in one batched plan.** The §3.6 deletions are blocked until every
+>    remaining self-fetching child is converted off the in-memory token, so the conversions are the
+>    bulk of Phase 3 and ship in the same phase as the deletions (not split into 3a/3b). Two grep
+>    counts are the objective gate for the final deletions: `@tanstack/react-query` imports → 0, and
+>    client `accessToken` / `fetch('/api/v1'` references → 0 in client code.
+> 2. **Conversion pattern = Server Actions that return data; components stay client.** Each deferred
+>    self-fetching child keeps `'use client'` but swaps `useQuery`→a server action called in a
+>    transition (or initial data via props) and `useMutation`→a server action + `revalidate`/refetch.
+>    Multipart upload and presigned-URL download go through Server Actions too (the Phase 2 avatar
+>    upload proved `serverFetch` + FormData). No URL-driven RSC restructure of `TaskDrawer`.
+> 3. **Batches (subagent-driven, two-stage review + interactive smoke per batch):** G = TaskDrawer
+>    children (Comment/Attachment/WorkLog/PullRequests); H = integration panels (Webhook/Git/SlackTeams);
+>    I = admin roles (RolesTab/RoleEditorDialog/PermissionPicker/UserRolesDialog); J = layout shell → RSC
+>    (layout/sidebar-menu w/ server-side admin gate, header, user-dropdown-menu); K = teardown + final
+>    verify (delete AuthBootstrap + QueryClient + in-memory auth + selection bridge + unused rewrite),
+>    then Phase 3 `verified` marker.
+
 Each phase ends green (typecheck + build + tests) before the next.
 
 ---

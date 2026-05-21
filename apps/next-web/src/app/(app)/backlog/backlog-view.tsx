@@ -13,7 +13,7 @@ import {
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { createTask, deleteTask, updateTaskPriority } from '@/server/actions/tasks';
 import {
-  useSelectionBridge, WorkspaceProjectSwitcher,
+  WorkspaceProjectSwitcher,
 } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Task, AssigneeRow } from '@/server/queries/tasks';
@@ -91,16 +91,6 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
-
-  // Keep legacy zustand selection in sync with the cookie/server truth until Phase 3.
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
 
   // URL-persisted filters: a refresh or shared link restores the same view.
   const initialQ        = searchParams.get('q')        ?? '';

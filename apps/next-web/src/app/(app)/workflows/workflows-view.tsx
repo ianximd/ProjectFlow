@@ -11,7 +11,7 @@ import {
   createWorkflow, addStatus, updateStatus, deleteStatus,
   addTransition, deleteTransition,
 } from '@/server/actions/workflows';
-import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Workflow as WorkflowData, WorkflowStatus, WorkflowTransition } from '@/server/queries/workflows';
 import {
@@ -64,16 +64,6 @@ interface Props {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function WorkflowsView({ ctx, workflow }: Props) {
-  // ── Selection bridge ────────────────────────────────────────────────────────
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
-
   const activeProject = ctx.projects.find((p) => p.id === ctx.activeProjectId) ?? ctx.projects[0];
 
   return (

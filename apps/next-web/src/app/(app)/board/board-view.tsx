@@ -12,7 +12,7 @@ import { TaskDrawer } from '@/components/TaskDrawer';
 import { notifyApiError, notifyActionError } from '@/lib/apiErrorToast';
 import { reorderTask, createTask, deleteTask } from '@/server/actions/tasks';
 import {
-  useSelectionBridge, WorkspaceProjectSwitcher,
+  WorkspaceProjectSwitcher,
 } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Task, AssigneeRow } from '@/server/queries/tasks';
@@ -59,16 +59,6 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
-
-  // Keep legacy zustand selection in sync with cookie/server truth until Phase 3.
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
 
   // ── Filter state (URL-persisted) ───────────────────────────────────────────
   const initialQ        = searchParams.get('q')        ?? '';

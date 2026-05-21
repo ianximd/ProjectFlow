@@ -10,7 +10,7 @@ import {
 
 import { notifyApiError } from '@/lib/apiErrorToast';
 import { createProject, archiveProject, deleteProject } from '@/server/actions/projects';
-import { useSelectionBridge, useSelectionSwitch } from '@/app/(app)/_components/selection-bridge';
+import { useSelectionSwitch } from '@/app/(app)/_components/selection-bridge';
 import type { Project, ProjectType, ProjectStatus, Workspace } from '@/server/queries/normalize';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -62,19 +62,6 @@ export function ProjectsView({
   const [statusFilter, setStatusFilter] = useState<'ALL' | ProjectStatus>('ALL');
   const [createOpen,   setCreateOpen]   = useState(false);
   const [createError,  setCreateError]  = useState<string | null>(null);
-
-  // ── Selection bridge (shared) ───────────────────────────────────────────────
-  // Keeps the legacy zustand selection in sync with the cookie/server truth
-  // until Phase 3 removes zustand selection. Projects page is workspace-only
-  // (no project switcher), so activeProjectId and projectIds are empty.
-  useSelectionBridge({
-    activeWorkspaceId,
-    activeProjectId: null,
-    cookieWorkspaceId,
-    cookieProjectId: null,
-    workspaceIds: workspaces.map((w) => w.id),
-    projectIds: [],
-  });
 
   const { switchWorkspace } = useSelectionSwitch();
 

@@ -7,7 +7,7 @@ import {
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { createEpic } from '@/server/actions/epics';
-import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Epic } from '@/server/queries/epics';
 import { TaskDrawer } from '@/components/TaskDrawer';
@@ -90,16 +90,6 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
   const [selectedEpicId,   setSelectedEpicId]   = useState<string | null>(null);
   const [createOpen,       setCreateOpen]       = useState(false);
   const [createError,      setCreateError]      = useState<string | null>(null);
-
-  // ── Selection bridge ────────────────────────────────────────────────────────
-  useSelectionBridge({
-    activeWorkspaceId:  ctx.activeWorkspaceId,
-    activeProjectId:    ctx.activeProjectId,
-    cookieWorkspaceId:  ctx.cookieWorkspaceId,
-    cookieProjectId:    ctx.cookieProjectId,
-    workspaceIds:       ctx.workspaces.map((w) => w.id),
-    projectIds:         ctx.projects.map((p) => p.id),
-  });
 
   // ── Filter pipeline ─────────────────────────────────────────────────────────
   const filteredEpics = useMemo(() => {

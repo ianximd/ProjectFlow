@@ -24,7 +24,6 @@ import {
   deleteAutomation,
 } from '@/server/actions/automations';
 import {
-  useSelectionBridge,
   WorkspaceProjectSwitcher,
 } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
@@ -109,16 +108,6 @@ export function AutomationsView({ ctx, automations }: Props) {
   // Create/edit error state
   const [saveError,   setSaveError]   = useState<string | null>(null);
   const [isSaving,    setIsSaving]    = useState(false);
-
-  // ── Selection bridge ────────────────────────────────────────────────────────
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
 
   const activeProject = ctx.projects.find((p) => p.id === ctx.activeProjectId) ?? ctx.projects[0];
 

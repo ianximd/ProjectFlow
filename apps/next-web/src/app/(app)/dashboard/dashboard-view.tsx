@@ -21,7 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Badge }    from '@/components/ui/badge';
 import { cn }       from '@/lib/utils';
 
-import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext }                  from '@/server/context';
 import type { Sprint }                                   from '@/server/queries/sprints';
 import type { Task }                                     from '@/server/queries/tasks';
@@ -46,16 +46,6 @@ export function DashboardView({
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-
-  // ── Selection bridge — keeps zustand in sync with server cookie truth ────────
-  useSelectionBridge({
-    activeWorkspaceId:  ctx.activeWorkspaceId,
-    activeProjectId:    ctx.activeProjectId,
-    cookieWorkspaceId:  ctx.cookieWorkspaceId,
-    cookieProjectId:    ctx.cookieProjectId,
-    workspaceIds:       ctx.workspaces.map((w) => w.id),
-    projectIds:         ctx.projects.map((p) => p.id),
-  });
 
   // ── KPI derivation ───────────────────────────────────────────────────────────
   const kpi = useMemo(() => {

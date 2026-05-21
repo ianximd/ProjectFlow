@@ -6,7 +6,7 @@ import { GitBranch, CalendarRange, AlertCircle } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { updateTaskDates } from '@/server/actions/roadmap';
-import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import { GanttChart } from '@/components/GanttChart';
 import type { GanttItem } from '@/components/GanttChart';
@@ -25,16 +25,6 @@ interface Props {
 export function RoadmapView({ ctx, items, deps }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-
-  // ── Selection bridge — keeps zustand in sync with server cookie truth ───────
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId: ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId: ctx.cookieProjectId,
-    workspaceIds: ctx.workspaces.map((w) => w.id),
-    projectIds: ctx.projects.map((p) => p.id),
-  });
 
   // ── Drawer state ─────────────────────────────────────────────────────────────
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);

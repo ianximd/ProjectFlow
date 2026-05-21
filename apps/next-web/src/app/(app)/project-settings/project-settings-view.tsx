@@ -12,7 +12,6 @@ import { notifyActionError } from '@/lib/apiErrorToast';
 import { createLabel, updateLabel, deleteLabel } from '@/server/actions/labels';
 import { createComponent, updateComponent, deleteComponent } from '@/server/actions/components';
 import {
-  useSelectionBridge,
   WorkspaceProjectSwitcher,
 } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
@@ -60,16 +59,6 @@ interface Props {
 }
 
 export function ProjectSettingsView({ ctx, labels, components, initialTab }: Props) {
-  // Keep legacy zustand selection in sync with the cookie/server truth until Phase 3.
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
-
   // Allow ?tab=git deep links (the sidebar uses /project-settings?tab=git). Seeded
   // once from the server-resolved searchParam, matching the original CSR behaviour.
   const isTab = (t: string): t is Tab => TABS.some((x) => x.value === t);

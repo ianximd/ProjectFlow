@@ -1,45 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useTransition } from 'react';
+import { useCallback, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { useStore } from '@/store/useStore';
 import { setSelection } from '@/server/actions/selection';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-interface Ctx {
-  activeWorkspaceId: string; activeProjectId: string | null;
-  cookieWorkspaceId: string | null; cookieProjectId: string | null;
-  workspaceIds: string[]; projectIds: string[];
-}
-
-/** Keep legacy zustand selection in sync with the cookie/server truth until Phase 3. */
-export function useSelectionBridge(ctx: Ctx) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
-  const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
-  const setCurrentProject = useStore((s) => s.setCurrentProject);
-  const legacyWorkspaceId = useStore((s) => s.currentWorkspaceId);
-  const legacyProjectId = useStore((s) => s.currentProjectId);
-
-  useEffect(() => {
-    if (
-      ctx.cookieWorkspaceId === null &&
-      legacyWorkspaceId &&
-      legacyWorkspaceId !== ctx.activeWorkspaceId &&
-      ctx.workspaceIds.includes(legacyWorkspaceId)
-    ) {
-      const seedProject = legacyProjectId && ctx.projectIds.includes(legacyProjectId) ? legacyProjectId : undefined;
-      startTransition(async () => {
-        await setSelection({ workspaceId: legacyWorkspaceId, ...(seedProject ? { projectId: seedProject } : {}) });
-        router.refresh();
-      });
-      return;
-    }
-    if (legacyWorkspaceId !== ctx.activeWorkspaceId) setCurrentWorkspace(ctx.activeWorkspaceId);
-    if (ctx.activeProjectId && legacyProjectId !== ctx.activeProjectId) setCurrentProject(ctx.activeProjectId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.activeWorkspaceId, ctx.activeProjectId, ctx.cookieWorkspaceId]);
-}
 
 /** Switch handlers: write the cookie; the server re-render is the single source of truth. */
 export function useSelectionSwitch() {

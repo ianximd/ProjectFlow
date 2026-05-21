@@ -10,7 +10,7 @@ import { notifyActionError } from '@/lib/apiErrorToast';
 import {
   createVersion, updateVersion, releaseVersion, archiveVersion, deleteVersion,
 } from '@/server/actions/versions';
-import { useSelectionBridge, WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
+import { WorkspaceProjectSwitcher } from '@/app/(app)/_components/selection-bridge';
 import type { WorkspaceProjectContext } from '@/server/context';
 import type { Version } from '@/server/queries/versions';
 import {
@@ -76,16 +76,6 @@ export function VersionsView({ ctx, versions }: Props) {
   const [createOpen,   setCreateOpen]   = useState(false);
   const [editing,      setEditing]      = useState<Version | null>(null);
   const [actionError,  setActionError]  = useState<string | null>(null);
-
-  // ── Selection bridge ────────────────────────────────────────────────────────
-  useSelectionBridge({
-    activeWorkspaceId: ctx.activeWorkspaceId,
-    activeProjectId:   ctx.activeProjectId,
-    cookieWorkspaceId: ctx.cookieWorkspaceId,
-    cookieProjectId:   ctx.cookieProjectId,
-    workspaceIds:      ctx.workspaces.map((w) => w.id),
-    projectIds:        ctx.projects.map((p) => p.id),
-  });
 
   // ── Active project label ────────────────────────────────────────────────────
   const activeProject = ctx.projects.find((p) => p.id === ctx.activeProjectId) ?? ctx.projects[0];

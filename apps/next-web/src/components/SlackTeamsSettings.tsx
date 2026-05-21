@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import type { JSX } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageSquare, Plus, Trash2, ExternalLink, Send, CheckCircle2, AlertTriangle, Info,
 } from 'lucide-react';
@@ -13,8 +12,13 @@ import type {
   IntegrationProvider,
 } from '@projectflow/types';
 
-import { useStore } from '@/store/useStore';
-import { notifyApiError } from '@/lib/apiErrorToast';
+import {
+  createIntegration,
+  deleteIntegration,
+  testIntegrationDelivery,
+  loadIntegrations,
+} from '@/server/actions/integrations';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -71,65 +75,41 @@ const PROVIDER_DOCS: Record<IntegrationProvider, string> = {
   msteams: 'https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook',
 };
 
-// ── API helper ───────────────────────────────────────────────────────────────
-
-async function api(path: string, token: string | null, init?: RequestInit) {
-  const res = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization:  `Bearer ${token ?? ''}`,
-      ...(init?.headers ?? {}),
-    },
-    credentials: 'include',
-  });
-  if (res.status === 204) return { ok: res.ok, status: res.status, json: {} };
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) notifyApiError(json, res.status);
-  return { ok: res.ok, status: res.status, json };
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props { workspaceId: string }
 
 export default function SlackTeamsSettings({ workspaceId }: Props) {
-  const accessToken = useStore((s) => s.accessToken);
-  const qc          = useQueryClient();
-
+  const [connections, setConnections] = useState<IntegrationConnection[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, startCreate] = useTransition();
+  const [deleting, startDelete] = useTransition();
 
-  const { data: connections, isLoading } = useQuery<IntegrationConnection[]>({
-    queryKey: ['integrations', workspaceId, accessToken],
-    enabled:  !!workspaceId,
-    queryFn: async () => {
-      const { ok, json } = await api(`/integrations?workspaceId=${workspaceId}`, accessToken);
-      return ok ? (json.data ?? []) : [];
-    },
+  const refetch = () => loadIntegrations(workspaceId).then(setConnections);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (workspaceId) refetch();
+  }, [workspaceId]);
+
+  const onCreate = (input: {
+    provider: IntegrationProvider; channelName: string; webhookUrl: string; events: IntegrationEvent[];
+  }) => startCreate(async () => {
+    setCreateError(null);
+    const r = await createIntegration(workspaceId, input);
+    if (!r.ok) { setCreateError(r.error); notifyActionError(r); return; }
+    setCreateOpen(false);
+    await refetch();
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['integrations', workspaceId] });
-
-  const createMutation = useMutation({
-    mutationFn: async (input: {
-      provider: IntegrationProvider; channelName: string; webhookUrl: string; events: IntegrationEvent[];
-    }) => {
-      const { ok, json } = await api('/integrations', accessToken, {
-        method: 'POST', body: JSON.stringify({ workspaceId, ...input }),
-      });
-      if (!ok) throw new Error(json?.error?.message ?? json?.error ?? 'Create failed');
-      return json.data;
-    },
-    onSuccess: () => { invalidate(); setCreateOpen(false); },
+  const onDelete = (id: string) => startDelete(async () => {
+    const r = await deleteIntegration(id);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { ok } = await api(`/integrations/${id}`, accessToken, { method: 'DELETE' });
-      if (!ok) throw new Error('Delete failed');
-    },
-    onSuccess: invalidate,
-  });
+  const isLoading = connections === null;
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -164,10 +144,10 @@ export default function SlackTeamsSettings({ workspaceId }: Props) {
             <ConnectionCard
               key={c.id}
               conn={c}
-              busy={deleteMutation.isPending}
+              busy={deleting}
               onDelete={() => {
                 if (window.confirm(`Remove the connection for ${c.channelName}?\n\nMessages will stop being sent. You can re-add the same webhook URL later.`)) {
-                  deleteMutation.mutate(c.id);
+                  onDelete(c.id);
                 }
               }}
             />
@@ -178,10 +158,9 @@ export default function SlackTeamsSettings({ workspaceId }: Props) {
       <CreateConnectionDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSubmit={(input) => createMutation.mutate(input)}
-        isPending={createMutation.isPending}
-        error={(createMutation.error as Error | null)?.message ?? null}
-        accessToken={accessToken}
+        onSubmit={onCreate}
+        isPending={creating}
+        error={createError}
       />
     </div>
   );
@@ -269,7 +248,7 @@ function ConnectionCard({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CreateConnectionDialog({
-  open, onClose, onSubmit, isPending, error, accessToken,
+  open, onClose, onSubmit, isPending, error,
 }: {
   open: boolean;
   onClose: () => void;
@@ -278,7 +257,6 @@ function CreateConnectionDialog({
   }) => void;
   isPending: boolean;
   error: string | null;
-  accessToken: string | null;
 }) {
   const [provider,    setProvider]    = useState<IntegrationProvider>('slack');
   const [channelName, setChannelName] = useState('');
@@ -294,16 +272,9 @@ function CreateConnectionDialog({
   const handleTest = async () => {
     if (!webhookUrl) return;
     setTestStatus('testing'); setTestError('');
-    try {
-      const { ok, json } = await api('/integrations/test', accessToken, {
-        method: 'POST', body: JSON.stringify({ provider, webhookUrl }),
-      });
-      if (ok) setTestStatus('ok');
-      else    { setTestStatus('err'); setTestError(json?.error?.message ?? 'Delivery failed'); }
-    } catch (err: any) {
-      setTestStatus('err');
-      setTestError(err?.message ?? 'Network error');
-    }
+    const r = await testIntegrationDelivery({ provider, webhookUrl });
+    if (r.ok) setTestStatus('ok');
+    else      { setTestStatus('err'); setTestError(r.error); }
   };
 
   const placeholder = PROVIDER_PLACEHOLDER[provider];

@@ -1,7 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, useTransition } from 'react';
 import {
   Webhook, Plus, Trash2, Send, CheckCircle2, AlertTriangle, ChevronDown,
   ChevronRight, Activity, ExternalLink, Info,
@@ -13,8 +12,14 @@ import type {
   OutgoingWebhookEvent,
 } from '@projectflow/types';
 
-import { useStore } from '@/store/useStore';
-import { notifyApiError } from '@/lib/apiErrorToast';
+import {
+  createOutgoingWebhook,
+  deleteOutgoingWebhook,
+  pingWebhook,
+  loadOutgoingWebhooks,
+  loadWebhookDeliveries,
+} from '@/server/actions/webhooks';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -37,24 +42,6 @@ const ALL_EVENTS: { value: OutgoingWebhookEvent; label: string; description: str
   { value: 'member.invited',    label: 'Member invited',    description: 'A user is added to this workspace' },
 ];
 
-// ── API helper ───────────────────────────────────────────────────────────────
-
-async function api(path: string, token: string | null, init?: RequestInit) {
-  const res = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization:  `Bearer ${token ?? ''}`,
-      ...(init?.headers ?? {}),
-    },
-    credentials: 'include',
-  });
-  if (res.status === 204) return { ok: res.ok, status: res.status, json: {} };
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) notifyApiError(json, res.status);
-  return { ok: res.ok, status: res.status, json };
-}
-
 function shortDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -67,43 +54,36 @@ function shortDateTime(iso: string | null): string {
 interface Props { workspaceId: string }
 
 export default function WebhookManager({ workspaceId }: Props) {
-  const accessToken = useStore((s) => s.accessToken);
-  const qc          = useQueryClient();
-
+  const [webhooks, setWebhooks] = useState<OutgoingWebhook[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, startCreate] = useTransition();
+  const [deleting, startDelete] = useTransition();
 
-  const { data: webhooks, isLoading } = useQuery<OutgoingWebhook[]>({
-    queryKey: ['outgoing-webhooks', workspaceId, accessToken],
-    enabled:  !!workspaceId,
-    queryFn: async () => {
-      const { ok, json } = await api(`/outgoing-webhooks?workspaceId=${workspaceId}`, accessToken);
-      return ok ? (json.data ?? []) : [];
-    },
+  const refetch = () => loadOutgoingWebhooks(workspaceId).then(setWebhooks);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (workspaceId) refetch();
+  }, [workspaceId]);
+
+  const onCreate = (input: {
+    name: string; url: string; secret: string; events: OutgoingWebhookEvent[];
+  }) => startCreate(async () => {
+    setCreateError(null);
+    const r = await createOutgoingWebhook(workspaceId, input);
+    if (!r.ok) { setCreateError(r.error); notifyActionError(r); return; }
+    setCreateOpen(false);
+    await refetch();
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['outgoing-webhooks', workspaceId] });
-
-  const createMutation = useMutation({
-    mutationFn: async (input: {
-      name: string; url: string; secret: string; events: OutgoingWebhookEvent[];
-    }) => {
-      const { ok, json } = await api('/outgoing-webhooks', accessToken, {
-        method: 'POST',
-        body: JSON.stringify({ workspaceId, ...input }),
-      });
-      if (!ok) throw new Error(json?.error?.message ?? 'Create failed');
-      return json.data;
-    },
-    onSuccess: () => { invalidate(); setCreateOpen(false); },
+  const onDelete = (id: string) => startDelete(async () => {
+    const r = await deleteOutgoingWebhook(id);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { ok } = await api(`/outgoing-webhooks/${id}`, accessToken, { method: 'DELETE' });
-      if (!ok) throw new Error('Delete failed');
-    },
-    onSuccess: invalidate,
-  });
+  const isLoading = webhooks === null;
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -138,12 +118,11 @@ export default function WebhookManager({ workspaceId }: Props) {
             <WebhookCard
               key={wh.id}
               webhook={wh}
-              accessToken={accessToken}
               workspaceId={workspaceId}
-              busy={deleteMutation.isPending}
+              busy={deleting}
               onDelete={() => {
                 if (window.confirm(`Delete webhook "${wh.name}"?\n\nFuture events will stop being delivered. Past delivery history is also removed.`)) {
-                  deleteMutation.mutate(wh.id);
+                  onDelete(wh.id);
                 }
               }}
             />
@@ -154,9 +133,9 @@ export default function WebhookManager({ workspaceId }: Props) {
       <CreateWebhookDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSubmit={(input) => createMutation.mutate(input)}
-        isPending={createMutation.isPending}
-        error={(createMutation.error as Error | null)?.message ?? null}
+        onSubmit={onCreate}
+        isPending={creating}
+        error={createError}
       />
     </div>
   );
@@ -167,10 +146,9 @@ export default function WebhookManager({ workspaceId }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function WebhookCard({
-  webhook, accessToken, workspaceId, onDelete, busy,
+  webhook, workspaceId, onDelete, busy,
 }: {
   webhook: OutgoingWebhook;
-  accessToken: string | null;
   workspaceId: string;
   onDelete: () => void;
   busy: boolean;
@@ -181,29 +159,29 @@ function WebhookCard({
   const [showDeliveries, setShowDeliveries] = useState(false);
 
   // Deliveries fetched lazily — only when the user expands the section.
-  const { data: deliveries, isLoading: isLoadingDeliveries, refetch: refetchDeliveries } =
-    useQuery<WebhookDelivery[]>({
-      queryKey: ['webhook-deliveries', webhook.id, accessToken],
-      enabled: showDeliveries,
-      queryFn: async () => {
-        const { ok, json } = await api(`/outgoing-webhooks/${webhook.id}/deliveries`, accessToken);
-        return ok ? (json.data ?? []) : [];
-      },
-    });
+  const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
+  const [loadingDeliveries, startDeliveries] = useTransition();
+
+  const refetchDeliveries = () => startDeliveries(async () => {
+    setDeliveries(await loadWebhookDeliveries(webhook.id));
+  });
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (showDeliveries && deliveries === null) refetchDeliveries();
+  }, [showDeliveries]);
 
   const handlePing = async () => {
     setPingStatus('pinging'); setPingError(''); setPingCode(null);
-    const { ok, json } = await api(
-      `/outgoing-webhooks/${webhook.id}/ping?workspaceId=${workspaceId}`,
-      accessToken,
-      { method: 'POST' },
-    );
-    if (ok && json?.data?.success) {
-      setPingStatus('ok'); setPingCode(json.data.statusCode ?? null);
+    const r = await pingWebhook(webhook.id, workspaceId);
+    if (!r.ok) {
+      setPingStatus('err'); setPingError(r.error); notifyActionError(r);
+    } else if (r.data.success) {
+      setPingStatus('ok'); setPingCode(r.data.statusCode);
     } else {
       setPingStatus('err');
-      setPingCode(json?.data?.statusCode ?? null);
-      setPingError(json?.error?.message ?? json?.data?.error ?? 'Delivery failed');
+      setPingCode(r.data.statusCode);
+      setPingError(r.data.error ?? 'Delivery failed');
     }
     // Refresh deliveries if expanded — the ping just created a new row.
     if (showDeliveries) refetchDeliveries();
@@ -307,7 +285,7 @@ function WebhookCard({
 
         {showDeliveries && (
           <div className="mt-2">
-            {isLoadingDeliveries ? (
+            {loadingDeliveries && deliveries === null ? (
               <Skeleton className="h-24 w-full" />
             ) : !deliveries || deliveries.length === 0 ? (
               <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">

@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import type { JSX } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   GitPullRequest, Plus, Trash2, Copy, Check, ExternalLink, Info,
 } from 'lucide-react';
 
 import type { GitConnection, GitProvider } from '@projectflow/types';
 
-import { useStore } from '@/store/useStore';
-import { notifyApiError } from '@/lib/apiErrorToast';
+import {
+  createGitConnection,
+  deleteGitConnection,
+  loadGitConnections,
+} from '@/server/actions/git-connections';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,24 +23,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-
-// ── API helper ───────────────────────────────────────────────────────────────
-
-async function api(path: string, token: string | null, init?: RequestInit) {
-  const res = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization:  `Bearer ${token ?? ''}`,
-      ...(init?.headers ?? {}),
-    },
-    credentials: 'include',
-  });
-  if (res.status === 204) return { ok: res.ok, status: res.status, json: {} };
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) notifyApiError(json, res.status);
-  return { ok: res.ok, status: res.status, json };
-}
 
 // ── Provider meta ────────────────────────────────────────────────────────────
 
@@ -71,43 +56,36 @@ const PROVIDER_DOCS: Record<GitProvider, string> = {
 interface Props { workspaceId: string }
 
 export default function GitIntegrationSettings({ workspaceId }: Props) {
-  const accessToken = useStore((s) => s.accessToken);
-  const qc          = useQueryClient();
-
+  const [connections, setConnections] = useState<GitConnection[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, startCreate] = useTransition();
+  const [deleting, startDelete] = useTransition();
 
-  const { data: connections, isLoading } = useQuery<GitConnection[]>({
-    queryKey: ['git-connections', workspaceId, accessToken],
-    enabled:  !!workspaceId,
-    queryFn: async () => {
-      const { ok, json } = await api(`/git/connections?workspaceId=${workspaceId}`, accessToken);
-      return ok ? (json.connections ?? []) : [];
-    },
+  const refetch = () => loadGitConnections(workspaceId).then(setConnections);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (workspaceId) refetch();
+  }, [workspaceId]);
+
+  const onCreate = (input: {
+    provider: GitProvider; repoOwner: string; repoName: string; webhookSecret: string;
+  }) => startCreate(async () => {
+    setCreateError(null);
+    const r = await createGitConnection(workspaceId, input);
+    if (!r.ok) { setCreateError(r.error); notifyActionError(r); return; }
+    setCreateOpen(false);
+    await refetch();
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['git-connections', workspaceId] });
-
-  const createMutation = useMutation({
-    mutationFn: async (input: {
-      provider: GitProvider; repoOwner: string; repoName: string; webhookSecret: string;
-    }) => {
-      const { ok, json } = await api('/git/connections', accessToken, {
-        method: 'POST',
-        body: JSON.stringify({ ...input, workspaceId }),
-      });
-      if (!ok) throw new Error(json?.error?.message ?? json?.error ?? 'Create failed');
-      return json.connection;
-    },
-    onSuccess: () => { invalidate(); setCreateOpen(false); },
+  const onDelete = (id: string) => startDelete(async () => {
+    const r = await deleteGitConnection(id);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { ok } = await api(`/git/connections/${id}`, accessToken, { method: 'DELETE' });
-      if (!ok) throw new Error('Delete failed');
-    },
-    onSuccess: invalidate,
-  });
+  const isLoading = connections === null;
 
   return (
     <div className="flex flex-col gap-3 h-full">
@@ -142,10 +120,10 @@ export default function GitIntegrationSettings({ workspaceId }: Props) {
             <ConnectionCard
               key={conn.id}
               conn={conn}
-              busy={deleteMutation.isPending}
+              busy={deleting}
               onDelete={() => {
                 if (window.confirm(`Disconnect ${conn.repoOwner}/${conn.repoName}?\n\nThis stops auto-linking PRs and commits for this repo. The webhook on the provider side will keep firing until you remove it there.`)) {
-                  deleteMutation.mutate(conn.id);
+                  onDelete(conn.id);
                 }
               }}
             />
@@ -156,9 +134,9 @@ export default function GitIntegrationSettings({ workspaceId }: Props) {
       <CreateConnectionDialog
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onSubmit={(input) => createMutation.mutate(input)}
-        isPending={createMutation.isPending}
-        error={(createMutation.error as Error | null)?.message ?? null}
+        onSubmit={onCreate}
+        isPending={creating}
+        error={createError}
       />
     </div>
   );
@@ -250,7 +228,7 @@ function CreateConnectionDialog({
 
   // The full webhook URL is what the user has to paste into their repo
   // settings — surfacing it prominently with a copy button saves them
-  // tab-hopping while wiring up the integration.
+  // tab-hopping while wiring up the integration. (Display string only.)
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/v1/webhooks/${provider}`
     : `/api/v1/webhooks/${provider}`;

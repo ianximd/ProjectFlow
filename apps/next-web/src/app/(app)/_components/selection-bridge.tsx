@@ -41,21 +41,17 @@ export function useSelectionBridge(ctx: Ctx) {
   }, [ctx.activeWorkspaceId, ctx.activeProjectId, ctx.cookieWorkspaceId]);
 }
 
-/** Switch handlers: write the cookie (server re-render) + mirror zustand. */
+/** Switch handlers: write the cookie; the server re-render is the single source of truth. */
 export function useSelectionSwitch() {
   const router = useRouter();
   const [, startTransition] = useTransition();
-  const setCurrentWorkspace = useStore((s) => s.setCurrentWorkspace);
-  const setCurrentProject = useStore((s) => s.setCurrentProject);
   const switchWorkspace = useCallback((id: string) => {
-    setCurrentWorkspace(id);
     // projectId: null clears any project scoped to the previous workspace
     startTransition(async () => { await setSelection({ workspaceId: id, projectId: null }); router.refresh(); });
-  }, [router, setCurrentWorkspace]);
+  }, [router]);
   const switchProject = useCallback((id: string) => {
-    setCurrentProject(id);
     startTransition(async () => { await setSelection({ projectId: id }); router.refresh(); });
-  }, [router, setCurrentProject]);
+  }, [router]);
   return { switchWorkspace, switchProject };
 }
 

@@ -7,6 +7,8 @@ import {
   CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, Trash2, Upload, UserCog,
 } from 'lucide-react';
 
+import { toast } from 'sonner';
+
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { updateMyName, uploadMyAvatar, removeMyAvatar } from '@/server/actions/profile';
 import { changePassword } from '@/server/actions/auth';
@@ -28,6 +30,11 @@ function initials(s: string): string {
     .map((w) => w[0]!.toUpperCase())
     .join('');
 }
+
+// Mirror of the API's avatar cap (apps/api …/avatars/avatar.routes.ts MAX_BYTES).
+// Guarding here lets oversized files fail instantly with a clear message instead
+// of bouncing off the Server Action body limit as an uncaught runtime error.
+const MAX_AVATAR_BYTES = 3 * 1024 * 1024; // 3 MB
 
 // ── ProfileView (root) ───────────────────────────────────────────────────────
 
@@ -92,16 +99,36 @@ function ProfileCard({ me }: { me: MeProfile }) {
     if (!f) return;
     setSaveSuccess(false);
     setAvatarErr(null);
+
+    // Catch oversized files before they hit the network: the Server Action
+    // body limit would otherwise reject the request as an uncaught throw and
+    // crash the page with the Next.js error overlay.
+    if (f.size > MAX_AVATAR_BYTES) {
+      const msg = 'Image is too large — choose a file under 3 MB.';
+      setAvatarErr(msg);
+      toast.error('Avatar too large', { description: msg });
+      return;
+    }
+
     startAvatar(async () => {
-      const formData = new FormData();
-      formData.append('file', f);
-      const res = await uploadMyAvatar(formData);
-      if (!res.ok) {
-        setAvatarErr(res.error);
-        notifyActionError(res);
-      } else {
-        setAvatarErr(null);
-        router.refresh();
+      try {
+        const formData = new FormData();
+        formData.append('file', f);
+        const res = await uploadMyAvatar(formData);
+        if (!res.ok) {
+          setAvatarErr(res.error);
+          notifyActionError(res);
+        } else {
+          setAvatarErr(null);
+          router.refresh();
+        }
+      } catch {
+        // The Server Action threw before returning a result — e.g. the
+        // framework body-size guard or a network failure. Surface it as a
+        // toast instead of letting it bubble up as a runtime crash.
+        const msg = 'Could not upload the image. Please try again.';
+        setAvatarErr(msg);
+        toast.error('Upload failed', { description: msg });
       }
     });
   }

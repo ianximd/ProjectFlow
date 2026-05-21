@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
   // feature stabilises, recompute on each `next dev` start.
   experimental: {
     turbopackFileSystemCacheForDev: false,
+    // Server Actions default to a 1 MB request-body limit, which rejects the
+    // avatar uploads we advertise as "up to 3 MB" before the action even runs.
+    // Lift it to 4 MB to match the API's global body guard (and its 3 MB avatar
+    // cap, leaving headroom for multipart encoding overhead).
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
   },
   async rewrites() {
     return [

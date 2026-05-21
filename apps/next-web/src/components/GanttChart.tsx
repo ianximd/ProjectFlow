@@ -7,7 +7,7 @@ import {
   AlertTriangle, ArrowLeftCircle, ArrowRightCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { shortDate as SHORT_DATE } from '@/lib/date';
+import { formatShortDate } from '@/lib/date';
 import { Button } from '@/components/ui/button';
 import { useStore } from '@/store/useStore';
 import {
@@ -66,7 +66,7 @@ function getStatusCategory(s: string | null | undefined): StatusCategory {
 }
 
 function shortDate(d: Date | null): string {
-  return d ? SHORT_DATE.format(d) : '—';
+  return d ? formatShortDate(d) : '—';
 }
 
 // ─── Layout constants ────────────────────────────────────────────────────────

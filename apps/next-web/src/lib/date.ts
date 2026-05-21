@@ -5,8 +5,11 @@
 // server-rendered output, so the visible format is unchanged.
 const LOCALE = 'en-US';
 
-export const shortDate = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric' });
-export const shortDateYear = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' });
+// Module-private: consumers use the format* functions below, not the raw
+// Intl instances — keeps the public surface to functions and avoids name
+// collisions at call sites.
+const shortDate = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric' });
+const shortDateYear = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' });
 
 export function formatShortDate(d: Date | string): string {
   return shortDate.format(typeof d === 'string' ? new Date(d) : d);

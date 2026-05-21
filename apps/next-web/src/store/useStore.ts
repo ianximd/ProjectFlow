@@ -25,17 +25,6 @@ interface BoardState {
   columns: Column[];
 }
 
-// Shared workspace/project selection across pages. Each page used to keep its
-// own `useState`, so navigating from Board → Epics would silently switch the
-// active project to whichever came first in the workspace. Lifting it here
-// keeps the dropdowns in sync so users see the same project everywhere.
-interface SelectionState {
-  currentWorkspaceId: string | null;
-  currentProjectId:   string | null;
-  setCurrentWorkspace: (id: string | null) => void;
-  setCurrentProject:   (id: string | null) => void;
-}
-
 // Roadmap viewport — persisted so navigating away and back keeps the user on
 // the same zoom level and scroll position. Without this the Gantt remounts
 // each time and snaps back to today, losing the user's context.
@@ -56,17 +45,12 @@ const defaultCols: Column[] = [
 // Auth lives entirely in httpOnly cookies (pf_at/pf_rt) + the server session
 // now — there is no in-memory access token or user in this store (removed in
 // the CSR→SSR migration, Phase 3). This store only holds client-only UI state:
-// board columns, the workspace/project selection, and the roadmap viewport.
-export const useStore = create<BoardState & SelectionState & RoadmapState>()(
+// board columns and the roadmap viewport.
+export const useStore = create<BoardState & RoadmapState>()(
   persist(
     (set) => ({
       // Board state
       columns: defaultCols,
-      // Selection state — persisted so it survives reloads.
-      currentWorkspaceId: null,
-      currentProjectId:   null,
-      setCurrentWorkspace: (id) => set({ currentWorkspaceId: id, currentProjectId: null }),
-      setCurrentProject:   (id) => set({ currentProjectId: id }),
       // Roadmap state — persisted so the Gantt remembers zoom + scroll.
       roadmapZoom:       'week',
       roadmapScrollLeft: 0,
@@ -76,12 +60,10 @@ export const useStore = create<BoardState & SelectionState & RoadmapState>()(
     {
       name: 'pf-selection',
       storage: createJSONStorage(() => localStorage),
-      // Only persist the user-visible selection + roadmap viewport.
+      // Only persist the roadmap viewport.
       partialize: (s) => ({
-        currentWorkspaceId: s.currentWorkspaceId,
-        currentProjectId:   s.currentProjectId,
-        roadmapZoom:        s.roadmapZoom,
-        roadmapScrollLeft:  s.roadmapScrollLeft,
+        roadmapZoom:       s.roadmapZoom,
+        roadmapScrollLeft: s.roadmapScrollLeft,
       }),
     },
   ),

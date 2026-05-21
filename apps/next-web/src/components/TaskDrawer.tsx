@@ -50,9 +50,8 @@ interface Props {
   // list-query meta; they pass the slice for this task in. The drawer
   // owns no fetch for the *current* set — only for the picker dropdown.
   assignees?: AssigneeRow[];
-  // Parents resolve workspaceId as `currentWorkspaceId ?? workspaces[0].Id`.
-  // If they don't pass it down, the drawer's picker can't load members
-  // because the store value may be null even when the board has a workspace.
+  // The opener passes workspaceId (resolved as ctx.activeWorkspaceId).
+  // Required for the member picker to load assignee candidates.
   workspaceId?: string | null;
   onClose: () => void;
 }

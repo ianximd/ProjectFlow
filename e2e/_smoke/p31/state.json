@@ -1,0 +1,45 @@
+{
+  "cookies": [
+    {
+      "name": "pf_at",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIyQ0FFQUVERi02QjRGLTRFMzktOTc4RC0zNDNFQzBFNDI1MjUiLCJlbWFpbCI6InNtb2tlMUBwcm9qZWN0Zmxvdy50ZXN0IiwiaWF0IjoxNzc5MzM3ODM3LCJleHAiOjE3NzkzMzg3Mzd9.cfl-obK1MXclKfpVsqCx3cgH3Y8RsNkHy_b348nHXnM",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1779338737.537645,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pf_rt",
+      "value": "ace706ceb97482d66d8de36bb98b1e962461271c67cfc720e6a72dbfaf784d44e57c928fde15ca4f",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1779942637.537765,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "pf_sel",
+      "value": "%7B%22workspaceId%22%3A%22F7DCBC85-5E3B-4CB5-BFA4-61C784D19E44%22%2C%22projectId%22%3Anull%7D",
+      "domain": "localhost",
+      "path": "/",
+      "expires": 1794889847.19258,
+      "httpOnly": true,
+      "secure": false,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "pf-selection",
+          "value": "{\"state\":{\"roadmapZoom\":\"week\",\"roadmapScrollLeft\":0},\"version\":0}"
+        }
+      ]
+    }
+  ]
+}

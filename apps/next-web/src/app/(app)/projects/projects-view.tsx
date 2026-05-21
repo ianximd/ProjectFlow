@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 
 import { notifyApiError } from '@/lib/apiErrorToast';
+import { formatShortDateYear } from '@/lib/date';
 import { createProject, archiveProject, deleteProject } from '@/server/actions/projects';
 import { useSelectionSwitch } from '@/app/(app)/_components/selection-bridge';
 import type { Project, ProjectType, ProjectStatus, Workspace } from '@/server/queries/normalize';
@@ -317,7 +318,7 @@ function ProjectCard({
 
       {createdAt && (
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-mono">
-          Created {new Date(createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+          Created {formatShortDateYear(createdAt)}
         </span>
       )}
     </Card>

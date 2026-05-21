@@ -12,22 +12,21 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useStore } from '@/store/useStore';
 
 function FinishInner() {
   const router       = useRouter();
   const params       = useSearchParams();
-  const setAuth      = useStore((s) => s.setAuth);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const returnTo = params.get('returnTo') || '/board';
 
-    fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' })
-      .then(async (res) => {
+    // Establish the BFF cookie session from the refresh cookie via the Next
+    // route handler (it sets pf_at/pf_rt) — the same path AuthBootstrap used.
+    // No in-memory token anymore; once cookies are set we just navigate.
+    fetch('/api/auth/refresh', { method: 'POST' })
+      .then((res) => {
         if (!res.ok) throw new Error(`refresh failed (${res.status})`);
-        const json = await res.json();
-        setAuth(json.data.token, json.data.user ?? {});
         router.replace(returnTo);
       })
       .catch((err) => {
@@ -36,7 +35,7 @@ function FinishInner() {
         setError(err.message ?? 'Sign-in failed');
         setTimeout(() => router.replace('/login'), 2000);
       });
-  }, [params, router, setAuth]);
+  }, [params, router]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">

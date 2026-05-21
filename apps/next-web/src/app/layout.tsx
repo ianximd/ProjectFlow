@@ -5,7 +5,6 @@ import { ThemeProvider } from 'next-themes';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/utils';
-import { Providers } from './providers';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -39,9 +38,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <a href="#main-content" className="skip-link">
               Skip to main content
             </a>
-            <Providers>
-              <Suspense>{children}</Suspense>
-            </Providers>
+            <Suspense>{children}</Suspense>
             <Toaster />
           </TooltipProvider>
         </ThemeProvider>

@@ -21,26 +21,6 @@ export type Task = {
   priority?: 'Low' | 'Medium' | 'High';
 };
 
-// Auth user shape — kept in the store so /auth/me and the profile editor
-// share a single type instead of each layer redefining its own. Both
-// PascalCase (raw from API/SQL) and camelCase (normalized) fields are
-// accepted to match what every caller already passes today.
-export interface AuthUser {
-  id?:              string; Id?:              string;
-  email?:           string; Email?:           string;
-  name?:            string; Name?:            string;
-  avatarUrl?:       string | null; AvatarUrl?:       string | null;
-  isEmailVerified?: boolean;       IsEmailVerified?: boolean | number;
-  mfaEnabled?:      boolean;       MfaEnabled?:      boolean | number;
-}
-
-interface AuthState {
-  accessToken: string | null;
-  user: AuthUser | null;
-  setAuth: (token: string, user: AuthUser) => void;
-  clearAuth: () => void;
-}
-
 interface BoardState {
   columns: Column[];
 }
@@ -73,16 +53,15 @@ const defaultCols: Column[] = [
   { id: 'Done', title: 'Done' },
 ];
 
-export const useStore = create<BoardState & AuthState & SelectionState & RoadmapState>()(
+// Auth lives entirely in httpOnly cookies (pf_at/pf_rt) + the server session
+// now — there is no in-memory access token or user in this store (removed in
+// the CSR→SSR migration, Phase 3). This store only holds client-only UI state:
+// board columns, the workspace/project selection, and the roadmap viewport.
+export const useStore = create<BoardState & SelectionState & RoadmapState>()(
   persist(
     (set) => ({
       // Board state
       columns: defaultCols,
-      // Auth state — access token lives in memory only (never localStorage)
-      accessToken: null,
-      user: null,
-      setAuth: (token, user) => set({ accessToken: token, user }),
-      clearAuth: () => set({ accessToken: null, user: null, currentWorkspaceId: null, currentProjectId: null }),
       // Selection state — persisted so it survives reloads.
       currentWorkspaceId: null,
       currentProjectId:   null,
@@ -97,7 +76,7 @@ export const useStore = create<BoardState & AuthState & SelectionState & Roadmap
     {
       name: 'pf-selection',
       storage: createJSONStorage(() => localStorage),
-      // Only persist the user-visible selection, never auth state.
+      // Only persist the user-visible selection + roadmap viewport.
       partialize: (s) => ({
         currentWorkspaceId: s.currentWorkspaceId,
         currentProjectId:   s.currentProjectId,

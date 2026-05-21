@@ -4,7 +4,6 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
-import { useStore } from '@/store/useStore';
 import { login as loginAction } from '@/server/actions/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +21,6 @@ const PROVIDER_META: Record<string, { label: string; bg: string }> = {
 
 export default function LoginPage() {
   const router = useRouter();
-  const setAuth = useStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -46,7 +44,8 @@ export default function LoginPage() {
     startTransition(async () => {
       const result = await loginAction(email, password);
       if (result.ok) {
-        setAuth(result.token, result.user as any); // legacy in-memory hydration
+        // Session is established via httpOnly cookies by the login action;
+        // navigate and let the RSC layout read the cookie.
         router.push('/board');
       } else if ('mfaRequired' in result) {
         router.push(`/oauth/mfa?token=${encodeURIComponent(result.mfaToken)}&returnTo=/board`);

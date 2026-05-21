@@ -15,13 +15,11 @@
 
 import { Suspense, useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useStore } from '@/store/useStore';
 import { mfaChallenge } from '@/server/actions/auth';
 
 function MfaInner() {
   const router  = useRouter();
   const params  = useSearchParams();
-  const setAuth = useStore((s) => s.setAuth);
 
   const [isPending, startTransition] = useTransition();
 
@@ -50,7 +48,7 @@ function MfaInner() {
         isTotp ? undefined : code,
       );
       if (result.ok) {
-        setAuth(result.token, result.user as any);
+        // mfaChallenge set the session cookies server-side; just navigate.
         router.replace(returnTo || '/board');
       } else {
         setError('error' in result ? result.error : 'Verification failed');

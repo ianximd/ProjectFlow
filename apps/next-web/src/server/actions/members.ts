@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
+import { getWorkspaceMembers, type MemberRow } from '../queries/workspace';
 import type { ActionResult } from './result';
 
 
@@ -60,4 +61,11 @@ export async function updateMemberRole(
   }
   revalidatePath(`/workspaces/${wsId}/members`);
   return { ok: true };
+}
+
+/** Server-action wrapper exposing the workspace member list to client
+ *  components (the TaskDrawer assignee picker). */
+export async function loadWorkspaceMembers(workspaceId: string): Promise<MemberRow[]> {
+  await requireSession();
+  return getWorkspaceMembers(workspaceId);
 }

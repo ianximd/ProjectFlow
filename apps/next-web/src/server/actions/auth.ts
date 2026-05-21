@@ -1,5 +1,6 @@
 'use server';
 import { redirect } from 'next/navigation';
+import { getSession } from '../session';
 import { setSessionCookies, clearSessionCookies } from '../cookies';
 
 const API_BASE =
@@ -59,4 +60,11 @@ export async function register(
 export async function logout(): Promise<void> {
   await clearSessionCookies();
   redirect('/login');
+}
+
+/** Current viewer's user id (from the access-token cookie), or null. Lets a
+ *  client component derive identity without the in-memory auth store. */
+export async function getCurrentUserId(): Promise<string | null> {
+  const session = await getSession();
+  return session?.userId ?? null;
 }

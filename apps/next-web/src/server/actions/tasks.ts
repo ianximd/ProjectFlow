@@ -5,6 +5,7 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
+import type { AssigneeRow } from '@/components/TaskCard';
 
 /** Run a task mutation: gate the session, call the API, revalidate the affected
  *  routes, and map any thrown ApiError into an ActionFail (rethrowing Next
@@ -19,6 +20,9 @@ async function run(fn: () => Promise<unknown>, paths: string[]): Promise<ActionR
   for (const p of paths) revalidatePath(p);
   return { ok: true };
 }
+
+// Drawer edits can surface anywhere a task is listed — refresh every list route.
+const TASK_LIST_PATHS = ['/board', '/backlog', '/dashboard', '/roadmap', '/epics'];
 
 export interface CreateTaskInput {
   title:       string;
@@ -80,4 +84,57 @@ export async function updateTaskPriority(id: string, priority: string): Promise<
     }),
     ['/backlog', '/board'],
   );
+}
+
+export interface UpdateTaskFieldsInput {
+  title?:       string;
+  description?: string | null;
+  priority?:    string;
+}
+
+/** PATCH /tasks/:id — TaskDrawer inline edits (title / description / priority). */
+export async function updateTaskFields(id: string, input: UpdateTaskFieldsInput): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/tasks/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body:   JSON.stringify(input),
+    }),
+    TASK_LIST_PATHS,
+  );
+}
+
+export interface UpdateTaskScheduleInput {
+  startDate:      string | null;
+  dueDate:        string | null;
+  clearStartDate: boolean;
+  clearDueDate:   boolean;
+}
+
+/** PATCH /roadmap/tasks/:id/dates — TaskDrawer schedule (start/due) edit. The
+ *  clear* flags tell the SP to actively NULL a column when the value is empty. */
+export async function updateTaskSchedule(id: string, input: UpdateTaskScheduleInput): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/roadmap/tasks/${encodeURIComponent(id)}/dates`, {
+      method: 'PATCH',
+      body:   JSON.stringify(input),
+    }),
+    TASK_LIST_PATHS,
+  );
+}
+
+/** PUT /tasks/:id/assignees { userIds } — replaces the full assignee set and
+ *  returns the new authoritative rows (the SP silently drops non-members). */
+export async function setTaskAssignees(id: string, userIds: string[]): Promise<ActionResult<AssigneeRow[]>> {
+  await requireSession();
+  let rows: AssigneeRow[] = [];
+  try {
+    rows = (await serverFetch<AssigneeRow[]>(`/tasks/${encodeURIComponent(id)}/assignees`, {
+      method: 'PUT',
+      body:   JSON.stringify({ userIds }),
+    })) ?? [];
+  } catch (e) {
+    return toActionError(e);
+  }
+  for (const p of TASK_LIST_PATHS) revalidatePath(p);
+  return { ok: true, data: rows };
 }

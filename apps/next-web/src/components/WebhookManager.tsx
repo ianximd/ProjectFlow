@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import {
   Webhook, Plus, Trash2, Send, CheckCircle2, AlertTriangle, ChevronDown,
   ChevronRight, Activity, ExternalLink, Info,
@@ -161,10 +161,17 @@ function WebhookCard({
   // Deliveries fetched lazily — only when the user expands the section.
   const [deliveries, setDeliveries] = useState<WebhookDelivery[] | null>(null);
   const [loadingDeliveries, startDeliveries] = useTransition();
+  // Rapid pings can enqueue overlapping refetches; a sequence guard ensures
+  // only the latest response is applied (react-query used to dedupe this).
+  const deliveriesSeq = useRef(0);
 
-  const refetchDeliveries = () => startDeliveries(async () => {
-    setDeliveries(await loadWebhookDeliveries(webhook.id));
-  });
+  const refetchDeliveries = () => {
+    const seq = ++deliveriesSeq.current;
+    startDeliveries(async () => {
+      const rows = await loadWebhookDeliveries(webhook.id);
+      if (seq === deliveriesSeq.current) setDeliveries(rows);
+    });
+  };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {

@@ -1,53 +1,53 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState, useTransition } from 'react';
 import { Plus, ShieldCheck, Loader2 } from 'lucide-react';
 import type { RoleScope, RoleWithCounts } from '@projectflow/types';
-import { useStore } from '@/store/useStore';
-import { notifyApiError } from '@/lib/apiErrorToast';
+import { loadRoles } from '@/server/actions/admin-roles';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RoleEditorDialog } from './RoleEditorDialog';
-
-// ─── api helper ──────────────────────────────────────────────────────────────
-
-async function api(path: string, token: string | null) {
-  const res = await fetch(`/api/v1${path}`, {
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    notifyApiError(json, res.status);
-    throw new Error(json.error?.message ?? 'Request failed');
-  }
-  return json;
-}
 
 // ─── component ───────────────────────────────────────────────────────────────
 
 type ScopeFilter = 'ALL' | RoleScope;
 
 export function RolesTab() {
-  const token = useStore((s) => s.accessToken);
   const [scope,        setScope]        = useState<ScopeFilter>('ALL');
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
 
-  const { data: roles = [], isLoading, error } = useQuery<RoleWithCounts[]>({
-    queryKey: ['admin', 'roles', scope],
-    queryFn:  () => {
-      const q = scope === 'ALL' ? '' : `?scope=${scope}`;
-      return api(`/admin/roles${q}`, token).then((j) => j.data);
-    },
+  const [roles,  setRoles]  = useState<RoleWithCounts[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [error,  setError]  = useState<string | null>(null);
+  const [pending, start]    = useTransition();
+
+  const refetch = () => start(async () => {
+    setError(null);
+    try {
+      setRoles(await loadRoles(scope === 'ALL' ? undefined : scope));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load roles');
+    } finally {
+      setLoaded(true);
+    }
   });
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setLoaded(false);
+    refetch();
+  }, [scope]);
 
   const dialogOpen = editingId !== null || creatingScope !== null;
   function closeDialog() {
     setEditingId(null);
     setCreatingScope(null);
+    refetch(); // pick up created/edited/deleted roles + member-count changes
   }
+
+  const isLoading = !loaded && pending;
 
   return (
     <div className="space-y-5">
@@ -72,7 +72,7 @@ export function RolesTab() {
       {/* Error state */}
       {error && (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {(error as Error).message}
+          {error}
         </div>
       )}
 
@@ -85,7 +85,7 @@ export function RolesTab() {
       )}
 
       {/* Roles table */}
-      {!isLoading && (
+      {loaded && (
         <div className="overflow-hidden rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">

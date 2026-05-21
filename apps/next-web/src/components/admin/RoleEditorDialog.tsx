@@ -1,19 +1,29 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Loader2, Trash2, UserPlus } from 'lucide-react';
 import type {
   AdminUser,
   AdminWorkspace,
   Permission,
-  Role,
   RoleMember,
   RoleScope,
   RoleWithPermissions,
 } from '@projectflow/types';
-import { useStore } from '@/store/useStore';
-import { notifyApiError } from '@/lib/apiErrorToast';
+import {
+  createRole,
+  updateRole,
+  setRolePermissions,
+  deleteRole,
+  assignUserRole,
+  revokeUserRole,
+  loadRoleDetail,
+  loadPermissions,
+  loadRoleMembers,
+  loadUsersForRoles,
+  loadAllWorkspacesForRoles,
+} from '@/server/actions/admin-roles';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,25 +39,6 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PermissionPicker } from './PermissionPicker';
 
-// ─── api helper ──────────────────────────────────────────────────────────────
-
-async function api(path: string, token: string | null, opts?: RequestInit) {
-  const res = await fetch(`/api/v1${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type':  'application/json',
-      Authorization:   `Bearer ${token}`,
-      ...(opts?.headers ?? {}),
-    },
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    notifyApiError(json, res.status);
-    throw new Error(json.error?.message ?? 'Request failed');
-  }
-  return json;
-}
-
 // ─── component ───────────────────────────────────────────────────────────────
 
 interface Props {
@@ -59,8 +50,6 @@ interface Props {
 }
 
 export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props) {
-  const token = useStore((s) => s.accessToken);
-  const qc    = useQueryClient();
   const isEdit = !!roleId;
 
   // ── form state ─────────────────────────────────────────────────────────
@@ -70,19 +59,28 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
 
-  // Fetch role detail (permissions included) when editing
-  const { data: roleDetail, isLoading: isLoadingRole } = useQuery<RoleWithPermissions>({
-    queryKey: ['admin', 'role', roleId],
-    queryFn:  () => api(`/admin/roles/${roleId}`, token).then((j) => j.data),
-    enabled:  open && !!roleId,
-  });
+  // ── server data ────────────────────────────────────────────────────────
+  const [roleDetail,  setRoleDetail]  = useState<RoleWithPermissions | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [isLoadingRole, startLoadRole] = useTransition();
+  const [saving, startSave] = useTransition();
 
-  // Fetch permissions catalog (entire) once per session
-  const { data: permissions = [] } = useQuery<Permission[]>({
-    queryKey: ['admin', 'permissions'],
-    queryFn:  () => api('/admin/permissions', token).then((j) => j.data),
-    enabled:  open,
-  });
+  // Fetch role detail (permissions included) when editing
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open || !roleId) { setRoleDetail(null); return; }
+    startLoadRole(async () => {
+      try { setRoleDetail(await loadRoleDetail(roleId)); }
+      catch (e) { setErrorMsg(e instanceof Error ? e.message : 'Failed to load role'); }
+    });
+  }, [open, roleId]);
+
+  // Fetch permissions catalog (entire) once per open
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open) return;
+    loadPermissions().then(setPermissions).catch(() => setPermissions([]));
+  }, [open]);
 
   // Hydrate form when role detail arrives or dialog opens fresh
   useEffect(() => {
@@ -105,54 +103,31 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
 
   // ── mutations ──────────────────────────────────────────────────────────
 
-  const createMut = useMutation({
-    mutationFn: () =>
-      api('/admin/roles', token, {
-        method: 'POST',
-        body:   JSON.stringify({
-          name, description: description || null, scope,
-          permissionIds: Array.from(selectedIds),
-        }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-      onClose();
-    },
-    onError: (e: Error) => setErrorMsg(e.message),
+  const doCreate = () => startSave(async () => {
+    const r = await createRole({
+      name, description: description || null, scope,
+      permissionIds: Array.from(selectedIds),
+    });
+    if (!r.ok) { setErrorMsg(r.error); notifyActionError(r); return; }
+    onClose();
   });
 
-  const updateMut = useMutation({
-    mutationFn: async () => {
-      if (!isEdit) return;
-      // PATCH metadata, then PUT permissions
-      await api(`/admin/roles/${roleId}`, token, {
-        method: 'PATCH',
-        body:   JSON.stringify({ name, description: description || null }),
-      });
-      await api(`/admin/roles/${roleId}/permissions`, token, {
-        method: 'PUT',
-        body:   JSON.stringify({ permissionIds: Array.from(selectedIds) }),
-      });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'role', roleId] });
-      onClose();
-    },
-    onError: (e: Error) => setErrorMsg(e.message),
+  const doUpdate = () => startSave(async () => {
+    // PATCH metadata, then PUT permissions
+    const r1 = await updateRole(roleId!, { name, description: description || null });
+    if (!r1.ok) { setErrorMsg(r1.error); notifyActionError(r1); return; }
+    const r2 = await setRolePermissions(roleId!, Array.from(selectedIds));
+    if (!r2.ok) { setErrorMsg(r2.error); notifyActionError(r2); return; }
+    onClose();
   });
 
-  const deleteMut = useMutation({
-    mutationFn: () =>
-      api(`/admin/roles/${roleId}`, token, { method: 'DELETE' }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-      onClose();
-    },
-    onError: (e: Error) => setErrorMsg(e.message),
+  const doDelete = () => startSave(async () => {
+    const r = await deleteRole(roleId!);
+    if (!r.ok) { setErrorMsg(r.error); notifyActionError(r); return; }
+    onClose();
   });
 
-  const isPending = createMut.isPending || updateMut.isPending || deleteMut.isPending;
+  const isPending = isLoadingRole || saving;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -161,8 +136,8 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
       setErrorMsg('Name is required');
       return;
     }
-    if (isEdit) updateMut.mutate();
-    else        createMut.mutate();
+    if (isEdit) doUpdate();
+    else        doCreate();
   }
 
   // ── render ─────────────────────────────────────────────────────────────
@@ -267,7 +242,6 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
               <RoleMembersSection
                 roleId={roleId!}
                 scope={roleDetail.scope}
-                token={token}
               />
             )}
           </SheetBody>
@@ -281,7 +255,7 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
                   disabled={isPending}
                   onClick={() => {
                     if (confirm('Delete this role? Active assignments will block deletion.')) {
-                      deleteMut.mutate();
+                      doDelete();
                     }
                   }}
                 >
@@ -308,42 +282,32 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
 // ─── Members section ─────────────────────────────────────────────────────────
 
 function RoleMembersSection({
-  roleId, scope, token,
+  roleId, scope,
 }: {
   roleId: string;
   scope:  RoleScope;
-  token:  string | null;
 }) {
-  const qc = useQueryClient();
+  const [members, setMembers] = useState<RoleMember[]>([]);
+  const [loaded,  setLoaded]  = useState(false);
+  const [pending, start]      = useTransition();
   const [showAdd, setShowAdd] = useState(false);
 
-  const { data: members = [], isLoading } = useQuery<RoleMember[]>({
-    queryKey: ['admin', 'role-members', roleId],
-    queryFn:  () => api(`/admin/roles/${roleId}/members`, token).then((j) => j.data),
+  const refetch = () => loadRoleMembers(roleId).then((m) => { setMembers(m); setLoaded(true); });
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refetch(); }, [roleId]);
+
+  const onRevoke = (userId: string, workspaceId: string | null) => start(async () => {
+    const r = await revokeUserRole(userId, roleId, workspaceId);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
-  const revokeMut = useMutation({
-    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string | null }) => {
-      const q = workspaceId ? `?workspaceId=${workspaceId}` : '';
-      return api(`/admin/user-roles/${userId}/${roleId}${q}`, token, { method: 'DELETE' });
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'role-members', roleId] });
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-    },
-  });
-
-  const assignMut = useMutation({
-    mutationFn: ({ userId, workspaceId }: { userId: string; workspaceId: string | null }) =>
-      api(`/admin/user-roles/${userId}`, token, {
-        method: 'POST',
-        body:   JSON.stringify({ roleId, workspaceId }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin', 'role-members', roleId] });
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-      setShowAdd(false);
-    },
+  const onAssign = (userId: string, workspaceId: string | null) => start(async () => {
+    const r = await assignUserRole(userId, { roleId, workspaceId });
+    if (!r.ok) return notifyActionError(r);
+    setShowAdd(false);
+    await refetch();
   });
 
   return (
@@ -369,14 +333,13 @@ function RoleMembersSection({
       {showAdd && (
         <AssignMemberPicker
           scope={scope}
-          token={token}
           existing={members}
-          onAssign={(userId, workspaceId) => assignMut.mutate({ userId, workspaceId })}
-          isPending={assignMut.isPending}
+          onAssign={onAssign}
+          isPending={pending}
         />
       )}
 
-      {isLoading ? (
+      {!loaded ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" /> Loading members…
         </div>
@@ -405,10 +368,10 @@ function RoleMembersSection({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      disabled={revokeMut.isPending}
+                      disabled={pending}
                       onClick={() => {
                         if (confirm(`Revoke this role from ${m.email}?`)) {
-                          revokeMut.mutate({ userId: m.userId, workspaceId: m.workspaceId });
+                          onRevoke(m.userId, m.workspaceId);
                         }
                       }}
                       aria-label={`Revoke role from ${m.email}`}
@@ -429,10 +392,9 @@ function RoleMembersSection({
 // Inline picker shown when clicking "Assign user". For WORKSPACE-scoped roles
 // the workspace is required; the API enforces this server-side too.
 function AssignMemberPicker({
-  scope, token, existing, onAssign, isPending,
+  scope, existing, onAssign, isPending,
 }: {
   scope:     RoleScope;
-  token:     string | null;
   existing:  RoleMember[];
   onAssign:  (userId: string, workspaceId: string | null) => void;
   isPending: boolean;
@@ -441,18 +403,23 @@ function AssignMemberPicker({
   const [debounced, setDebounced] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
   const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [userResults, setUserResults] = useState<AdminUser[]>([]);
+  const [workspaces, setWorkspaces] = useState<AdminWorkspace[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 250);
     return () => clearTimeout(t);
   }, [search]);
 
-  const { data: usersData } = useQuery<{ users: AdminUser[] }>({
-    queryKey: ['admin', 'users-picker', debounced],
-    queryFn:  () =>
-      api(`/admin/users?search=${encodeURIComponent(debounced)}&page=1&pageSize=20`, token)
-        .then((j) => ({ users: j.data })),
-  });
+  useEffect(() => {
+    loadUsersForRoles(debounced).then(setUserResults).catch(() => setUserResults([]));
+  }, [debounced]);
+
+  useEffect(() => {
+    if (scope === 'WORKSPACE') {
+      loadAllWorkspacesForRoles().then(setWorkspaces).catch(() => setWorkspaces([]));
+    }
+  }, [scope]);
 
   // Hide users who already hold this role in the chosen scope/workspace.
   const existingKey = useMemo(() => {
@@ -461,17 +428,9 @@ function AssignMemberPicker({
     return s;
   }, [existing]);
 
-  const users = (usersData?.users ?? []).filter(
+  const users = userResults.filter(
     (u) => !existingKey.has(`${u.id}:${workspaceId ?? ''}`),
   );
-
-  const { data: wsData } = useQuery<{ workspaces: AdminWorkspace[] }>({
-    queryKey: ['admin', 'workspaces-picker'],
-    queryFn:  () =>
-      api('/admin/workspaces?page=1&pageSize=200', token)
-        .then((j) => ({ workspaces: j.data })),
-    enabled: scope === 'WORKSPACE',
-  });
 
   const canAssign = !!userId && (scope === 'SYSTEM' || !!workspaceId);
 
@@ -514,7 +473,7 @@ function AssignMemberPicker({
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
             >
               <option value="">Choose workspace…</option>
-              {(wsData?.workspaces ?? []).map((w) => (
+              {workspaces.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
             </select>

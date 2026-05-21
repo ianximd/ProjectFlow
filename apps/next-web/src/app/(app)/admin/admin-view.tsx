@@ -2,8 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect, useTransition } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useStore } from '@/store/useStore';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import styles from './page.module.css';
 import type {
   AdminStats,
@@ -18,6 +16,13 @@ import { RolesTab } from '@/components/admin/RolesTab';
 import { getUserStatus } from '@/lib/userStatus';
 import { getWorkspaceStatus, SETTABLE_STATUSES } from '@/lib/workspaceStatus';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import {
+  loadUserRoleAssignments,
+  loadRoles,
+  loadAllWorkspacesForRoles,
+  assignUserRole,
+  revokeUserRole,
+} from '@/server/actions/admin-roles';
 import {
   createUser,
   updateUser,
@@ -958,29 +963,9 @@ function TempPasswordDialog({
 }
 
 // ─── Manage user's roles ──────────────────────────────────────────────────────
-// This dialog is self-fetching (uses the in-memory token via RolesTab patterns).
-// It is deferred: token-dependent role management is left as-is from the
-// original page — we preserve it verbatim so RolesTab child components remain
-// unchanged.
-//
-// NOTE: The original UserRolesDialog used `token` from useStore. Since we are
-// in a 'use client' component we can still read it. However, to DEFER this
-// self-fetching dialog (per plan), we keep it using the store token directly.
-// The rest of the page (stats/users/workspaces/audit) is RSC-driven.
-
-async function apiFetch(path: string, token: string | null, opts?: RequestInit) {
-  const res = await fetch(`/api/v1${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type':  'application/json',
-      Authorization:   `Bearer ${token}`,
-      ...(opts?.headers ?? {}),
-    },
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message ?? 'Request failed');
-  return json;
-}
+// Converted to Server Actions in Phase 3 (Batch I): assignments / roles /
+// workspaces load via admin-roles loaders; assign + revoke go through Server
+// Actions that revalidate /admin. No in-memory token.
 
 function UserRolesDialog({
   user, onClose,
@@ -988,61 +973,45 @@ function UserRolesDialog({
   user:    AdminUser | null;
   onClose: () => void;
 }) {
-  const token  = useStore((s) => s.accessToken);
-  const qc     = useQueryClient();
   const userId = user?.id ?? null;
 
-  const { data: assignments = [] } = useQuery<UserRoleAssignment[]>({
-    queryKey: ['admin', 'user-roles', userId],
-    queryFn:  () => apiFetch(`/admin/user-roles/${userId}`, token).then((j) => j.data),
-    enabled:  !!userId,
-  });
+  const [assignments, setAssignments] = useState<UserRoleAssignment[]>([]);
+  const [roles,       setRoles]       = useState<RoleWithCounts[]>([]);
+  const [workspaces,  setWorkspaces]  = useState<AdminWorkspace[]>([]);
+  const [pickRoleId,  setPickRoleId]  = useState('');
+  const [pickWsId,    setPickWsId]    = useState('');
+  const [pending, start]              = useTransition();
+  const [assignError, setAssignError] = useState<string | null>(null);
 
-  const { data: roles = [] } = useQuery<RoleWithCounts[]>({
-    queryKey: ['admin', 'roles'],
-    queryFn:  () => apiFetch('/admin/roles', token).then((j) => j.data),
-    enabled:  !!userId,
-  });
+  const refetchAssignments = () => {
+    if (userId) loadUserRoleAssignments(userId).then(setAssignments).catch(() => {});
+  };
 
-  const { data: workspaces = [] } = useQuery<AdminWorkspace[]>({
-    queryKey: ['admin', 'workspaces-all'],
-    queryFn:  () => apiFetch('/admin/workspaces?page=1&pageSize=200', token).then((j) => j.data),
-    enabled:  !!userId,
-  });
-
-  const [pickRoleId, setPickRoleId] = useState('');
-  const [pickWsId,   setPickWsId]   = useState('');
-
-  useEffect(() => { setPickRoleId(''); setPickWsId(''); }, [userId]);
+  useEffect(() => {
+    if (!userId) return;
+    setPickRoleId(''); setPickWsId(''); setAssignError(null);
+    loadUserRoleAssignments(userId).then(setAssignments).catch(() => setAssignments([]));
+    loadRoles().then(setRoles).catch(() => setRoles([]));
+    loadAllWorkspacesForRoles().then(setWorkspaces).catch(() => setWorkspaces([]));
+  }, [userId]);
 
   const pickRole = roles.find((r) => r.id === pickRoleId);
   const needsWs  = pickRole?.scope === 'WORKSPACE';
 
-  const invalidateAll = () => {
-    qc.invalidateQueries({ queryKey: ['admin', 'user-roles', userId] });
-    qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-    if (pickRoleId) qc.invalidateQueries({ queryKey: ['admin', 'role-members', pickRoleId] });
-  };
-
-  const assignMut = useMutation({
-    mutationFn: () =>
-      apiFetch(`/admin/user-roles/${userId}`, token, {
-        method: 'POST',
-        body:   JSON.stringify({ roleId: pickRoleId, workspaceId: needsWs ? pickWsId : null }),
-      }),
-    onSuccess: () => { invalidateAll(); setPickRoleId(''); setPickWsId(''); },
+  const onAssign = () => start(async () => {
+    if (!userId) return;
+    setAssignError(null);
+    const r = await assignUserRole(userId, { roleId: pickRoleId, workspaceId: needsWs ? pickWsId : null });
+    if (!r.ok) { setAssignError(r.error); notifyActionError(r); return; }
+    setPickRoleId(''); setPickWsId('');
+    refetchAssignments();
   });
 
-  const revokeMut = useMutation({
-    mutationFn: ({ roleId, workspaceId }: { roleId: string; workspaceId: string | null }) => {
-      const q = workspaceId ? `?workspaceId=${workspaceId}` : '';
-      return apiFetch(`/admin/user-roles/${userId}/${roleId}${q}`, token, { method: 'DELETE' });
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: ['admin', 'user-roles', userId] });
-      qc.invalidateQueries({ queryKey: ['admin', 'roles'] });
-      qc.invalidateQueries({ queryKey: ['admin', 'role-members', vars.roleId] });
-    },
+  const onRevoke = (roleId: string, workspaceId: string | null) => start(async () => {
+    if (!userId) return;
+    const r = await revokeUserRole(userId, roleId, workspaceId);
+    if (!r.ok) return notifyActionError(r);
+    refetchAssignments();
   });
 
   const heldKeys = new Set(assignments.map((a) => `${a.roleId}:${a.workspaceId ?? ''}`));
@@ -1052,7 +1021,7 @@ function UserRolesDialog({
     return !heldKeys.has(key);
   });
 
-  const canAssign = !!pickRoleId && (!needsWs || !!pickWsId) && !assignMut.isPending;
+  const canAssign = !!pickRoleId && (!needsWs || !!pickWsId) && !pending;
 
   return (
     <Dialog open={user !== null} onClose={onClose} title={`Roles for ${user?.email ?? ''}`}>
@@ -1086,10 +1055,10 @@ function UserRolesDialog({
                   <td>
                     <button
                       className={`${styles.actionBtn} ${styles.btnDelete}`}
-                      disabled={revokeMut.isPending}
+                      disabled={pending}
                       onClick={() => {
                         if (window.confirm(`Revoke "${a.roleName}" from ${user?.email}?`)) {
-                          revokeMut.mutate({ roleId: a.roleId, workspaceId: a.workspaceId });
+                          onRevoke(a.roleId, a.workspaceId);
                         }
                       }}
                       aria-label={`Revoke ${a.roleName}`}
@@ -1138,14 +1107,14 @@ function UserRolesDialog({
               type="button"
               className={styles.btnPrimary}
               disabled={!canAssign}
-              onClick={() => assignMut.mutate()}
+              onClick={onAssign}
             >
-              {assignMut.isPending ? 'Assigning…' : 'Assign'}
+              {pending ? 'Assigning…' : 'Assign'}
             </button>
           </div>
-          {(assignMut.error as Error | null)?.message && (
+          {assignError && (
             <div className={styles.dialogWarn} style={{ marginTop: '0.5rem' }}>
-              {(assignMut.error as Error).message}
+              {assignError}
             </div>
           )}
         </div>

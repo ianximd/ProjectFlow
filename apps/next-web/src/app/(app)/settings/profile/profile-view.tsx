@@ -7,8 +7,9 @@ import {
   CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, Trash2, Upload, UserCog,
 } from 'lucide-react';
 
-import { notifyActionError, notifyApiError } from '@/lib/apiErrorToast';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import { updateMyName, uploadMyAvatar, removeMyAvatar } from '@/server/actions/profile';
+import { changePassword } from '@/server/actions/auth';
 import type { MeProfile } from '@/server/queries/profile';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -238,28 +239,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
 }
 
 // ── Password card ─────────────────────────────────────────────────────────────
-// Self-contained: uses its own fetch to /auth/change-password.
-// Kept as-is per task scope discipline (self-contained endpoint, YAGNI).
-
-async function apiFetch(
-  path: string,
-  init?: RequestInit,
-): Promise<{ ok: boolean; data?: any; error?: string }> {
-  const res = await fetch(`/api/v1${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    credentials: 'include',
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    notifyApiError(json, res.status);
-    return { ok: false, error: (json as any)?.error?.message ?? `Request failed (${res.status})` };
-  }
-  return { ok: true, data: json };
-}
+// Change-password goes through the changePassword Server Action (Phase 3 Batch I).
 
 function PasswordCard() {
   const [current,  setCurrent]  = useState('');
@@ -280,12 +260,10 @@ function PasswordCard() {
     if (next1 !== next2)   return setLocalErr('New password and confirmation do not match.');
     if (next1 === current) return setLocalErr('New password must differ from the current one.');
     startTransition(async () => {
-      const res = await apiFetch('/auth/change-password', {
-        method: 'POST',
-        body:   JSON.stringify({ currentPassword: current, newPassword: next1 }),
-      });
+      const res = await changePassword(current, next1);
       if (!res.ok) {
         setLocalErr(res.error ?? 'Something went wrong.');
+        notifyActionError(res);
       } else {
         setCurrent(''); setNext1(''); setNext2('');
         setLocalErr(null);

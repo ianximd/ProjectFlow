@@ -50,9 +50,10 @@ interface Props {
   // list-query meta; they pass the slice for this task in. The drawer
   // owns no fetch for the *current* set — only for the picker dropdown.
   assignees?: AssigneeRow[];
-  // The opener passes workspaceId (resolved as ctx.activeWorkspaceId).
-  // Required for the member picker to load assignee candidates.
-  workspaceId?: string | null;
+  // The opener passes workspaceId (resolved as ctx.activeWorkspaceId) — required
+  // for the member picker to load assignee candidates. null only when no
+  // workspace has resolved yet; the store fallback was removed in Phase 3.1.
+  workspaceId: string | null;
   onClose: () => void;
 }
 

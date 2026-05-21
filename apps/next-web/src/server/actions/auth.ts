@@ -1,7 +1,10 @@
 'use server';
 import { redirect } from 'next/navigation';
-import { getSession } from '../session';
+import { getSession, requireSession } from '../session';
 import { setSessionCookies, clearSessionCookies } from '../cookies';
+import { serverFetch } from '../api';
+import { toActionError } from './error';
+import type { ActionResult } from './result';
 
 const API_BASE =
   process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -67,4 +70,21 @@ export async function logout(): Promise<void> {
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await getSession();
   return session?.userId ?? null;
+}
+
+/** POST /auth/change-password — profile "Change password" card. */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch('/auth/change-password', {
+      method: 'POST',
+      body:   JSON.stringify({ currentPassword, newPassword }),
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+  return { ok: true };
 }

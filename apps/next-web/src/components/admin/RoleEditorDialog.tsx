@@ -292,7 +292,10 @@ function RoleMembersSection({
   const [pending, start]      = useTransition();
   const [showAdd, setShowAdd] = useState(false);
 
-  const refetch = () => loadRoleMembers(roleId).then((m) => { setMembers(m); setLoaded(true); });
+  const refetch = () =>
+    loadRoleMembers(roleId)
+      .then((m) => { setMembers(m); setLoaded(true); })
+      .catch(() => setLoaded(true)); // exit the loading state even on failure
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refetch(); }, [roleId]);

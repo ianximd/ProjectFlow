@@ -984,7 +984,11 @@ function UserRolesDialog({
   const [assignError, setAssignError] = useState<string | null>(null);
 
   const refetchAssignments = () => {
-    if (userId) loadUserRoleAssignments(userId).then(setAssignments).catch(() => {});
+    if (userId) {
+      loadUserRoleAssignments(userId)
+        .then(setAssignments)
+        .catch(() => notifyActionError({ error: 'Failed to reload role assignments' }));
+    }
   };
 
   useEffect(() => {

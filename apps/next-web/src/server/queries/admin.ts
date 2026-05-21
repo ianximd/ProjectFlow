@@ -16,6 +16,22 @@ export const getAdminStats = cache(async (): Promise<AdminStats> => {
   return serverFetch<AdminStats>('/admin/stats');
 });
 
+// ── Access check ───────────────────────────────────────────────────────────────
+// /auth/me/permissions is auth-only (never 403), so we can ask "is this user an
+// admin?" without tripping the admin.* permission gate. Used to render a clean
+// not-authorized state on /admin instead of letting the first admin.* fetch throw
+// an ApiError(403) up to the error boundary ("A server error occurred").
+
+export const getMyPermissions = cache(async (): Promise<string[]> => {
+  const data = await serverFetch<{ permissions?: string[] }>('/auth/me/permissions');
+  return data.permissions ?? [];
+});
+
+export async function hasAdminAccess(): Promise<boolean> {
+  const perms = await getMyPermissions();
+  return perms.some((p) => p.startsWith('admin.'));
+}
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export interface AdminUsersResult {

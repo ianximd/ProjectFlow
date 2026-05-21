@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import { requireSession } from '@/server/session';
-import { getAdminStats, getAdminUsers, getAdminWorkspaces, getAuditLog } from '@/server/queries/admin';
+import { getAdminStats, getAdminUsers, getAdminWorkspaces, getAuditLog, hasAdminAccess } from '@/server/queries/admin';
 import { AdminView } from './admin-view';
 import AdminLoading from './loading';
 
@@ -22,6 +23,24 @@ export default async function AdminPage({
   searchParams: Promise<SearchParams>;
 }) {
   await requireSession();
+
+  // The Admin nav link is shown app-wide, so a non-admin can land here. Render a
+  // clean "not authorized" panel instead of letting the admin.* data fetches
+  // below throw ApiError(403) up to the error boundary ("A server error occurred").
+  if (!(await hasAdminAccess())) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
+        <div className="rounded-full bg-muted p-3 text-muted-foreground">
+          <ShieldAlert className="size-6" aria-hidden="true" />
+        </div>
+        <h1 className="text-lg font-semibold text-foreground">Admin access required</h1>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          You don&apos;t have permission to view the admin area. Ask a workspace
+          owner or super-admin to grant you an admin role.
+        </p>
+      </div>
+    );
+  }
 
   const sp  = await searchParams;
 

@@ -91,7 +91,7 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
               id="ws-slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              pattern="[a-z0-9-]+"
+              pattern="[a-z0-9\-]+"
               title="Lowercase letters, numbers, and dashes only"
               required
               className="font-mono text-sm"

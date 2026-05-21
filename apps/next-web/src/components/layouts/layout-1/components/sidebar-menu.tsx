@@ -1,6 +1,6 @@
 'use client';
 
-import { JSX, useCallback } from 'react';
+import { JSX, useCallback, useEffect, useMemo, useState } from 'react';
 import { MENU_SIDEBAR } from '@/config/layout-1.config';
 import { MenuConfig, MenuItem } from '@/config/types';
 import { cn } from '@/lib/utils';
@@ -18,9 +18,37 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useStore } from '@/store/useStore';
 
 export function SidebarMenu() {
   const pathname = usePathname();
+
+  // Hide the System → Admin item for non-admins. The /admin page itself also
+  // renders a clean "not authorized" panel, but the link shouldn't show at all
+  // unless the user holds an admin.* permission. Client-side check via the
+  // in-memory access token (Phase 2 self-fetch pattern); defaults to hidden so
+  // non-admins never see it. (Phase 3: derive this server-side once the layout
+  // is RSC and drop this fetch.)
+  const token = useStore((s) => s.accessToken);
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!token) { setIsAdmin(false); return; }
+    let cancelled = false;
+    fetch('/api/v1/auth/me/permissions', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (cancelled) return;
+        const perms: string[] = j?.data?.permissions ?? [];
+        setIsAdmin(perms.some((p) => p.startsWith('admin.')));
+      })
+      .catch(() => { /* leave hidden on failure */ });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const visibleMenu = useMemo(
+    () => MENU_SIDEBAR.filter((item) => item.path !== '/admin' || isAdmin),
+    [isAdmin],
+  );
 
   // Memoize matchPath to prevent unnecessary re-renders
   const matchPath = useCallback(
@@ -226,7 +254,7 @@ export function SidebarMenu() {
         collapsible
         classNames={classNames}
       >
-        {buildMenu(MENU_SIDEBAR)}
+        {buildMenu(visibleMenu)}
       </AccordionMenu>
     </ScrollArea>
   );

@@ -193,7 +193,7 @@ function CreateWorkspaceDialog({
                 value={slug}
                 onChange={(e) => { setSlug(e.target.value); setSlugTouched(true); }}
                 placeholder="acme-corp"
-                pattern="[a-z0-9-]+"
+                pattern="[a-z0-9\-]+"
                 title="Lowercase letters, numbers, and dashes only"
                 required
                 className="font-mono text-sm"

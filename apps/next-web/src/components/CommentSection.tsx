@@ -1,23 +1,22 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useStore } from '@/store/useStore';
+import { useEffect, useState, useTransition } from 'react';
+import {
+  addComment,
+  editComment,
+  deleteComment,
+  reactToComment,
+  loadComments,
+} from '@/server/actions/comments';
+import { notifyActionError } from '@/lib/apiErrorToast';
+import type { Comment } from '@/server/queries/comments';
 import styles from './CommentSection.module.css';
-
-interface Comment {
-  id: string;
-  authorId: string;
-  authorName: string | null;
-  authorAvatarUrl: string | null;
-  body: string;
-  isEdited: boolean;
-  createdAt: string;
-  reactions?: { emoji: string; count: number }[];
-}
 
 interface Props {
   taskId: string;
+  /** Current viewer's user id — controls edit/delete affordances. */
+  currentUserId: string | null;
+  initialComments?: Comment[];
 }
 
 function initials(name: string | null | undefined) {
@@ -41,94 +40,53 @@ function relativeTime(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function CommentSection({ taskId }: Props) {
-  const queryClient = useQueryClient();
-  const currentUser = useStore((s) => s.user);
+export function CommentSection({ taskId, currentUserId, initialComments }: Props) {
+  const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
+  const [loaded, setLoaded] = useState<boolean>(initialComments != null);
+  const [pending, start] = useTransition();
   const [newBody, setNewBody] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState('');
 
-  const { data: comments = [], isLoading } = useQuery<Comment[]>({
-    queryKey: ['comments', taskId],
-    queryFn: async () => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/comments?taskId=${taskId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-      const json = await res.json();
-      return json.data ?? [];
-    },
-    enabled: !!taskId,
+  const refetch = () => loadComments(taskId).then((rows) => {
+    setComments(rows);
+    setLoaded(true);
   });
 
-  const addMutation = useMutation({
-    mutationFn: async (body: string) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch('/api/v1/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        credentials: 'include',
-        body: JSON.stringify({ taskId, body }),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
-      setNewBody('');
-    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (taskId) refetch();
+  }, [taskId]);
+
+  const onAdd = (body: string) => start(async () => {
+    const r = await addComment(taskId, body);
+    if (!r.ok) return notifyActionError(r);
+    setNewBody('');
+    await refetch();
   });
 
-  const editMutation = useMutation({
-    mutationFn: async ({ id, body }: { id: string; body: string }) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/comments/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        credentials: 'include',
-        body: JSON.stringify({ body }),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
-      setEditingId(null);
-    },
+  const onEdit = (id: string, body: string) => start(async () => {
+    const r = await editComment(id, body);
+    if (!r.ok) return notifyActionError(r);
+    setEditingId(null);
+    await refetch();
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const token = useStore.getState().accessToken;
-      await fetch(`/api/v1/comments/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
-    },
+  const onDelete = (id: string) => start(async () => {
+    const r = await deleteComment(id);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
-  const reactMutation = useMutation({
-    mutationFn: async ({ commentId, emoji }: { commentId: string; emoji: string }) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/comments/${commentId}/reactions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        credentials: 'include',
-        body: JSON.stringify({ emoji }),
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['comments', taskId] });
-    },
+  const onReact = (commentId: string, emoji: string) => start(async () => {
+    const r = await reactToComment(commentId, emoji);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
   return (
     <div className={styles.comments}>
-      {isLoading ? (
+      {!loaded ? (
         <p className={styles.empty}>Loading comments…</p>
       ) : comments.length === 0 ? (
         <p className={styles.empty}>No comments yet. Be the first!</p>
@@ -155,8 +113,8 @@ export function CommentSection({ taskId }: Props) {
                   <div className={styles.commentActions}>
                     <button
                       className={styles.actionBtn}
-                      onClick={() => editMutation.mutate({ id: c.id, body: editBody })}
-                      disabled={!editBody.trim() || editMutation.isPending}
+                      onClick={() => onEdit(c.id, editBody)}
+                      disabled={!editBody.trim() || pending}
                     >
                       Save
                     </button>
@@ -176,7 +134,7 @@ export function CommentSection({ taskId }: Props) {
                         <button
                           key={r.emoji}
                           className={styles.reactionBtn}
-                          onClick={() => reactMutation.mutate({ commentId: c.id, emoji: r.emoji })}
+                          onClick={() => onReact(c.id, r.emoji)}
                         >
                           {r.emoji} {r.count}
                         </button>
@@ -186,11 +144,11 @@ export function CommentSection({ taskId }: Props) {
                   <div className={styles.commentActions}>
                     <button
                       className={styles.actionBtn}
-                      onClick={() => reactMutation.mutate({ commentId: c.id, emoji: '👍' })}
+                      onClick={() => onReact(c.id, '👍')}
                     >
                       👍
                     </button>
-                    {currentUser?.id === c.authorId && (
+                    {currentUserId === c.authorId && (
                       <>
                         <button
                           className={styles.actionBtn}
@@ -203,7 +161,7 @@ export function CommentSection({ taskId }: Props) {
                         </button>
                         <button
                           className={styles.actionBtn}
-                          onClick={() => deleteMutation.mutate(c.id)}
+                          onClick={() => onDelete(c.id)}
                         >
                           Delete
                         </button>
@@ -227,16 +185,16 @@ export function CommentSection({ taskId }: Props) {
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && newBody.trim()) {
               e.preventDefault();
-              addMutation.mutate(newBody);
+              onAdd(newBody);
             }
           }}
         />
         <button
           className={styles.submitBtn}
-          onClick={() => newBody.trim() && addMutation.mutate(newBody)}
-          disabled={!newBody.trim() || addMutation.isPending}
+          onClick={() => newBody.trim() && onAdd(newBody)}
+          disabled={!newBody.trim() || pending}
         >
-          {addMutation.isPending ? 'Saving…' : 'Comment'}
+          {pending ? 'Saving…' : 'Comment'}
         </button>
       </div>
     </div>

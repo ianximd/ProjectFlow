@@ -1,20 +1,15 @@
 'use client';
 
-import { useRef, useState, DragEvent } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useStore } from '@/store/useStore';
+import { useEffect, useRef, useState, useTransition, DragEvent } from 'react';
+import {
+  uploadAttachment,
+  deleteAttachment,
+  getAttachmentDownloadUrl,
+  loadAttachments,
+} from '@/server/actions/attachments';
+import { notifyActionError } from '@/lib/apiErrorToast';
+import type { Attachment } from '@/server/queries/attachments';
 import styles from './AttachmentSection.module.css';
-
-// API returns rows from MSSQL stored procedures with PascalCase fields.
-// See infra/sql/procedures/usp_Attachment_List.sql.
-interface Attachment {
-  Id:           string;
-  FileName:     string;
-  FileSize:     number;
-  MimeType:     string;
-  UploaderName: string;
-  CreatedAt:    string;
-}
 
 interface Props {
   taskId: string;
@@ -39,83 +34,52 @@ function mimeIcon(mime: string | null | undefined) {
 }
 
 export function AttachmentSection({ taskId }: Props) {
-  const queryClient = useQueryClient();
   const inputRef    = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [pending, start] = useTransition();
   const [dragover, setDragover] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const { data: attachments = [], isLoading } = useQuery<Attachment[]>({
-    queryKey: ['attachments', taskId],
-    queryFn: async () => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/attachments?taskId=${taskId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-      const json = await res.json();
-      return json.data ?? [];
-    },
-    enabled: !!taskId,
+  const refetch = () => loadAttachments(taskId).then((rows) => {
+    setAttachments(rows);
+    setLoaded(true);
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const token = useStore.getState().accessToken;
-      const form  = new FormData();
-      form.append('taskId', taskId);
-      form.append('file', file);
-      const res = await fetch('/api/v1/attachments', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-        body: form,
-      });
-      if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json?.error?.message ?? 'Upload failed');
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attachments', taskId] });
-      setUploadError(null);
-    },
-    onError: (err: Error) => setUploadError(err.message),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const token = useStore.getState().accessToken;
-      await fetch(`/api/v1/attachments/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attachments', taskId] }),
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (taskId) refetch();
+  }, [taskId]);
 
   const handleFiles = (files: FileList | null) => {
     if (!files) return;
-    Array.from(files).forEach((f) => uploadMutation.mutate(f));
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    start(async () => {
+      for (const f of arr) {
+        const form = new FormData();
+        form.append('taskId', taskId);
+        form.append('file', f);
+        const r = await uploadAttachment(form);
+        if (!r.ok) { setUploadError(r.error); notifyActionError(r); return; }
+      }
+      setUploadError(null);
+      await refetch();
+    });
   };
 
-  // Two-step download: fetch the presigned URL with the in-memory Bearer token
-  // (a plain <a href> wouldn't carry it), then hand the URL to the browser.
-  // The presigned URL is signed and time-limited, so it's safe to open directly.
+  const onDeleteAttachment = (id: string) => start(async () => {
+    const r = await deleteAttachment(id);
+    if (!r.ok) { setUploadError(r.error); return notifyActionError(r); }
+    await refetch();
+  });
+
+  // Two-step download: ask the server for the signed URL, then hand it to the
+  // browser. The presigned URL is signed and time-limited, so it's safe to open.
   const openDownload = async (id: string) => {
-    const token = useStore.getState().accessToken;
-    const res = await fetch(`/api/v1/attachments/${id}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      setUploadError('Failed to open attachment');
-      return;
-    }
-    const json = await res.json();
-    const url  = json?.data?.url as string | undefined;
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    const r = await getAttachmentDownloadUrl(id);
+    if (!r.ok) { setUploadError('Failed to open attachment'); return notifyActionError(r); }
+    if (r.data.url) window.open(r.data.url, '_blank', 'noopener,noreferrer');
   };
 
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -147,13 +111,13 @@ export function AttachmentSection({ taskId }: Props) {
         </p>
       </div>
 
-      {uploadMutation.isPending && (
+      {pending && (
         <p className={styles.uploading}>Uploading…</p>
       )}
       {uploadError && <p className={styles.error}>{uploadError}</p>}
 
       {/* Attachment list */}
-      {isLoading ? (
+      {!loaded ? (
         <p className={styles.empty}>Loading attachments…</p>
       ) : attachments.length === 0 ? (
         <p className={styles.empty}>No attachments yet.</p>
@@ -187,7 +151,8 @@ export function AttachmentSection({ taskId }: Props) {
               </div>
               <button
                 className={styles.deleteBtn}
-                onClick={() => deleteMutation.mutate(a.Id)}
+                onClick={() => onDeleteAttachment(a.Id)}
+                disabled={pending}
                 aria-label="Delete attachment"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

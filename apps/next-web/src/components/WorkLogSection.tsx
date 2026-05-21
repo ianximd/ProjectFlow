@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useStore } from '@/store/useStore';
+import { useEffect, useState, useTransition } from 'react';
+import { addWorkLog, editWorkLog, deleteWorkLog, loadWorkLogs } from '@/server/actions/worklogs';
+import { notifyActionError } from '@/lib/apiErrorToast';
 import styles from './WorkLogSection.module.css';
 import type { WorkLog, WorkLogTotals, WorkLogListResult } from '@projectflow/types';
 
@@ -48,28 +48,18 @@ function initials(name: string) {
   return name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
 }
 
-async function apiReq<T>(path: string, opts: RequestInit, token: string): Promise<T> {
-  const res = await fetch(path, {
-    ...opts,
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization:  `Bearer ${token}`,
-      ...(opts.headers ?? {}),
-    },
-  });
-  if (!res.ok) throw new Error(await res.text().catch(() => res.statusText));
-  return res.json();
-}
-
 // ── component ─────────────────────────────────────────────────────────────────
 
-interface Props { taskId: string; }
+interface Props {
+  taskId: string;
+  /** Current viewer's user id — controls edit/delete affordances. */
+  currentUserId: string | null;
+}
 
-export function WorkLogSection({ taskId }: Props) {
-  const token      = useStore(s => s.accessToken) ?? '';
-  const currentUser = useStore(s => s.user);
-  const qc         = useQueryClient();
+export function WorkLogSection({ taskId, currentUserId }: Props) {
+  const [data, setData]       = useState<WorkLogListResult | null>(null);
+  const [loaded, setLoaded]   = useState(false);
+  const [pending, start]      = useTransition();
 
   const [timeInput, setTimeInput]   = useState('');
   const [dateInput, setDateInput]   = useState(() => new Date().toISOString().slice(0, 10));
@@ -78,56 +68,51 @@ export function WorkLogSection({ taskId }: Props) {
   const [editTime,  setEditTime]    = useState('');
   const [editDesc,  setEditDesc]    = useState('');
   const [showForm,  setShowForm]    = useState(false);
+  const [error,     setError]       = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<WorkLogListResult>({
-    queryKey: ['worklogs', taskId],
-    queryFn:  () =>
-      apiReq<WorkLogListResult>(`/api/v1/worklogs?taskId=${taskId}`, {}, token),
-    enabled: Boolean(taskId && token),
+  const refetch = () => loadWorkLogs(taskId).then((d) => {
+    setData(d);
+    setLoaded(true);
   });
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['worklogs', taskId] });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (taskId) refetch();
+  }, [taskId]);
 
-  const createMutation = useMutation({
-    mutationFn: () => {
-      const secs = parseDuration(timeInput);
-      if (!secs) throw new Error('Invalid time format');
-      return apiReq('/api/v1/worklogs', {
-        method: 'POST',
-        body: JSON.stringify({
-          taskId,
-          timeSpentSeconds: secs,
-          startedAt: new Date(dateInput).toISOString(),
-          description: descInput.trim() || undefined,
-        }),
-      }, token);
-    },
-    onSuccess: () => {
-      invalidate();
+  const onCreate = () => {
+    const secs = parseDuration(timeInput);
+    if (!secs) { setError('Invalid time format'); return; }
+    start(async () => {
+      const r = await addWorkLog(taskId, {
+        timeSpentSeconds: secs,
+        startedAt:        new Date(dateInput).toISOString(),
+        description:      descInput.trim() || undefined,
+      });
+      if (!r.ok) { setError(r.error); notifyActionError(r); return; }
+      setError(null);
       setTimeInput('');
       setDescInput('');
       setShowForm(false);
-    },
+      await refetch();
+    });
+  };
+
+  const onUpdate = (id: string) => start(async () => {
+    const secs = parseDuration(editTime);
+    const r = await editWorkLog(id, {
+      timeSpentSeconds: secs ?? undefined,
+      description:      editDesc.trim() || undefined,
+    });
+    if (!r.ok) return notifyActionError(r);
+    setEditingId(null);
+    await refetch();
   });
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, time, desc }: { id: string; time: string; desc: string }) => {
-      const secs = parseDuration(time);
-      return apiReq(`/api/v1/worklogs/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          timeSpentSeconds: secs ?? undefined,
-          description: desc.trim() || undefined,
-        }),
-      }, token);
-    },
-    onSuccess: () => { invalidate(); setEditingId(null); },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiReq(`/api/v1/worklogs/${id}`, { method: 'DELETE' }, token),
-    onSuccess: invalidate,
+  const onDelete = (id: string) => start(async () => {
+    const r = await deleteWorkLog(id);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
   });
 
   const totalSeconds = data?.logs.reduce((s, l) => s + l.timeSpentSeconds, 0) ?? 0;
@@ -176,15 +161,13 @@ export function WorkLogSection({ taskId }: Props) {
           <div className={styles.formActions}>
             <button
               className={styles.saveBtn}
-              onClick={() => createMutation.mutate()}
-              disabled={createMutation.isPending || !timeInput.trim()}
+              onClick={onCreate}
+              disabled={pending || !timeInput.trim()}
             >
-              {createMutation.isPending ? 'Saving…' : 'Save'}
+              {pending ? 'Saving…' : 'Save'}
             </button>
           </div>
-          {createMutation.isError && (
-            <p className={styles.error}>{(createMutation.error as Error).message}</p>
-          )}
+          {error && <p className={styles.error}>{error}</p>}
         </div>
       )}
 
@@ -202,8 +185,8 @@ export function WorkLogSection({ taskId }: Props) {
       )}
 
       {/* log list */}
-      {isLoading && <p className={styles.empty}>Loading…</p>}
-      {!isLoading && data?.logs.length === 0 && (
+      {!loaded && <p className={styles.empty}>Loading…</p>}
+      {loaded && data?.logs.length === 0 && (
         <p className={styles.empty}>No work logged yet.</p>
       )}
 
@@ -227,8 +210,8 @@ export function WorkLogSection({ taskId }: Props) {
                 <div className={styles.formActions}>
                   <button
                     className={styles.saveBtn}
-                    onClick={() => updateMutation.mutate({ id: log.id, time: editTime, desc: editDesc })}
-                    disabled={updateMutation.isPending}
+                    onClick={() => onUpdate(log.id)}
+                    disabled={pending}
                   >Save</button>
                   <button className={styles.cancelBtn} onClick={() => setEditingId(null)}>Cancel</button>
                 </div>
@@ -249,7 +232,7 @@ export function WorkLogSection({ taskId }: Props) {
                     {log.description && <p className={styles.logDesc}>{log.description}</p>}
                   </div>
                 </div>
-                {currentUser?.id === log.user.id && (
+                {currentUserId === log.user.id && (
                   <div className={styles.logActions}>
                     <button
                       className={styles.editBtn}
@@ -261,8 +244,8 @@ export function WorkLogSection({ taskId }: Props) {
                     >Edit</button>
                     <button
                       className={styles.deleteBtn}
-                      onClick={() => deleteMutation.mutate(log.id)}
-                      disabled={deleteMutation.isPending}
+                      onClick={() => onDelete(log.id)}
+                      disabled={pending}
                     >Delete</button>
                   </div>
                 )}

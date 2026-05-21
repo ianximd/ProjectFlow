@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CommentSection }  from './CommentSection';
@@ -10,6 +9,15 @@ import { WorkLogSection }  from './WorkLogSection';
 import { PullRequestsSection } from './PullRequestsSection';
 import type { AssigneeRow } from './TaskCard';
 import { useStore } from '@/store/useStore';
+import {
+  updateTaskFields,
+  updateTaskSchedule,
+  setTaskAssignees,
+} from '@/server/actions/tasks';
+import { loadWorkspaceMembers } from '@/server/actions/members';
+import { getCurrentUserId } from '@/server/actions/auth';
+import { notifyActionError } from '@/lib/apiErrorToast';
+import type { MemberRow } from '@/server/queries/workspace';
 import styles from './TaskDrawer.module.css';
 
 interface Task {
@@ -50,13 +58,6 @@ interface Props {
   onClose: () => void;
 }
 
-interface WorkspaceMember {
-  Id:        string;
-  Email:     string;
-  Name:      string;
-  AvatarUrl: string | null;
-}
-
 function initialsOf(nameOrEmail: string): string {
   const s = nameOrEmail.trim();
   if (!s) return '?';
@@ -88,12 +89,18 @@ function toDateInput(iso: string | null | undefined): string {
 export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose }: Props) {
   const drawerRef   = useRef<HTMLDivElement>(null);
   const pickerRef   = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
-  // Prefer the parent's resolved workspace; fall back to the store. Either
-  // covers the case where currentWorkspaceId hasn't been written yet but the
-  // board still rendered via its workspaces[0] fallback.
+  // Prefer the parent's resolved workspace; fall back to the persisted
+  // selection store. Either covers the case where currentWorkspaceId hasn't
+  // been written yet but the board still rendered via its workspaces[0]
+  // fallback. (Selection state is removed from the store in Phase 3 Batch K.)
   const storeWorkspaceId = useStore((s) => s.currentWorkspaceId);
   const workspaceId = workspaceIdProp ?? storeWorkspaceId;
+
+  // Viewer identity now comes from the server (the access-token cookie) instead
+  // of the in-memory auth store. Threaded to the comment + worklog sections so
+  // they can show edit/delete affordances for the current user's own rows.
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  useEffect(() => { getCurrentUserId().then(setCurrentUserId); }, []);
 
   // Seed the editable dates from whichever casing the task arrived in.
   // Hooks must run unconditionally, so this stays above the `!task` short-circuit.
@@ -106,7 +113,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const [dueInput,   setDueInput]   = useState<string>(toDateInput(initialDueIso));
 
   // The drawer is opened with a `task` snapshot owned by the parent — that
-  // snapshot is NOT refreshed when ['tasks'] invalidates, so a controlled
+  // snapshot is NOT refreshed when the parent re-renders, so a controlled
   // priority <select> bound directly to task.Priority would snap back to the
   // stale value after every PATCH. Mirror it locally instead.
   const [priorityValue, setPriorityValue] = useState<string>(
@@ -125,15 +132,33 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
   // Local mirror of assignees for instant chip feedback on add/remove.
   // The PUT response carries the authoritative new set; we resync to the
-  // parent's prop on task switch or when the parent re-fetches ['tasks'].
+  // parent's prop on task switch or when the parent re-renders.
   const [localAssignees, setLocalAssignees] = useState<AssigneeRow[]>(assignees ?? []);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
+  // Server-action transitions (one per concern, so each control disables
+  // independently — matches the old per-mutation isPending behaviour).
+  const [savingSchedule,  startSchedule]  = useTransition();
+  const [scheduleError,   setScheduleError]  = useState(false);
+  const [savingField,     startField]     = useTransition();
+  const [fieldError,      setFieldError]     = useState(false);
+  const [savingPriority,  startPriority]  = useTransition();
+  const [priorityError,   setPriorityError]  = useState(false);
+  const [savingAssignees, startAssignees] = useTransition();
+  const [assigneesError,  setAssigneesError] = useState(false);
+
+  // Members list is fetched lazily — only when the picker opens — so opening a
+  // drawer for a task on a busy workspace doesn't fire an extra round-trip the
+  // user never needed.
+  const [members, setMembers] = useState<MemberRow[] | null>(null);
+  const [loadingMembers, startMembers] = useTransition();
+  const [membersError, setMembersError] = useState(false);
+
   // Re-sync the inputs when the drawer swaps to a different task. Title +
   // description follow the same pattern — local mirror so PATCH doesn't
   // flash stale text, but an out-of-band edit (e.g. someone else changes
-  // the title) still wins on the next list-query refetch.
+  // the title) still wins on the next refetch.
   useEffect(() => {
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toDateInput(task?.DueDate   ?? task?.dueDate   ?? null));
@@ -147,8 +172,8 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Title, task?.title, task?.Description, task?.description]);
 
   // Resync local assignee chips when the parent prop changes (task switch or
-  // ['tasks'] refetch). Compared by stringified user-id list so re-rendering
-  // with an equal-but-new array doesn't clobber an in-flight optimistic add.
+  // refetch). Compared by stringified user-id list so re-rendering with an
+  // equal-but-new array doesn't clobber an in-flight optimistic add.
   const assigneesKey = (assignees ?? []).map((a) => a.UserId).sort().join(',');
   useEffect(() => {
     setLocalAssignees(assignees ?? []);
@@ -168,144 +193,83 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const mutationTaskId = task?.Id ?? task?.id ?? '';
 
   // Single endpoint covers both StartDate (DATE) and DueDate (DATETIME2). The
-  // `clear*` flags tell the SP to actively NULL the column when we pass
-  // an empty string — without them an undefined value would be a no-op.
-  const updateSchedule = useMutation({
-    mutationFn: async (input: { startIso: string | null; dueIso: string | null }) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/roadmap/tasks/${mutationTaskId}/dates`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-        credentials: 'include',
-        body: JSON.stringify({
-          startDate:      input.startIso,
-          dueDate:        input.dueIso,
-          clearStartDate: input.startIso === null,
-          clearDueDate:   input.dueIso   === null,
-        }),
+  // `clear*` flags tell the SP to actively NULL the column when we pass an empty
+  // string — without them an undefined value would be a no-op.
+  const doUpdateSchedule = (input: { startIso: string | null; dueIso: string | null }) =>
+    startSchedule(async () => {
+      setScheduleError(false);
+      const r = await updateTaskSchedule(mutationTaskId, {
+        startDate:      input.startIso,
+        dueDate:        input.dueIso,
+        clearStartDate: input.startIso === null,
+        clearDueDate:   input.dueIso   === null,
       });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      // Refresh every cache that surfaces a task's schedule.
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['roadmap'] });
-      queryClient.invalidateQueries({ queryKey: ['epics'] });
-    },
-  });
+      if (!r.ok) { setScheduleError(true); notifyActionError(r); }
+    });
 
-  // Shared PATCH for {title, description}. We invalidate the same list
-  // queries as updatePriority so board/backlog/dashboard/roadmap pick up the
-  // change without a refresh. On error we roll back to the parent's snapshot
-  // — the toast comes from the api() error pipeline at the page level, but
-  // since the drawer fetches directly we surface a local error too.
-  const updateField = useMutation({
-    mutationFn: async (input: { title?: string; description?: string | null }) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/tasks/${mutationTaskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-        credentials: 'include',
-        body: JSON.stringify(input),
-      });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['roadmap'] });
-      queryClient.invalidateQueries({ queryKey: ['epics'] });
-    },
-  });
+  // Shared PATCH for { title, description }. The action revalidates every list
+  // route so board/backlog/dashboard/roadmap pick up the change without a
+  // manual refresh.
+  const doUpdateField = (input: { title?: string; description?: string | null }) =>
+    startField(async () => {
+      setFieldError(false);
+      const r = await updateTaskFields(mutationTaskId, input);
+      if (!r.ok) { setFieldError(true); notifyActionError(r); }
+    });
 
-  // Commit-on-blur for the title input. Trims, ignores no-op edits, and
-  // refuses to send empty strings (server schema requires min length 1).
-  const commitTitle = useCallback(() => {
+  // Commit-on-blur for the title input. Trims, ignores no-op edits, and refuses
+  // to send empty strings (server schema requires min length 1).
+  const commitTitle = () => {
     const trimmed = titleValue.trim();
     const original = (task?.Title ?? task?.title ?? '').trim();
     if (trimmed === '' || trimmed === original) {
       setTitleValue(original); // reset display in case the user emptied it
       return;
     }
-    updateField.mutate({ title: trimmed });
-  }, [titleValue, task?.Title, task?.title, updateField]);
+    doUpdateField({ title: trimmed });
+  };
 
-  const updatePriority = useMutation({
-    mutationFn: async (priority: string) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/tasks/${mutationTaskId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-        credentials: 'include',
-        body: JSON.stringify({ priority }),
-      });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-    },
-    onError: () => {
-      // Roll back the local select to whatever the task prop says, so the
-      // user sees the unchanged value rather than a phantom selection.
-      setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
-    },
-  });
+  const doUpdatePriority = (priority: string) =>
+    startPriority(async () => {
+      setPriorityError(false);
+      const r = await updateTaskFields(mutationTaskId, { priority });
+      if (!r.ok) {
+        setPriorityError(true);
+        notifyActionError(r);
+        // Roll back the local select to whatever the task prop says.
+        setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
+      }
+    });
 
-  // Members list is fetched lazily — only when the picker opens — so opening
-  // a drawer for a task on a busy workspace doesn't fire an extra round-trip
-  // the user never needed.
-  const membersQuery = useQuery({
-    queryKey: ['workspace-members', workspaceId],
-    queryFn: async () => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/workspaces/${workspaceId}/members`, {
-        headers: { Authorization: `Bearer ${token ?? ''}` },
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error(`Members fetch failed: ${res.status}`);
-      const json = await res.json();
-      return (json.data ?? []) as WorkspaceMember[];
-    },
-    enabled: pickerOpen && !!workspaceId,
-    staleTime: 60_000,
-  });
+  // PUT replaces the full assignee set. SP silently drops non-members so a stale
+  // picker can't grant access to someone outside the workspace.
+  const doSetAssignees = (userIds: string[]) =>
+    startAssignees(async () => {
+      setAssigneesError(false);
+      const r = await setTaskAssignees(mutationTaskId, userIds);
+      if (!r.ok) {
+        setAssigneesError(true);
+        notifyActionError(r);
+        setLocalAssignees(assignees ?? []); // roll back to parent's last set
+        return;
+      }
+      // The PUT response is the new authoritative set — adopt it locally so the
+      // chip row matches the server even before the parent refetches.
+      setLocalAssignees(r.data);
+    });
 
-  // PUT replaces the full assignee set. SP silently drops non-members so a
-  // stale picker can't grant access to someone outside the workspace.
-  const setAssignees = useMutation({
-    mutationFn: async (userIds: string[]) => {
-      const token = useStore.getState().accessToken;
-      const res = await fetch(`/api/v1/tasks/${mutationTaskId}/assignees`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token ?? ''}` },
-        credentials: 'include',
-        body: JSON.stringify({ userIds }),
-      });
-      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-      const json = await res.json();
-      return (json.data ?? []) as AssigneeRow[];
-    },
-    onSuccess: (rows) => {
-      // The PUT response is the new authoritative set — adopt it locally
-      // so the chip row matches the server even before ['tasks'] refetches.
-      setLocalAssignees(rows);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['backlog-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-tasks'] });
-    },
-    onError: () => {
-      // Roll back to whatever the parent last told us.
-      setLocalAssignees(assignees ?? []);
-    },
-  });
+  // Load workspace members when the picker opens.
+  useEffect(() => {
+    if (!pickerOpen || !workspaceId) return;
+    setMembersError(false);
+    startMembers(async () => {
+      try {
+        setMembers(await loadWorkspaceMembers(workspaceId));
+      } catch {
+        setMembersError(true);
+      }
+    });
+  }, [pickerOpen, workspaceId]);
 
   // Close the picker when the user clicks outside of it. We listen on the
   // drawer body (not document) so clicks on the overlay still close the
@@ -369,7 +333,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 (e.target as HTMLTextAreaElement).blur();
               }
             }}
-            disabled={updateField.isPending}
+            disabled={savingField}
             rows={1}
             aria-label="Issue title"
             placeholder="Untitled"
@@ -393,9 +357,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               value={priorityValue}
               onChange={(e) => {
                 setPriorityValue(e.target.value);
-                updatePriority.mutate(e.target.value);
+                doUpdatePriority(e.target.value);
               }}
-              disabled={updatePriority.isPending}
+              disabled={savingPriority}
               style={{
                 background:    '#2d3748',
                 border:        '1px solid #4a5568',
@@ -405,7 +369,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 fontSize:      12,
                 fontWeight:    600,
                 letterSpacing: '0.04em',
-                cursor:        updatePriority.isPending ? 'progress' : 'pointer',
+                cursor:        savingPriority ? 'progress' : 'pointer',
                 colorScheme:   'dark',
               }}
             >
@@ -416,7 +380,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             {storyPoints != null && (
               <span className={styles.metaBadge}>{storyPoints} pts</span>
             )}
-            {updatePriority.isError && (
+            {priorityError && (
               <span style={{ color: '#fc8181', fontSize: 11 }}>
                 Failed to update priority.
               </span>
@@ -439,12 +403,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 hasValue={!!startDate}
                 onClear={() => {
                   setStartInput('');
-                  updateSchedule.mutate({
+                  doUpdateSchedule({
                     startIso: null,
                     dueIso:   dueInput || null,
                   });
                 }}
-                disabled={updateSchedule.isPending}
+                disabled={savingSchedule}
               />
               <ScheduleRow
                 label="Due date"
@@ -454,22 +418,22 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 hasValue={!!dueDate}
                 onClear={() => {
                   setDueInput('');
-                  updateSchedule.mutate({
+                  doUpdateSchedule({
                     startIso: startInput || null,
                     dueIso:   null,
                   });
                 }}
-                disabled={updateSchedule.isPending}
+                disabled={savingSchedule}
               />
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
                   type="button"
-                  onClick={() => updateSchedule.mutate({
+                  onClick={() => doUpdateSchedule({
                     startIso: startInput || null,
                     dueIso:   dueInput || null,
                   })}
                   disabled={
-                    updateSchedule.isPending
+                    savingSchedule
                     || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate))
                   }
                   style={{
@@ -480,19 +444,19 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                     padding:      '6px 14px',
                     fontSize:     13,
                     fontWeight:   500,
-                    cursor:       (updateSchedule.isPending
+                    cursor:       (savingSchedule
                                    || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
                                   ? 'default' : 'pointer',
-                    opacity:      (updateSchedule.isPending
+                    opacity:      (savingSchedule
                                    || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
                                   ? 0.5 : 1,
                   }}
                 >
-                  {updateSchedule.isPending ? 'Saving…' : 'Save schedule'}
+                  {savingSchedule ? 'Saving…' : 'Save schedule'}
                 </button>
               </div>
             </div>
-            {updateSchedule.isError && (
+            {scheduleError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
                 Failed to update schedule.
               </p>
@@ -553,14 +517,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                     onClick={() => {
                       const next = localAssignees.filter((x) => x.UserId !== a.UserId);
                       setLocalAssignees(next);
-                      setAssignees.mutate(next.map((x) => x.UserId));
+                      doSetAssignees(next.map((x) => x.UserId));
                     }}
-                    disabled={setAssignees.isPending}
+                    disabled={savingAssignees}
                     style={{
                       background: 'transparent',
                       color:      '#a0aec0',
                       border:     'none',
-                      cursor:     setAssignees.isPending ? 'progress' : 'pointer',
+                      cursor:     savingAssignees ? 'progress' : 'pointer',
                       padding:    '0 2px',
                       lineHeight: 1,
                       fontSize:   16,
@@ -574,7 +538,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               <button
                 type="button"
                 onClick={() => setPickerOpen((v) => !v)}
-                disabled={!workspaceId || setAssignees.isPending}
+                disabled={!workspaceId || savingAssignees}
                 style={{
                   background:   'transparent',
                   border:       '1px dashed #4a5568',
@@ -582,7 +546,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   padding:      '3px 10px',
                   fontSize:     12,
                   color:        '#a0aec0',
-                  cursor:       (!workspaceId || setAssignees.isPending) ? 'default' : 'pointer',
+                  cursor:       (!workspaceId || savingAssignees) ? 'default' : 'pointer',
                 }}
               >
                 + Assign
@@ -627,25 +591,25 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       colorScheme:  'dark',
                     }}
                   />
-                  {membersQuery.isPending && (
+                  {loadingMembers && (
                     <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
                       Loading members…
                     </p>
                   )}
-                  {membersQuery.isError && (
+                  {membersError && (
                     <p style={{ fontSize: 12, color: '#fc8181', margin: '4px 6px' }}>
                       Failed to load members.
                     </p>
                   )}
-                  {membersQuery.data && (() => {
+                  {members && (() => {
                     const assignedIds = new Set(localAssignees.map((a) => a.UserId));
                     const q = pickerSearch.trim().toLowerCase();
-                    const filtered = membersQuery.data
-                      .filter((m) => !assignedIds.has(m.Id))
+                    const filtered = members
+                      .filter((m) => !assignedIds.has(m.id))
                       .filter((m) => {
                         if (!q) return true;
-                        return (m.Name || '').toLowerCase().includes(q)
-                            || (m.Email || '').toLowerCase().includes(q);
+                        return (m.name || '').toLowerCase().includes(q)
+                            || (m.email || '').toLowerCase().includes(q);
                       });
                     if (filtered.length === 0) {
                       return (
@@ -656,21 +620,21 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                     }
                     return filtered.map((m) => (
                       <button
-                        key={m.Id}
+                        key={m.id}
                         type="button"
                         onClick={() => {
                           const optimistic: AssigneeRow = {
                             TaskId:    mutationTaskId,
-                            UserId:    m.Id,
-                            Email:     m.Email,
-                            Name:      m.Name,
-                            AvatarUrl: m.AvatarUrl,
+                            UserId:    m.id,
+                            Email:     m.email,
+                            Name:      m.name ?? '',
+                            AvatarUrl: m.avatarUrl,
                           };
                           const next = [...localAssignees, optimistic];
                           setLocalAssignees(next);
                           setPickerOpen(false);
                           setPickerSearch('');
-                          setAssignees.mutate(next.map((x) => x.UserId));
+                          doSetAssignees(next.map((x) => x.UserId));
                         }}
                         style={{
                           display:    'flex',
@@ -695,8 +659,8 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                             width:           22,
                             height:          22,
                             borderRadius:    '50%',
-                            background:      m.AvatarUrl ? '#2d3748' : '#4a5568',
-                            backgroundImage: m.AvatarUrl ? `url(${m.AvatarUrl})` : undefined,
+                            background:      m.avatarUrl ? '#2d3748' : '#4a5568',
+                            backgroundImage: m.avatarUrl ? `url(${m.avatarUrl})` : undefined,
                             backgroundSize:  'cover',
                             display:         'inline-flex',
                             alignItems:      'center',
@@ -706,12 +670,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                             color:           '#e2e8f0',
                           }}
                         >
-                          {!m.AvatarUrl && initialsOf(m.Name || m.Email)}
+                          {!m.avatarUrl && initialsOf(m.name || m.email)}
                         </span>
                         <span style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span>{m.Name || m.Email}</span>
-                          {m.Name && (
-                            <span style={{ color: '#718096', fontSize: 10 }}>{m.Email}</span>
+                          <span>{m.name || m.email}</span>
+                          {m.name && (
+                            <span style={{ color: '#718096', fontSize: 10 }}>{m.email}</span>
                           )}
                         </span>
                       </button>
@@ -720,7 +684,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 </div>
               )}
             </div>
-            {setAssignees.isError && (
+            {assigneesError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: '6px 0 0 0' }}>
                 Failed to update assignees.
               </p>
@@ -746,13 +710,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       const next = draftDescription;
                       setDescriptionValue(next);
                       setEditingDescription(false);
-                      updateField.mutate({ description: next.length === 0 ? null : next });
+                      doUpdateField({ description: next.length === 0 ? null : next });
                     }
                   }}
                   autoFocus
                   rows={Math.min(20, Math.max(6, draftDescription.split('\n').length + 1))}
                   placeholder="Write a description… markdown supported (Cmd/Ctrl+Enter to save, Esc to cancel)"
-                  disabled={updateField.isPending}
+                  disabled={savingField}
                   style={{
                     background:   '#2d3748',
                     border:       '1px solid #4a5568',
@@ -773,9 +737,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       const next = draftDescription;
                       setDescriptionValue(next);
                       setEditingDescription(false);
-                      updateField.mutate({ description: next.length === 0 ? null : next });
+                      doUpdateField({ description: next.length === 0 ? null : next });
                     }}
-                    disabled={updateField.isPending}
+                    disabled={savingField}
                     style={{
                       background:   '#3182ce',
                       color:        '#fff',
@@ -784,10 +748,10 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       padding:      '6px 14px',
                       fontSize:     13,
                       fontWeight:   500,
-                      cursor:       updateField.isPending ? 'progress' : 'pointer',
+                      cursor:       savingField ? 'progress' : 'pointer',
                     }}
                   >
-                    {updateField.isPending ? 'Saving…' : 'Save'}
+                    {savingField ? 'Saving…' : 'Save'}
                   </button>
                   <button
                     type="button"
@@ -877,7 +841,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 )}
               </button>
             )}
-            {updateField.isError && (
+            {fieldError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
                 Failed to save. Please try again.
               </p>
@@ -892,7 +856,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>Time Tracking</p>
-            <WorkLogSection taskId={taskId} />
+            <WorkLogSection taskId={taskId} currentUserId={currentUserId} />
           </div>
 
           <div className={styles.section}>
@@ -902,7 +866,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>Comments</p>
-            <CommentSection taskId={taskId} />
+            <CommentSection taskId={taskId} currentUserId={currentUserId} />
           </div>
         </div>
       </div>

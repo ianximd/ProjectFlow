@@ -1,29 +1,9 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { useStore } from '@/store/useStore';
+import { useEffect, useState, useTransition } from 'react';
+import { getPullRequests, getCommits } from '@/server/actions/git';
 import type { GitPullRequest, GitCommit, GitProvider } from '@projectflow/types';
 import styles from './pull-requests.module.css';
-
-function authHeaders(token: string) {
-  return { Authorization: `Bearer ${token}` };
-}
-
-async function fetchPRs(taskId: string, token: string): Promise<GitPullRequest[]> {
-  const res = await fetch(`/api/v1/git/pull-requests?taskId=${taskId}`, {
-    headers: authHeaders(token), credentials: 'include',
-  });
-  if (!res.ok) return [];
-  return (await res.json()).pullRequests;
-}
-
-async function fetchCommits(taskId: string, token: string): Promise<GitCommit[]> {
-  const res = await fetch(`/api/v1/git/commits?taskId=${taskId}`, {
-    headers: authHeaders(token), credentials: 'include',
-  });
-  if (!res.ok) return [];
-  return (await res.json()).commits;
-}
 
 const STATE_COLOR: Record<string, string> = {
   open:   '#27c93f',
@@ -50,10 +30,19 @@ interface Props {
 }
 
 export function PullRequestsSection({ taskId }: Props) {
-  const token = useStore(s => s.accessToken) ?? '';
+  const [prs, setPrs] = useState<GitPullRequest[]>([]);
+  const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [, start] = useTransition();
 
-  const { data: prs = []     } = useQuery({ queryKey: ['prs', taskId],     queryFn: () => fetchPRs(taskId, token),     enabled: !!token });
-  const { data: commits = [] } = useQuery({ queryKey: ['commits', taskId], queryFn: () => fetchCommits(taskId, token), enabled: !!token });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!taskId) return;
+    start(async () => {
+      const [p, c] = await Promise.all([getPullRequests(taskId), getCommits(taskId)]);
+      setPrs(p);
+      setCommits(c);
+    });
+  }, [taskId]);
 
   if (prs.length === 0 && commits.length === 0) {
     return <p className={styles.empty}>No linked pull requests or commits.</p>;

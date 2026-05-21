@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { formatShortDate, formatDateTime } from '@/lib/date';
 import { markNotificationRead, markAllNotificationsRead } from '@/server/actions/notifications';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -58,7 +59,7 @@ function timeAgo(iso: string): string {
   if (diff < 3600)      return `${Math.round(diff / 60)}m ago`;
   if (diff < 86400)     return `${Math.round(diff / 3600)}h ago`;
   if (diff < 86400 * 30) return `${Math.round(diff / 86400)}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatShortDate(iso);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +291,7 @@ function NotificationItem({
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           <span>{meta.label}</span>
           <span aria-hidden="true">·</span>
-          <span title={new Date(row.createdAt).toLocaleString()}>
+          <span title={formatDateTime(row.createdAt)}>
             {timeAgo(row.createdAt)}
           </span>
           {taskHref && (

@@ -11,6 +11,7 @@ import type {
   WebhookDelivery,
   OutgoingWebhookEvent,
 } from '@projectflow/types';
+import { formatShortDateTime } from '@/lib/date';
 
 import {
   createOutgoingWebhook,
@@ -46,7 +47,7 @@ function shortDateTime(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return '—';
-  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return formatShortDateTime(d);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

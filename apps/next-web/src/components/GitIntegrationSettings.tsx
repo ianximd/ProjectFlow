@@ -14,6 +14,7 @@ import {
   loadGitConnections,
 } from '@/server/actions/git-connections';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { formatShortDateYear } from '@/lib/date';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -182,7 +183,7 @@ function ConnectionCard({
             <span>
               Connected{' '}
               {Number.isFinite(connected.getTime())
-                ? connected.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                ? formatShortDateYear(connected)
                 : '—'}
             </span>
             {!conn.webhookId && (

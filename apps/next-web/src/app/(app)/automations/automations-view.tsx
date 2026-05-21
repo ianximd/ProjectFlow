@@ -17,6 +17,7 @@ import type {
 } from '@projectflow/types';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { formatShortDate } from '@/lib/date';
 import {
   createAutomation,
   updateAutomation,
@@ -83,7 +84,7 @@ function shortDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatShortDate(d);
 }
 
 const DEFAULT_TRIGGER: AutomationTriggerConfig = { type: 'ISSUE_CREATED' };

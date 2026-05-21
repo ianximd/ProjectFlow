@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { formatShortDate, formatShortTime, formatDateTime } from '@/lib/date';
 
 // Raw API row from the backend SPs (PascalCase fields). The component reads
 // either casing defensively (Id || id, Title || content, …).
@@ -124,10 +125,10 @@ function formatDeadline(dueIso: string): { label: string; cls: string; title: st
   const due = new Date(t);
 
   const hasTime = due.getHours() !== 0 || due.getMinutes() !== 0;
-  const dateLabel = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const timeLabel = due.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const dateLabel = formatShortDate(due);
+  const timeLabel = formatShortTime(due);
   const fullLabel = hasTime ? `${dateLabel}, ${timeLabel}` : dateLabel;
-  const tooltip = `Due ${due.toLocaleString()}`;
+  const tooltip = `Due ${formatDateTime(due)}`;
 
   // Buckets in order of severity:
   if (diffMin < 0) {

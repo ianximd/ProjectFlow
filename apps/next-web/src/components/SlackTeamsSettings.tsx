@@ -11,6 +11,7 @@ import type {
   IntegrationEvent,
   IntegrationProvider,
 } from '@projectflow/types';
+import { formatShortDateYear } from '@/lib/date';
 
 import {
   createIntegration,
@@ -200,7 +201,7 @@ function ConnectionCard({
             <span>
               Added{' '}
               {Number.isFinite(created.getTime())
-                ? created.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                ? formatShortDateYear(created)
                 : '—'}
             </span>
           </div>

@@ -6,7 +6,17 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-const MINIO_ENDPOINT    = process.env.MINIO_ENDPOINT    || 'http://localhost:9000';
+// Accept either a full URL (e.g. http://localhost:9000) or the split
+// host/port/ssl form used by .env (MINIO_ENDPOINT=localhost + MINIO_PORT +
+// MINIO_USE_SSL). The S3 client needs a valid absolute URL for `endpoint`.
+function resolveMinioEndpoint(): string {
+  const raw = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const scheme = process.env.MINIO_USE_SSL === 'true' ? 'https' : 'http';
+  const port   = process.env.MINIO_PORT ? `:${process.env.MINIO_PORT}` : '';
+  return `${scheme}://${raw}${port}`;
+}
+const MINIO_ENDPOINT    = resolveMinioEndpoint();
 const MINIO_REGION      = process.env.MINIO_REGION      || 'us-east-1';
 const MINIO_ACCESS_KEY  = process.env.MINIO_ACCESS_KEY  || 'minioadmin';
 const MINIO_SECRET_KEY  = process.env.MINIO_SECRET_KEY  || 'minioadmin';

@@ -14,7 +14,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Task_ProjectId_Status'
   CREATE NONCLUSTERED INDEX IX_Task_ProjectId_Status
     ON dbo.Tasks (ProjectId, Status)
     INCLUDE (Id, Title, Priority, SprintId, StoryPoints, DueDate, CreatedAt, UpdatedAt)
-    WITH (ONLINE = ON, FILLFACTOR = 85);
+    WITH (FILLFACTOR = 85);
 GO
 
 -- Task list filtered by sprint
@@ -61,7 +61,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Notification_UserId_Re
   CREATE NONCLUSTERED INDEX IX_Notification_UserId_Read_CreatedAt
     ON dbo.Notifications (UserId, IsRead, CreatedAt DESC)
     INCLUDE (Id, Type, Payload)
-    WITH (ONLINE = ON, FILLFACTOR = 80);
+    WITH (FILLFACTOR = 80);
 GO
 
 -- ── Workspace members ─────────────────────────────────────────────────────────
@@ -70,8 +70,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_WorkspaceMember_WorkspaceId_UserId' AND object_id = OBJECT_ID('dbo.WorkspaceMembers'))
   CREATE NONCLUSTERED INDEX IX_WorkspaceMember_WorkspaceId_UserId
     ON dbo.WorkspaceMembers (WorkspaceId, UserId)
-    INCLUDE (Role, JoinedAt)
-    WITH (ONLINE = ON);
+    INCLUDE (Role, JoinedAt);
 GO
 
 -- ── Projects ──────────────────────────────────────────────────────────────────
@@ -81,7 +80,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Project_WorkspaceId_St
   CREATE NONCLUSTERED INDEX IX_Project_WorkspaceId_Status
     ON dbo.Projects (WorkspaceId, Status)
     INCLUDE (Id, Name, [Key], Description, CreatedAt)
-    WITH (ONLINE = ON, FILLFACTOR = 90);
+    WITH (FILLFACTOR = 90);
 GO
 
 -- ── Sprints ───────────────────────────────────────────────────────────────────
@@ -91,7 +90,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Sprint_ProjectId_Statu
   CREATE NONCLUSTERED INDEX IX_Sprint_ProjectId_Status
     ON dbo.Sprints (ProjectId, Status)
     INCLUDE (Id, Name, Goal, StartDate, EndDate)
-    WITH (ONLINE = ON, FILLFACTOR = 90);
+    WITH (FILLFACTOR = 90);
 GO
 
 -- ── Audit log ─────────────────────────────────────────────────────────────────
@@ -103,7 +102,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_WorkLog_TaskId_Started
   CREATE NONCLUSTERED INDEX IX_WorkLog_TaskId_StartedAt
     ON dbo.WorkLogs (TaskId, StartedAt DESC)
     INCLUDE (Id, UserId, TimeSpentSeconds, Description)
-    WITH (ONLINE = ON, FILLFACTOR = 85);
+    WITH (FILLFACTOR = 85);
 GO
 
 -- ── Statistics: update statistics on hot tables ───────────────────────────────

@@ -21,6 +21,7 @@ import sql from 'mssql';
 
 const config: sql.config = {
   server:   process.env.DB_SERVER   || 'localhost',
+  port:     process.env.DB_PORT ? Number(process.env.DB_PORT) : 1433,
   user:     process.env.DB_USER     || 'sa',
   password: process.env.DB_PASSWORD || 'YourStrong@Passw0rd',
   database: process.env.DB_NAME     || 'ProjectFlow',

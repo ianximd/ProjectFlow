@@ -8,6 +8,7 @@ const config: sql.config = {
   user:     process.env.DB_USER || 'sa',
   password: process.env.DB_PASSWORD || 'YourStrong@Passw0rd',
   server:   process.env.DB_SERVER || 'localhost',
+  port:     process.env.DB_PORT ? Number(process.env.DB_PORT) : 1433,
   database: process.env.DB_NAME || 'ProjectFlow',
   options: {
     encrypt:                process.env.DB_ENCRYPT === 'true',

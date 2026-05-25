@@ -29,7 +29,9 @@ const isTest = process.env.NODE_ENV === 'test';
 // don't want hundreds of warn lines per run. LOG_LEVEL=debug under
 // vitest opts back into the full firehose if you're debugging.
 const defaultLevel = isTest ? 'silent' : (isProd ? 'info' : 'debug');
-const level = process.env.LOG_LEVEL ?? defaultLevel;
+// Treat an empty LOG_LEVEL (e.g. `LOG_LEVEL=` in .env) as unset so the
+// NODE_ENV-based default applies — pino throws on an empty level string.
+const level = process.env.LOG_LEVEL || defaultLevel;
 
 // Redact at any depth. Pino walks the object once and replaces matching
 // leaves with '[redacted]'. Hits are extension-friendly: see

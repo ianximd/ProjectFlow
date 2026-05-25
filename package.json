@@ -16,8 +16,8 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
-    "db:migrate": "tsx scripts/db-migrate.ts",
-    "db:deploy-sps": "tsx scripts/db-deploy-sps.ts"
+    "db:migrate": "tsx --env-file-if-exists=apps/api/.env scripts/db-migrate.ts",
+    "db:deploy-sps": "tsx --env-file-if-exists=apps/api/.env scripts/db-deploy-sps.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

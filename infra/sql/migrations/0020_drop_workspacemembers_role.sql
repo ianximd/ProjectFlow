@@ -64,6 +64,5 @@ AND NOT EXISTS (
 )
     CREATE NONCLUSTERED INDEX IX_WorkspaceMember_WorkspaceId_UserId
       ON dbo.WorkspaceMembers (WorkspaceId, UserId)
-      INCLUDE (JoinedAt)
-      WITH (ONLINE = ON);
+      INCLUDE (JoinedAt);
 GO

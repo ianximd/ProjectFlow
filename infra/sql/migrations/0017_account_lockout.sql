@@ -26,6 +26,5 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Users_LockedUntil' AND object_id = OBJECT_ID('dbo.Users'))
   CREATE NONCLUSTERED INDEX IX_Users_LockedUntil
     ON dbo.Users (LockedUntil)
-    WHERE LockedUntil IS NOT NULL
-    WITH (ONLINE = ON);
+    WHERE LockedUntil IS NOT NULL;
 GO

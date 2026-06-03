@@ -55,6 +55,8 @@ interface Props {
   // workspace has resolved yet; the store fallback was removed in Phase 3.1.
   workspaceId: string | null;
   onClose: () => void;
+  /** Hierarchy (Phase 1): read-only Space / Folder / List breadcrumb. */
+  breadcrumb?: { space: string; folder?: string; list?: string };
 }
 
 function initialsOf(nameOrEmail: string): string {
@@ -85,7 +87,7 @@ function toDateInput(iso: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose }: Props) {
+export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose, breadcrumb }: Props) {
   const drawerRef   = useRef<HTMLDivElement>(null);
   const pickerRef   = useRef<HTMLDivElement>(null);
   // Workspace comes from the opener as a prop (every render site passes
@@ -319,6 +321,16 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
         </div>
 
         <div className={styles.body}>
+          {breadcrumb && (
+            <nav
+              aria-label="Hierarchy breadcrumb"
+              style={{ display: 'flex', gap: 6, fontSize: 12, color: 'var(--muted-foreground, #6b7280)', marginBottom: 8, flexWrap: 'wrap' }}
+            >
+              <span>{breadcrumb.space}</span>
+              {breadcrumb.folder && (<><span>/</span><span>{breadcrumb.folder}</span></>)}
+              {breadcrumb.list && (<><span>/</span><span>{breadcrumb.list}</span></>)}
+            </nav>
+          )}
           {/* Click-to-edit title: behaves as an h2 visually but is actually a
               borderless textarea that grows with content. Enter commits and
               re-blurs (Shift+Enter for a newline, but titles are single-line

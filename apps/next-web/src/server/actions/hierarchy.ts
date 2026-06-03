@@ -35,6 +35,13 @@ export async function moveTaskToList(taskId: string, listId: string, position: n
   catch (e) { return toActionError(e); }
   revalidatePath('/'); return { ok: true };
 }
+/** Create a task directly into a List (the API derives the Space via listId). */
+export async function createTaskInList(listId: string, workspaceId: string, title: string): Promise<ActionResult> {
+  await requireSession();
+  try { await serverFetch('/tasks', { method: 'POST', body: JSON.stringify({ title, listId, workspaceId }) }); }
+  catch (e) { return toActionError(e); }
+  revalidatePath(`/lists/${listId}`); return { ok: true };
+}
 export async function renameFolder(id: string, name: string): Promise<ActionResult> {
   await requireSession();
   try { await serverFetch(`/folders/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }); }

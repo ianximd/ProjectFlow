@@ -68,6 +68,48 @@ export interface Task {
   updatedAt: Date;
   resolvedAt: Date | null;
   deletedAt: Date | null;
+  // ── Hierarchy (Phase 1, migration 0029) ──
+  listId: string | null;
+  listPath: string | null;
+  archivedAt: Date | null;
+}
+
+// ─── Hierarchy (Phase 1) ──────────────────────────────────────────────────
+export type Visibility = 'PUBLIC' | 'PRIVATE';
+export type ObjectPermissionLevel = 'VIEW' | 'COMMENT' | 'EDIT' | 'FULL';
+export type HierarchyNodeType = 'SPACE' | 'FOLDER' | 'LIST';
+
+export interface Folder {
+  id: string;
+  workspaceId: string;
+  spaceId: string;
+  parentFolderId: string | null;
+  name: string;
+  position: number;
+  path: string;
+  workflowId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface List {
+  id: string;
+  workspaceId: string;
+  spaceId: string;
+  folderId: string | null;
+  name: string;
+  position: number;
+  path: string;
+  workflowId: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** "Space" is the API/UI label for the physical Projects table. */
+export interface SpaceExtras {
+  visibility: Visibility;
+  maxSubtaskDepth: number | null;
 }
 
 export interface CreateTaskInput {
@@ -81,6 +123,9 @@ export interface CreateTaskInput {
   sprintId?: string | null;
   storyPoints?: number | null;
   dueDate?: string | Date | null;
+  // ── Hierarchy (Phase 1): create directly into a List; optional parent for subtasks ──
+  listId?: string | null;
+  parentTaskId?: string | null;
 }
 
 export interface UpdateTaskInput {

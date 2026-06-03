@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useContext, useState } from 'react';
+import type { HierarchyTreeData } from '@/components/hierarchy/SidebarTree';
 
 type SidebarTheme = 'dark' | 'light';
 
@@ -22,6 +23,8 @@ interface LayoutState {
   isAdmin: boolean;
   /** Server-derived current user for the topbar, or null. */
   user: LayoutUser | null;
+  /** Server-derived Space/Folder/List tree for the active workspace (Phase 1). */
+  hierarchy: HierarchyTreeData | null;
 }
 
 // Create the context
@@ -32,9 +35,10 @@ interface LayoutProviderProps {
   children: ReactNode;
   isAdmin?: boolean;
   user?:    LayoutUser | null;
+  hierarchy?: HierarchyTreeData | null;
 }
 
-export function LayoutProvider({ children, isAdmin = false, user = null }: LayoutProviderProps) {
+export function LayoutProvider({ children, isAdmin = false, user = null, hierarchy = null }: LayoutProviderProps) {
   const [sidebarCollapse, setSidebarCollapse] = useState(false);
   const [sidebarTheme, setSidebarTheme] = useState<SidebarTheme>('light');
 
@@ -47,6 +51,7 @@ export function LayoutProvider({ children, isAdmin = false, user = null }: Layou
         setSidebarTheme,
         isAdmin,
         user,
+        hierarchy,
       }}
     >
       {children}

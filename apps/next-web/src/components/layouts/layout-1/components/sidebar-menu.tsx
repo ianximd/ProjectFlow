@@ -19,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useLayout } from './context';
+import { SidebarTree } from '@/components/hierarchy/SidebarTree';
 
 export function SidebarMenu() {
   const pathname = usePathname();
@@ -26,7 +27,7 @@ export function SidebarMenu() {
   // Hide the System → Admin item for non-admins. `isAdmin` is derived
   // server-side in the (app) layout (hasAdminAccess) and provided via the
   // layout context — no client permission fetch or in-memory token.
-  const { isAdmin } = useLayout();
+  const { isAdmin, hierarchy } = useLayout();
 
   const visibleMenu = useMemo(
     () => MENU_SIDEBAR.filter((item) => item.path !== '/admin' || isAdmin),
@@ -239,6 +240,7 @@ export function SidebarMenu() {
       >
         {buildMenu(visibleMenu)}
       </AccordionMenu>
+      {hierarchy && hierarchy.spaces.length > 0 && <SidebarTree data={hierarchy} />}
     </ScrollArea>
   );
 }

@@ -1,0 +1,222 @@
+'use client';
+
+import { useState, useTransition } from 'react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { HIERARCHY_ICONS, HIERARCHY_LABELS_PLURAL } from '@/config/hierarchy.config';
+import type { Project, Folder, List } from '@/server/queries/normalize';
+import {
+  createFolder, createList, renameFolder, renameList,
+  deleteFolder, deleteList, moveList,
+} from '@/server/actions/hierarchy';
+import { midpoint } from '@/components/Board';
+import { ListNode } from './SidebarTreeNode';
+
+export interface HierarchyTreeData {
+  workspaceId: string;
+  spaces: Project[];
+  foldersBySpace: Record<string, Folder[]>;
+  listsBySpace: Record<string, List[]>;
+}
+
+const SpaceIcon = HIERARCHY_ICONS.space;
+const FolderIcon = HIERARCHY_ICONS.folder;
+
+type Adding = { kind: 'folder' | 'list'; spaceId: string; folderId: string | null } | null;
+
+export function SidebarTree({ data }: { data: HierarchyTreeData }) {
+  const [, startTransition] = useTransition();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState<Adding>(null);
+  const [addName, setAddName] = useState('');
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  function run(p: Promise<{ ok: boolean; error?: string }>) {
+    startTransition(async () => {
+      const res = await p;
+      if (!res.ok) console.error('hierarchy action failed:', res.error);
+    });
+  }
+
+  function submitAdd() {
+    const name = addName.trim();
+    const a = adding;
+    setAdding(null);
+    setAddName('');
+    if (!name || !a) return;
+    if (a.kind === 'folder') run(createFolder({ workspaceId: data.workspaceId, spaceId: a.spaceId, parentFolderId: a.folderId, name }));
+    else run(createList({ workspaceId: data.workspaceId, spaceId: a.spaceId, folderId: a.folderId, name }));
+  }
+
+  const addInput = (
+    <input
+      data-testid="node-name-input"
+      autoFocus
+      value={addName}
+      onChange={(e) => setAddName(e.target.value)}
+      onBlur={submitAdd}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') submitAdd();
+        if (e.key === 'Escape') { setAdding(null); setAddName(''); }
+      }}
+      className="w-full h-7 bg-transparent outline-none border-b border-primary text-[13px] ps-6"
+      placeholder="Name…"
+    />
+  );
+
+  return (
+    <div className="space-y-1">
+      <div className="uppercase text-xs font-medium text-muted-foreground/70 pt-2 pb-px px-1">
+        {HIERARCHY_LABELS_PLURAL.space}
+      </div>
+      {data.spaces.map((space) => {
+        const folders = data.foldersBySpace[space.id] ?? [];
+        const lists = data.listsBySpace[space.id] ?? [];
+        const folderless = lists.filter((l) => !l.folderId);
+        const open = expanded.has(space.id);
+        return (
+          <SpaceBlock
+            key={space.id}
+            space={space}
+            open={open}
+            onToggle={() => toggle(space.id)}
+            onAddFolder={() => { setAdding({ kind: 'folder', spaceId: space.id, folderId: null }); setAddName(''); }}
+            onAddList={() => { setAdding({ kind: 'list', spaceId: space.id, folderId: null }); setAddName(''); }}
+          >
+            {adding?.spaceId === space.id && adding.folderId === null && addInput}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e: DragEndEvent) => onListDragEnd(e, space.id, lists, run)}
+            >
+              <SortableContext items={lists.map((l) => l.id)} strategy={verticalListSortingStrategy}>
+                {folders.map((folder) => {
+                  const fOpen = expanded.has(folder.id);
+                  const folderLists = lists.filter((l) => l.folderId === folder.id);
+                  return (
+                    <div key={folder.id}>
+                      <div
+                        data-testid="folder-node"
+                        className="group flex items-center gap-1 h-8 ps-4 pe-2 text-[13px] rounded hover:bg-muted"
+                      >
+                        <button type="button" onClick={() => toggle(folder.id)} className="text-muted-foreground">
+                          {fOpen ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                        </button>
+                        <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span
+                          className="grow truncate"
+                          onDoubleClick={() => {
+                            const n = window.prompt('Rename folder', folder.name);
+                            if (n && n.trim() && n !== folder.name) run(renameFolder(folder.id, n.trim()));
+                          }}
+                        >
+                          {folder.name}
+                        </span>
+                        <button
+                          type="button" data-testid="list-add" aria-label="Add list"
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+                          onClick={() => { setAdding({ kind: 'list', spaceId: space.id, folderId: folder.id }); setAddName(''); }}
+                        >
+                          <Plus className="size-3.5" />
+                        </button>
+                        <button
+                          type="button" aria-label="Delete folder"
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                          onClick={() => run(deleteFolder(folder.id))}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {fOpen && (
+                        <>
+                          {adding?.spaceId === space.id && adding.folderId === folder.id && addInput}
+                          {folderLists.map((l) => (
+                            <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {folderless.map((l) => (
+                  <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} />
+                ))}
+              </SortableContext>
+            </DndContext>
+          </SpaceBlock>
+        );
+      })}
+    </div>
+  );
+}
+
+function SpaceBlock({
+  space, open, onToggle, onAddFolder, onAddList, children,
+}: {
+  space: Project; open: boolean; onToggle: () => void;
+  onAddFolder: () => void; onAddList: () => void; children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div
+        data-testid="space-node"
+        className="group flex items-center gap-1 h-8 px-1 text-sm font-medium rounded hover:bg-muted"
+      >
+        <button type="button" onClick={onToggle} className="text-muted-foreground">
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+        </button>
+        <SpaceIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="grow truncate">{space.name}</span>
+        <button
+          type="button" data-testid="folder-add" aria-label="Add folder"
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+          onClick={onAddFolder}
+        >
+          <FolderIcon className="size-3.5" />
+        </button>
+        <button
+          type="button" data-testid="list-add" aria-label="Add list"
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+          onClick={onAddList}
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
+      {open && <div className="mt-px">{children}</div>}
+    </div>
+  );
+}
+
+/** Reorder a list within its current container; recompute Position via midpoint. */
+function onListDragEnd(
+  e: DragEndEvent,
+  spaceId: string,
+  lists: List[],
+  run: (p: Promise<{ ok: boolean; error?: string }>) => void,
+) {
+  const { active, over } = e;
+  if (!over || active.id === over.id) return;
+  const moved = lists.find((l) => l.id === active.id);
+  if (!moved) return;
+  const siblings = lists.filter((l) => l.folderId === moved.folderId).sort((a, b) => a.position - b.position);
+  const overIdx = siblings.findIndex((l) => l.id === over.id);
+  if (overIdx === -1) return;
+  const prev = siblings[overIdx - 1]?.position ?? null;
+  const next = siblings[overIdx]?.position ?? null;
+  run(moveList(moved.id, moved.folderId, midpoint(prev, next), spaceId));
+}

@@ -55,7 +55,7 @@ function getPosition(t: ApiTask): number {
 // neighbours so we never have to renumber the whole column. Step constant
 // is generous so first inserts don't immediately collide.
 const STEP = 1024;
-function midpoint(prev: number | null, next: number | null): number {
+export function midpoint(prev: number | null, next: number | null): number {
   if (prev == null && next == null) return STEP;
   if (prev == null)                 return next! - STEP;
   if (next == null)                 return prev + STEP;

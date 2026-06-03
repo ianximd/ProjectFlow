@@ -40,3 +40,44 @@ export function normalizeProject(raw: any): Project {
     createdAt:   str(raw?.CreatedAt ?? raw?.createdAt),
   };
 }
+
+// ─── Hierarchy (Phase 1) ──────────────────────────────────────────────────
+export interface Folder {
+  id: string;
+  spaceId: string;
+  parentFolderId: string | null;
+  name: string;
+  position: number;
+  path: string;
+}
+export interface List {
+  id: string;
+  spaceId: string;
+  folderId: string | null;
+  name: string;
+  position: number;
+  path: string;
+  isDefault: boolean;
+}
+
+export function normalizeFolder(r: any): Folder {
+  return {
+    id: String(r?.Id ?? r?.id ?? ''),
+    spaceId: String(r?.SpaceId ?? r?.spaceId ?? ''),
+    parentFolderId: r?.ParentFolderId ?? r?.parentFolderId ?? null,
+    name: String(r?.Name ?? r?.name ?? ''),
+    position: Number(r?.Position ?? r?.position ?? 0),
+    path: String(r?.Path ?? r?.path ?? ''),
+  };
+}
+export function normalizeList(r: any): List {
+  return {
+    id: String(r?.Id ?? r?.id ?? ''),
+    spaceId: String(r?.SpaceId ?? r?.spaceId ?? ''),
+    folderId: r?.FolderId ?? r?.folderId ?? null,
+    name: String(r?.Name ?? r?.name ?? ''),
+    position: Number(r?.Position ?? r?.position ?? 0),
+    path: String(r?.Path ?? r?.path ?? ''),
+    isDefault: Boolean(r?.IsDefault ?? r?.isDefault),
+  };
+}

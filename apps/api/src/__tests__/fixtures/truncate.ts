@@ -39,8 +39,13 @@ const TRUNCATION_ORDER = [
   // catalog seed and stay.
   'UserRoles',
   'WorkspaceMembers',
+  // Object-level ACL (0029) — FKs Workspaces/Users/Roles, delete before them.
+  'ObjectPermissions',
   // Mid-level
   'Tasks',
+  // Hierarchy (0029): Tasks FK Lists; Lists FK Folders; both FK Projects/Workflows.
+  'Lists',
+  'Folders',
   'Sprints',
   'Versions',
   'Components',
@@ -48,6 +53,9 @@ const TRUNCATION_ORDER = [
   'WorkflowTransitions',
   'WorkflowStatuses',
   'WorkflowDefinitions',
+  // Workflows FK Projects (and Projects.WorkflowId FKs Workflows — the cycle is
+  // broken by nulling Projects/Folders/Lists.WorkflowId in truncateAll first).
+  'Workflows',
   'AutomationRules',
   'OutgoingWebhooks',
   'GitConnections',
@@ -60,6 +68,16 @@ const TRUNCATION_ORDER = [
 
 export async function truncateAll(): Promise<void> {
   const pool = await getPool();
+  // Break the Projects⇄Workflows circular FK (and Folders/Lists→Workflows) so
+  // both ends can be deleted. Guarded so it's a no-op before migration 0029 /
+  // when a column is absent.
+  for (const stmt of [
+    "UPDATE dbo.Projects SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
+    "IF OBJECT_ID('dbo.Folders') IS NOT NULL UPDATE dbo.Folders SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
+    "IF OBJECT_ID('dbo.Lists') IS NOT NULL UPDATE dbo.Lists SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
+  ]) {
+    try { await pool.request().query(stmt); } catch { /* column/table not present yet */ }
+  }
   for (const table of TRUNCATION_ORDER) {
     try {
       await pool.request().query(`DELETE FROM dbo.[${table}]`);

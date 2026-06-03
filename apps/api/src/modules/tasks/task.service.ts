@@ -70,6 +70,18 @@ export class TaskService {
     return this.repo.setPosition(taskId, position, newStatus);
   }
 
+  /** Re-home a task into a List (hierarchy Phase 1). Bridges ProjectId to the List's Space. */
+  async moveTask(taskId: string, listId: string, position: number): Promise<Task | null> {
+    const task = await this.repo.move(taskId, listId, position);
+    if (task) {
+      webhookOutgoingService.dispatch(task.workspaceId, 'issue.updated', {
+        id: task.id, issueKey: task.issueKey, title: task.title,
+        status: task.status, projectId: task.projectId,
+      }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
+    }
+    return task;
+  }
+
   async transitionTask(taskId: string, newStatus: string, actorId: string): Promise<Task> {
     const task = await this.repo.transition(taskId, newStatus, actorId);
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.updated', {

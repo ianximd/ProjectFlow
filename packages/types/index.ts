@@ -113,7 +113,9 @@ export interface SpaceExtras {
 }
 
 export interface CreateTaskInput {
-  projectId: string;
+  // Optional since hierarchy Phase 1: when listId is supplied the API derives
+  // the Space (bridge projectId). Callers must provide projectId OR listId.
+  projectId?: string;
   workspaceId: string;
   title: string;
   description?: string | null;

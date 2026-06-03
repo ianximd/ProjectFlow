@@ -4,8 +4,10 @@ import { z } from 'zod';
 import { TaskRepository } from './task.repository.js';
 import { TaskService } from './task.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { requireObjectAccess } from '../access/access.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
 import { subLogger } from '../../shared/lib/logger.js';
+import { pubsub } from '../../graphql/pubsub.js';
 
 const log = subLogger('tasks-routes');
 
@@ -37,7 +39,9 @@ const TASK_TYPES = ['EPIC', 'STORY', 'TASK', 'BUG', 'SUBTASK', 'IMPROVEMENT', 'F
 const PRIORITIES = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
 const createSchema = z.object({
-  projectId:   z.string().uuid(),
+  // Hierarchy (0029): projectId is now optional — when a listId is supplied the
+  // SP derives the Space (bridge ProjectId). At least one must be present.
+  projectId:   z.string().uuid().optional(),
   workspaceId: z.string().uuid(),
   title:       z.string().min(1).max(500),
   description: z.string().max(10_000).nullish(),
@@ -46,6 +50,13 @@ const createSchema = z.object({
   sprintId:    z.string().uuid().nullish(),
   storyPoints: z.number().min(0).max(999).nullish(),
   dueDate:     z.string().datetime({ offset: true }).nullish(),
+  listId:      z.string().uuid().nullish(),
+  parentTaskId: z.string().uuid().nullish(),
+}).refine((b) => b.projectId || b.listId, { message: 'Either projectId or listId is required' });
+
+const moveSchema = z.object({
+  listId:   z.string().uuid(),
+  position: z.number().finite(),
 });
 
 const updateSchema = z.object({
@@ -102,12 +113,44 @@ taskRoutes.post(
     const user = (c as any).get('user') as any;
     const actorId = user.userId;
 
-    const task = await taskService.createTask(
-      { ...body, reporterId: actorId },
-      actorId
-    );
-    await invalidateTaskCaches(body.projectId);
-    return c.json({ data: task }, 201);
+    try {
+      const task = await taskService.createTask(
+        { ...body, reporterId: actorId },
+        actorId
+      );
+      await invalidateTaskCaches(body.projectId);
+      return c.json({ data: task }, 201);
+    } catch (err: any) {
+      // Hierarchy (0029) SP error mapping.
+      if (err.number === 51230) return c.json({ error: { code: 'UNPROCESSABLE', message: err.message } }, 422);
+      if (err.number === 51213) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 51214) return c.json({ error: { code: 'BAD_REQUEST', message: err.message } }, 400);
+      throw err;
+    }
+  },
+);
+
+// PATCH /api/v1/tasks/:id/move — re-home a task into a List (hierarchy Phase 1).
+// Gated on EDIT access to the destination List.
+taskRoutes.patch(
+  '/:id/move',
+  zValidator('json', moveSchema),
+  requireObjectAccess('EDIT', (c) => ({ type: 'LIST', id: (c.req as any).valid('json').listId })),
+  async (c) => {
+    const id = c.req.param('id')!;
+    const { listId, position } = c.req.valid('json');
+    try {
+      const task = await taskService.moveTask(id, listId, position);
+      if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      pubsub.publish('task:updated', { projectId: task.projectId, task });
+      await invalidateTaskCaches(task.projectId);
+      return c.json({ data: task });
+    } catch (err: any) {
+      if (err.number === 51213) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 50404) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      log.error({ err: (err as Error).message }, 'moveTask failed');
+      return c.json({ error: { message: 'Internal Server Error' } }, 500);
+    }
   },
 );
 

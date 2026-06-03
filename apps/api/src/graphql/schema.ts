@@ -14,9 +14,11 @@ import { sprintService }      from '../modules/sprints/sprint.service.js';
 import { commentService }     from '../modules/comments/comment.service.js';
 import { workspaceService }   from '../modules/workspaces/workspace.service.js';
 import { notificationService } from '../modules/notifications/notification.service.js';
+import { HierarchyRepository } from '../modules/hierarchy/hierarchy.repository.js';
 
 const taskRepo    = new TaskRepository();
 const taskService = new TaskService(taskRepo);
+const hierarchyRepo = new HierarchyRepository();
 
 // ─────────────────────────────────────────
 // Helpers
@@ -247,6 +249,8 @@ const CreateTaskInput = builder.inputType('CreateTaskInput', {
     sprintId:    t.string({ required: false }),
     storyPoints: t.int({ required: false }),
     dueDate:     t.field({ type: 'Date', required: false }),
+    listId:      t.string({ required: false }),
+    parentTaskId: t.string({ required: false }),
   }),
 });
 
@@ -532,6 +536,41 @@ builder.subscriptionType({
     }),
   }),
 });
+
+// ─────────────────────────────────────────
+// Hierarchy (Phase 1) — task move + everythingUnder (need the local TaskType).
+// ─────────────────────────────────────────
+builder.mutationFields((t) => ({
+  moveTask: t.field({
+    type: TaskType,
+    nullable: true,
+    args: {
+      taskId:   t.arg.string({ required: true }),
+      listId:   t.arg.string({ required: true }),
+      position: t.arg.float({ required: true }),
+    },
+    resolve: async (_, { taskId, listId, position }, ctx) => {
+      requireAuth(ctx);
+      const task = await taskService.moveTask(taskId, listId, position);
+      if (task) pubsub.publish('task:updated', { projectId: (task as any).projectId, task });
+      return task as any;
+    },
+  }),
+}));
+
+builder.queryFields((t) => ({
+  everythingUnder: t.field({
+    type: [TaskType],
+    args: {
+      nodeType: t.arg.string({ required: true }),
+      nodeId:   t.arg.string({ required: true }),
+    },
+    resolve: async (_, { nodeType, nodeId }, ctx) => {
+      requireAuth(ctx);
+      return (await hierarchyRepo.descendantTasks(nodeType as any, nodeId)) as any;
+    },
+  }),
+}));
 
 // ─────────────────────────────────────────
 // Hierarchy (Phase 1) — Folder/List/EffectiveStatus types + queries/mutations.

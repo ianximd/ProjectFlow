@@ -27,8 +27,20 @@ export class TaskRepository {
       // DATETIME2 now (migration 0024) so the API can pass a full ISO timestamp
       // and store hour/minute precision for the deadline.
       { name: 'DueDate',     type: sql.DateTime2,        value: input.dueDate ?? null },
+      // Hierarchy (0029): re-home into a List + optional subtask parent.
+      { name: 'ListId',       type: sql.UniqueIdentifier, value: (input as any).listId ?? null },
+      { name: 'ParentTaskId', type: sql.UniqueIdentifier, value: (input as any).parentTaskId ?? null },
     ]);
     return rows[0];
+  }
+
+  async move(taskId: string, listId: string, position: number): Promise<Task | null> {
+    const rows = await execSpOne<Task>('usp_Task_Move', [
+      { name: 'TaskId',   type: sql.UniqueIdentifier, value: taskId },
+      { name: 'ListId',   type: sql.UniqueIdentifier, value: listId },
+      { name: 'Position', type: sql.Float,            value: position },
+    ]);
+    return rows[0] ?? null;
   }
 
   async getById(taskId: string): Promise<Task | null> {

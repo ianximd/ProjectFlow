@@ -9,6 +9,9 @@ const log = subLogger('pubsub');
 export type PubSubChannels = {
   'task:updated':    [{ projectId: string; task: unknown }];
   'comment:created': [{ taskId: string;   comment: unknown }];
+  'space:updated':   [{ workspaceId: string; space: unknown }];
+  'folder:updated':  [{ spaceId: string; folder: unknown }];
+  'list:updated':    [{ spaceId: string; list: unknown }];
 };
 
 /**

@@ -2,6 +2,7 @@ import { GraphQLError, GraphQLScalarType, Kind } from 'graphql';
 
 import { builder } from './builder.js';
 import { pubsub }  from './pubsub.js';
+import { registerHierarchyGraphql } from './hierarchy.schema.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -531,6 +532,12 @@ builder.subscriptionType({
     }),
   }),
 });
+
+// ─────────────────────────────────────────
+// Hierarchy (Phase 1) — Folder/List/EffectiveStatus types + queries/mutations.
+// Registered here (after the root Query/Mutation types exist, before toSchema).
+// ─────────────────────────────────────────
+registerHierarchyGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

@@ -68,7 +68,7 @@ projectRoutes.patch(
   '/:id',
   requirePermission('project.update', { resolveWorkspace: resolveProjectWorkspace }),
   async (c) => {
-  const { name, description, avatarUrl, type, startDate, endDate } = await c.req.json();
+  const { name, description, avatarUrl, type, startDate, endDate, visibility, maxSubtaskDepth } = await c.req.json();
   try {
     const project = await projectService.update(c.req.param('id')!, {
       name,
@@ -77,6 +77,9 @@ projectRoutes.patch(
       type,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
+      // Hierarchy (0029): Space-level visibility + subtask depth.
+      visibility: visibility === 'PUBLIC' || visibility === 'PRIVATE' ? visibility : undefined,
+      maxSubtaskDepth: typeof maxSubtaskDepth === 'number' ? maxSubtaskDepth : undefined,
     });
     if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
     await invalidateProjectCaches();

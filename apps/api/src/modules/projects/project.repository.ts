@@ -42,6 +42,8 @@ export class ProjectRepository {
     type?: string;
     startDate?: Date | null;
     endDate?: Date | null;
+    visibility?: 'PUBLIC' | 'PRIVATE';
+    maxSubtaskDepth?: number | null;
   }) {
     const rows = await execSpOne('usp_Project_Update', [
       { name: 'Id',          type: sql.UniqueIdentifier,  value: id },
@@ -51,6 +53,8 @@ export class ProjectRepository {
       { name: 'Type',        type: sql.NVarChar(20),      value: fields.type ?? null },
       { name: 'StartDate',   type: sql.Date,              value: fields.startDate ?? null },
       { name: 'EndDate',     type: sql.Date,              value: fields.endDate ?? null },
+      { name: 'Visibility',      type: sql.NVarChar(10), value: fields.visibility ?? null },
+      { name: 'MaxSubtaskDepth', type: sql.Int,          value: fields.maxSubtaskDepth ?? null },
     ]);
     return rows[0] ?? null;
   }

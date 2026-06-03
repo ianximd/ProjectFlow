@@ -5,7 +5,10 @@ CREATE OR ALTER PROCEDURE usp_Project_Update
     @AvatarUrl   NVARCHAR(500)    = NULL,
     @Type        NVARCHAR(20)     = NULL,
     @StartDate   DATE             = NULL,
-    @EndDate     DATE             = NULL
+    @EndDate     DATE             = NULL,
+    -- Hierarchy (0029): Space-level visibility + subtask depth. Both NULL = leave as-is.
+    @Visibility       NVARCHAR(10) = NULL,
+    @MaxSubtaskDepth  INT          = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -20,6 +23,8 @@ BEGIN
             Type        = ISNULL(@Type,        Type),
             StartDate   = ISNULL(@StartDate,   StartDate),
             EndDate     = ISNULL(@EndDate,     EndDate),
+            Visibility       = ISNULL(@Visibility,      Visibility),
+            MaxSubtaskDepth  = ISNULL(@MaxSubtaskDepth, MaxSubtaskDepth),
             UpdatedAt   = GETUTCDATE()
         WHERE Id = @Id
           AND Status <> 'DELETED';

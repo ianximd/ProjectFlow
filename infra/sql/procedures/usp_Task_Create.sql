@@ -1,5 +1,5 @@
 CREATE OR ALTER PROCEDURE usp_Task_Create
-    @ProjectId    UNIQUEIDENTIFIER,
+    @ProjectId    UNIQUEIDENTIFIER = NULL,
     @WorkspaceId  UNIQUEIDENTIFIER,
     @Title        NVARCHAR(500),
     @Description  NVARCHAR(MAX)    = NULL,
@@ -13,12 +13,48 @@ CREATE OR ALTER PROCEDURE usp_Task_Create
     @StoryPoints  FLOAT            = NULL,
     -- Migration 0024 widened Tasks.DueDate from DATE to DATETIME2 so the
     -- board can set a time-of-day deadline. Param type follows suit.
-    @DueDate      DATETIME2        = NULL
+    @DueDate      DATETIME2        = NULL,
+    -- Migration 0029 (hierarchy): re-home the task into a List. When provided,
+    -- the List's Space becomes the bridge ProjectId and ListPath is materialized.
+    @ListId       UNIQUEIDENTIFIER = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
         BEGIN TRANSACTION;
+
+        -- ── Hierarchy (0029): resolve List → derive Space, materialize ListPath ──
+        DECLARE @ListPath NVARCHAR(900) = NULL;
+        IF @ListId IS NOT NULL
+        BEGIN
+            DECLARE @ListSpaceId UNIQUEIDENTIFIER;
+            SELECT @ListSpaceId = SpaceId, @ListPath = Path
+            FROM   dbo.Lists WHERE Id = @ListId AND DeletedAt IS NULL;
+            IF @ListSpaceId IS NULL THROW 51213, 'List not found', 1;
+            SET @ProjectId = @ListSpaceId;   -- bridge: ProjectId tracks the List's Space
+        END
+
+        IF @ProjectId IS NULL
+            THROW 51214, 'Either projectId or listId is required', 1;
+
+        -- Subtask-depth guard (Space.MaxSubtaskDepth). Walk the ParentTaskId chain.
+        IF @ParentTaskId IS NOT NULL
+        BEGIN
+            DECLARE @MaxDepth INT;
+            SELECT @MaxDepth = MaxSubtaskDepth FROM dbo.Projects WHERE Id = @ProjectId;
+            IF @MaxDepth IS NOT NULL
+            BEGIN
+                DECLARE @Depth INT = 1, @Cur UNIQUEIDENTIFIER = @ParentTaskId;
+                WHILE @Cur IS NOT NULL
+                BEGIN
+                    SELECT @Cur = ParentTaskId FROM dbo.Tasks WHERE Id = @Cur;
+                    SET @Depth = @Depth + 1;
+                    IF @Depth > @MaxDepth + 1 BREAK;
+                END
+                IF @Depth > @MaxDepth + 1
+                    THROW 51230, 'Subtask depth exceeds the space limit', 1;
+            END
+        END
 
         -- Generate next issue key (e.g. PROJ-43)
         DECLARE @ProjectKey NVARCHAR(20);
@@ -40,11 +76,11 @@ BEGIN
         INSERT INTO Tasks (
             Id, ProjectId, WorkspaceId, IssueKey, Title, Description,
             Type, Status, Priority, ReporterId, SprintId, EpicId,
-            ParentTaskId, StoryPoints, DueDate, Position
+            ParentTaskId, StoryPoints, DueDate, Position, ListId, ListPath
         ) VALUES (
             @NewId, @ProjectId, @WorkspaceId, @IssueKey, @Title, @Description,
             @Type, @Status, @Priority, @ReporterId, @SprintId, @EpicId,
-            @ParentTaskId, @StoryPoints, @DueDate, @MaxPosition + 1000
+            @ParentTaskId, @StoryPoints, @DueDate, @MaxPosition + 1000, @ListId, @ListPath
         );
 
         SELECT * FROM Tasks WHERE Id = @NewId;

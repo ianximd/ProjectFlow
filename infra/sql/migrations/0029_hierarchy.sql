@@ -125,3 +125,34 @@ BEGIN
     CREATE NONCLUSTERED INDEX IX_ObjPerm_Subject ON dbo.ObjectPermissions (SubjectType, SubjectId);
 END
 GO
+
+-- ── Backfill: one default List per Space + re-home tasks (idempotent) ───────
+-- Re-runnable: only creates a default List for Spaces that lack one, and only
+-- re-homes tasks whose ListId is still NULL.
+BEGIN
+    DECLARE @sid UNIQUEIDENTIFIER, @wsid UNIQUEIDENTIFIER, @pname NVARCHAR(255), @lid UNIQUEIDENTIFIER;
+    DECLARE space_cur CURSOR LOCAL FAST_FORWARD FOR
+        SELECT p.Id, p.WorkspaceId, p.Name
+        FROM   dbo.Projects p
+        WHERE  p.DeletedAt IS NULL
+          AND  NOT EXISTS (SELECT 1 FROM dbo.Lists l WHERE l.SpaceId = p.Id AND l.IsDefault = 1 AND l.DeletedAt IS NULL);
+    OPEN space_cur;
+    FETCH NEXT FROM space_cur INTO @sid, @wsid, @pname;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        SET @lid = NEWID();
+        INSERT INTO dbo.Lists (Id, WorkspaceId, SpaceId, FolderId, Name, Position, Path, IsDefault)
+        VALUES (@lid, @wsid, @sid, NULL, @pname, 0,
+                '/' + CONVERT(NVARCHAR(36), @sid) + '/' + CONVERT(NVARCHAR(36), @lid) + '/', 1);
+        FETCH NEXT FROM space_cur INTO @sid, @wsid, @pname;
+    END
+    CLOSE space_cur; DEALLOCATE space_cur;
+
+    UPDATE t
+    SET    t.ListId   = l.Id,
+           t.ListPath = l.Path
+    FROM   dbo.Tasks t
+    JOIN   dbo.Lists l ON l.SpaceId = t.ProjectId AND l.IsDefault = 1 AND l.DeletedAt IS NULL
+    WHERE  t.ListId IS NULL;
+END
+GO

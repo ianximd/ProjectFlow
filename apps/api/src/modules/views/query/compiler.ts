@@ -87,10 +87,13 @@ function compileCustom(d: FieldDescriptor, rule: FilterRule, bind: Bind): string
   const inner = (expr: string) =>
     `EXISTS (SELECT 1 FROM TaskCustomFieldValues v WHERE v.TaskId = t.Id AND v.FieldId = ${fieldParam} AND ${expr})`;
 
+  // Emptiness uses the Phase-2 sentinel pattern (type-agnostic for scalars AND arrays).
+  // JSON_VALUE on a bare scalar root throws, so we must NOT use it here.
+  const sentinel = `v.Value IS NOT NULL AND v.Value NOT IN ('', 'null', '""', '[]')`;
   if (rule.op === 'is_empty')
-    return `NOT EXISTS (SELECT 1 FROM TaskCustomFieldValues v WHERE v.TaskId = t.Id AND v.FieldId = ${fieldParam} AND JSON_VALUE(v.Value, '$') IS NOT NULL)`;
+    return `NOT EXISTS (SELECT 1 FROM TaskCustomFieldValues v WHERE v.TaskId = t.Id AND v.FieldId = ${fieldParam} AND ${sentinel})`;
   if (rule.op === 'is_not_empty')
-    return inner(`JSON_VALUE(v.Value, '$') IS NOT NULL`);
+    return `EXISTS (SELECT 1 FROM TaskCustomFieldValues v WHERE v.TaskId = t.Id AND v.FieldId = ${fieldParam} AND ${sentinel})`;
 
   if (d.logical === 'array') {
     if (rule.op === 'in' || rule.op === 'not_in') {
@@ -101,7 +104,10 @@ function compileCustom(d: FieldDescriptor, rule: FilterRule, bind: Bind): string
     return inner(`EXISTS (SELECT 1 FROM OPENJSON(v.Value) j WHERE j.value = ${bind(rule.value)})`);
   }
 
-  const lhs = scalarLhs(d, `JSON_VALUE(v.Value, '$')`);
+  // Array-wrap so JSON_VALUE accepts bare scalars (numbers/bools) AND quoted strings:
+  // [8] -> '$[0]' -> "8"; ["hi"] -> "hi"; [true] -> "true". (Concatenation is on the DB
+  // COLUMN value server-side — not interpolation of user input — so there is no injection.)
+  const lhs = scalarLhs(d, `JSON_VALUE('[' + v.Value + ']', '$[0]')`);
   if (rule.op === 'in' || rule.op === 'not_in') {
     const list = asNonEmptyArray(rule.value).map((v) => bind(v)).join(', ');
     const clause = inner(`${lhs} IN (${list})`);

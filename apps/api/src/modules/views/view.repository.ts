@@ -1,7 +1,9 @@
 import sql from 'mssql';
 import { execSpOne } from '../../shared/lib/sqlClient.js';
+import { getPool } from '../../shared/lib/db.js';
 import { mapSavedViewRow } from './map.js';
-import type { SavedView, ViewScopeType, ViewType } from '@projectflow/types';
+import type { SavedView, ViewScopeType, ViewType, ViewTaskPage } from '@projectflow/types';
+import type { CompiledQuery } from './query/compiler.js';
 
 export class ViewRepository {
   async getWorkspaceId(id: string): Promise<string | null> {
@@ -74,5 +76,35 @@ export class ViewRepository {
       { name: 'ScopeId',     type: sql.UniqueIdentifier, value: scopeId },
     ]);
     return (rows as any[]).map(mapSavedViewRow);
+  }
+
+  async queryTasks(compiled: CompiledQuery, opts: { page: number; pageSize: number }): Promise<ViewTaskPage> {
+    if (!Number.isInteger(opts.page) || opts.page < 1) throw new Error('page must be an integer >= 1');
+    if (!Number.isInteger(opts.pageSize) || opts.pageSize < 1) throw new Error('pageSize must be an integer >= 1');
+    const pool = await getPool();
+    const offset = (opts.page - 1) * opts.pageSize;
+
+    const joins = compiled.customSortJoins
+      .map((j) => `LEFT JOIN TaskCustomFieldValues ${j.alias} ON ${j.alias}.TaskId = t.Id AND ${j.alias}.FieldId = @${j.alias}_fid`)
+      .join('\n');
+
+    const bindAll = (req: sql.Request) => {
+      for (const [k, v] of Object.entries(compiled.params)) req.input(k, v as any);
+      for (const j of compiled.customSortJoins) req.input(`${j.alias}_fid`, sql.UniqueIdentifier, j.fieldId);
+      return req;
+    };
+
+    const pageSql =
+      `SELECT t.* FROM Tasks t ${joins} WHERE ${compiled.whereSql} ` +
+      `ORDER BY ${compiled.orderSql} OFFSET @__off ROWS FETCH NEXT @__size ROWS ONLY`;
+    const pageReq = bindAll(pool.request());
+    pageReq.input('__off', sql.Int, offset);
+    pageReq.input('__size', sql.Int, opts.pageSize);
+    const pageRes = await pageReq.query(pageSql);
+
+    const countReq = bindAll(pool.request());
+    const countRes = await countReq.query(`SELECT COUNT(*) AS Total FROM Tasks t WHERE ${compiled.whereSql}`);
+
+    return { tasks: pageRes.recordset as any, total: countRes.recordset[0]?.Total ?? 0 };
   }
 }

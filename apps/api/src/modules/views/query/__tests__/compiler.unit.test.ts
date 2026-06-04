@@ -37,11 +37,25 @@ it('compiles a join-backed assignee filter as EXISTS', () => {
   expect(Object.values(r.params)).toContain('U1');
 });
 
-it('compiles a custom number field with CAST(... AS FLOAT)', () => {
+it('compiles a custom number field with CAST(... AS FLOAT) over array-wrapped JSON_VALUE', () => {
   const r = compile({ ...base, filter: { conjunction: 'AND', rules: [{ field: { kind: 'custom', key: 'f1' }, op: '>=', value: 3 }] }, sort: [] });
   expect(r.whereSql).toContain('TaskCustomFieldValues v');
-  expect(r.whereSql).toContain('CAST(JSON_VALUE(v.Value');
+  expect(r.whereSql).toContain("JSON_VALUE('[' + v.Value + ']', '$[0]')");
   expect(r.whereSql).toContain('AS FLOAT)');
+});
+
+it('compiles custom is_empty via emptiness sentinels (no JSON_VALUE on bare scalar)', () => {
+  const r = compile({ ...base, sort: [], filter: { conjunction: 'AND', rules: [{ field: { kind: 'custom', key: 'f1' }, op: 'is_empty' }] } });
+  expect(r.whereSql).toContain("v.Value NOT IN ('', 'null', '\"\"', '[]')");
+  expect(r.whereSql).toMatch(/NOT EXISTS/);
+  expect(r.whereSql).not.toContain('JSON_VALUE');
+});
+
+it('compiles custom is_not_empty via emptiness sentinels', () => {
+  const r = compile({ ...base, sort: [], filter: { conjunction: 'AND', rules: [{ field: { kind: 'custom', key: 'f1' }, op: 'is_not_empty' }] } });
+  expect(r.whereSql).toContain("v.Value NOT IN ('', 'null', '\"\"', '[]')");
+  expect(r.whereSql).not.toMatch(/NOT EXISTS/);
+  expect(r.whereSql).not.toContain('JSON_VALUE');
 });
 
 it('compiles nested AND/OR groups', () => {

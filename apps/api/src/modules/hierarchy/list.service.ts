@@ -19,7 +19,9 @@ export class ListService {
   }
 
   async create(input: { workspaceId: string; spaceId: string; folderId: string | null; name: string; position: number; parentPath: string; isDefault?: boolean }) {
-    const id = randomUUID();
+    // Uppercase to match SQL Server's canonical UNIQUEIDENTIFIER string form,
+    // so the materialized Path segments equal the ids the DB returns.
+    const id = randomUUID().toUpperCase();
     const path = listPath(input.parentPath, id);
     return this.repo.create({ id, workspaceId: input.workspaceId, spaceId: input.spaceId, folderId: input.folderId, name: input.name, position: input.position, path, isDefault: input.isDefault });
   }

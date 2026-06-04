@@ -7,7 +7,9 @@ export class FolderService {
 
   /** parentPath = the parent folder's Path, or spacePath(spaceId) when top-level. */
   async create(input: { workspaceId: string; spaceId: string; parentFolderId: string | null; name: string; position: number; parentPath: string }) {
-    const id = randomUUID();
+    // Uppercase to match SQL Server's canonical UNIQUEIDENTIFIER string form,
+    // so the materialized Path segments equal the ids the DB returns.
+    const id = randomUUID().toUpperCase();
     const path = folderPath(input.parentPath, id);
     return this.repo.create({ id, workspaceId: input.workspaceId, spaceId: input.spaceId, parentFolderId: input.parentFolderId, name: input.name, position: input.position, path });
   }

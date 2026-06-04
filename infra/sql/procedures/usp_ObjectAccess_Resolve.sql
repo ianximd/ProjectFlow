@@ -9,7 +9,7 @@ BEGIN
     DECLARE @SpaceId UNIQUEIDENTIFIER, @WorkspaceId UNIQUEIDENTIFIER, @Path NVARCHAR(900);
     IF @ObjectType = 'SPACE'
         SELECT @SpaceId = Id, @WorkspaceId = WorkspaceId, @Path = '/' + CONVERT(NVARCHAR(36), Id) + '/'
-        FROM dbo.Projects WHERE Id = @ObjectId AND DeletedAt IS NULL;
+        FROM dbo.Projects WHERE Id = @ObjectId AND Status <> 'DELETED';
     ELSE IF @ObjectType = 'FOLDER'
         SELECT @SpaceId = SpaceId, @WorkspaceId = WorkspaceId, @Path = Path
         FROM dbo.Folders WHERE Id = @ObjectId AND DeletedAt IS NULL;

@@ -11,7 +11,7 @@ const BACKFILL = `
 DECLARE @sid UNIQUEIDENTIFIER, @wsid UNIQUEIDENTIFIER, @pname NVARCHAR(255), @lid UNIQUEIDENTIFIER;
 DECLARE space_cur CURSOR LOCAL FAST_FORWARD FOR
   SELECT p.Id, p.WorkspaceId, p.Name FROM dbo.Projects p
-  WHERE p.DeletedAt IS NULL AND NOT EXISTS (SELECT 1 FROM dbo.Lists l WHERE l.SpaceId = p.Id AND l.IsDefault = 1 AND l.DeletedAt IS NULL);
+  WHERE p.Status <> 'DELETED' AND NOT EXISTS (SELECT 1 FROM dbo.Lists l WHERE l.SpaceId = p.Id AND l.IsDefault = 1 AND l.DeletedAt IS NULL);
 OPEN space_cur; FETCH NEXT FROM space_cur INTO @sid, @wsid, @pname;
 WHILE @@FETCH_STATUS = 0 BEGIN
   SET @lid = NEWID();

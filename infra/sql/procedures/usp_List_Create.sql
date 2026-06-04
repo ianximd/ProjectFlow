@@ -11,7 +11,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
-        IF NOT EXISTS (SELECT 1 FROM dbo.Projects WHERE Id = @SpaceId AND WorkspaceId = @WorkspaceId AND DeletedAt IS NULL)
+        IF NOT EXISTS (SELECT 1 FROM dbo.Projects WHERE Id = @SpaceId AND WorkspaceId = @WorkspaceId AND Status <> 'DELETED')
             THROW 51200, 'Space not found in workspace', 1;
         IF @FolderId IS NOT NULL AND NOT EXISTS (
             SELECT 1 FROM dbo.Folders WHERE Id = @FolderId AND SpaceId = @SpaceId AND WorkspaceId = @WorkspaceId AND DeletedAt IS NULL)

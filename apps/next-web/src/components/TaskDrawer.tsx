@@ -20,6 +20,7 @@ import { loadTaskCustomFields } from '@/server/actions/custom-fields';
 import { CustomFieldCell } from './custom-fields/CustomFieldCell';
 import { TaskTypeSelector } from './TaskTypeSelector';
 import { TagPicker } from './TagPicker';
+import { WatcherControl } from './WatcherControl';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -917,6 +918,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             <div className={styles.section}>
               <p className={styles.sectionTitle}>Tags</p>
               <TagPicker taskId={taskId} spaceId={spaceId} />
+            </div>
+          )}
+
+          {workspaceId && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Watchers</p>
+              <WatcherControl taskId={taskId} workspaceId={workspaceId} />
             </div>
           )}
 

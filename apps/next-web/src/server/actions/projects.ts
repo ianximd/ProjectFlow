@@ -42,6 +42,8 @@ export interface UpdateProjectInput {
   type?: ProjectType;
   startDate?: string | null;
   endDate?: string | null;
+  /** Phase 2 (0030): Space-level multiple-assignees toggle. */
+  multipleAssignees?: boolean;
 }
 
 export async function updateProject(id: string, changed: UpdateProjectInput): Promise<ActionResult> {

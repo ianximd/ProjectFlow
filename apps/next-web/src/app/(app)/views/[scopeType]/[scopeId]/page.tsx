@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import { requireSession } from '@/server/session';
 import { getSavedViews, getViewTasks, type ViewTaskPageResult } from '@/server/queries/views';
-import type { ViewScopeType } from '@projectflow/types';
+import { getCustomFields } from '@/server/queries/custom-fields';
+import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface } from '@/components/views/view-surface';
 
 // Mirrors board/page.tsx: gate the session first, then read the (async, Next 16)
@@ -31,6 +32,11 @@ export default async function ViewsPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const meMode = Boolean(sp.meMode);
 
+  // Custom fields drive the filter-builder field options + table/list columns.
+  // They're only scoped to SPACE/FOLDER/LIST; the EVERYTHING scope has none.
+  const customFields: CustomField[] =
+    scopeType === 'EVERYTHING' ? [] : await getCustomFields(scopeType, scopeId);
+
   const views = await getSavedViews(scopeType, scopeId);
 
   // Active view = explicit ?viewId ?? the default view ?? the first view.
@@ -47,9 +53,9 @@ export default async function ViewsPage({
       activeViewId={activeView?.id ?? null}
       scopeType={scopeType}
       scopeId={scopeId}
-      page={page}
       meMode={meMode}
       taskPage={taskPage}
+      customFields={customFields}
     />
   );
 }

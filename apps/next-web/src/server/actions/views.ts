@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
-import { gqlData } from '../queries/views';
+import { gqlData, previewViewTasks as previewViewTasksQuery, type ViewTaskPageResult } from '../queries/views';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
 import type { BulkAction, BulkUpdateResult, SavedView, ViewConfig } from '@projectflow/types';
@@ -24,6 +24,28 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   revalidatePath('/board');
   revalidatePath('/lists/[listId]', 'page');
   return { ok: true, data: result } as ActionResult<T>;
+}
+
+/** Live preview of an UNSAVED `ViewConfig` against a scope, callable from the
+ *  client filter-builder. Read-only, so (unlike `run`) it does NOT revalidate any
+ *  routes — it just gates the session, runs the preview query, and maps a thrown
+ *  ApiError into an ActionFail. Returns the same `ViewTaskPageResult` shape as the
+ *  SSR `getViewTasks`/`previewViewTasks` query. */
+export async function previewViewTasks(
+  scopeType: SavedView['scopeType'],
+  scopeId: string | null,
+  config: ViewConfig,
+  page = 1,
+  meMode = false,
+  workspaceId?: string,
+): Promise<ActionResult<ViewTaskPageResult>> {
+  await requireSession();
+  try {
+    const data = await previewViewTasksQuery(scopeType, scopeId, config, page, meMode, workspaceId);
+    return { ok: true, data };
+  } catch (e) {
+    return toActionError(e);
+  }
 }
 
 export interface CreateSavedViewInput {

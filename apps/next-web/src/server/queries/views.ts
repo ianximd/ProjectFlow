@@ -116,3 +116,60 @@ export const getViewTasks = cache(async (
     groups: viewTasks?.groups ?? [],
   };
 });
+
+const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
+  query PreviewViewTasks(
+    $scopeType: String!, $scopeId: String, $config: String!,
+    $page: Int, $meMode: Boolean, $workspaceId: String
+  ) {
+    previewViewTasks(
+      scopeType: $scopeType, scopeId: $scopeId, config: $config,
+      page: $page, meMode: $meMode, workspaceId: $workspaceId
+    ) {
+      total
+      groups { key label count }
+      tasks {
+        id
+        issueKey
+        title
+        description
+        status
+        priority
+        type
+        storyPoints
+        dueDate
+        sprintId
+      }
+    }
+  }
+`;
+
+/** Run an UNSAVED `ViewConfig` against a scope and return its paged tasks (same
+ *  `ViewTaskPageResult` shape as `getViewTasks`). The filter-builder uses this to
+ *  show a live preview/count of an in-progress config. `config` is serialized to
+ *  the JSON string the schema's String arg expects. */
+export const previewViewTasks = cache(async (
+  scopeType: SavedView['scopeType'],
+  scopeId: string | null,
+  config: ViewConfig,
+  page = 1,
+  meMode = false,
+  workspaceId?: string,
+): Promise<ViewTaskPageResult> => {
+  const { previewViewTasks: r } = await gqlData<{
+    previewViewTasks: { total: number; groups: ViewGroup[] | null; tasks: any[] } | null;
+  }>(PREVIEW_VIEW_TASKS_QUERY, {
+    scopeType,
+    scopeId: scopeId ?? null,
+    config: JSON.stringify(config),
+    page,
+    meMode,
+    workspaceId: workspaceId ?? null,
+  });
+
+  return {
+    total: r?.total ?? 0,
+    tasks: (r?.tasks ?? []).map(normalizeTask),
+    groups: r?.groups ?? [],
+  };
+});

@@ -1,0 +1,218 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
+import { fieldRefLabel, taskFieldValue } from './field-options';
+import type { ViewTaskPageResult } from '@/server/queries/views';
+import type { Task } from '@/server/queries/normalize-task';
+import type { CustomField, FieldRef, SavedView } from '@projectflow/types';
+
+interface Props {
+  /** Paged tasks for the active view. Null when no view is active (handled upstream). */
+  taskPage: ViewTaskPageResult | null;
+  /** The active saved view — config.columns / config.groupBy drive the layout. */
+  activeView: SavedView;
+  /** The scope's custom fields, used to label/render custom columns. */
+  customFields: CustomField[];
+  /** Bulk-bar wiring (E6): fires with the selected task ids whenever selection changes. */
+  onSelectionChange?: (ids: string[]) => void;
+}
+
+// Default columns when a view has none configured. Mirrors the columns a typical
+// task list shows. These are all built-in FieldRefs.
+const DEFAULT_COLUMNS: FieldRef[] = [
+  { kind: 'builtin', key: 'title' },
+  { kind: 'builtin', key: 'status' },
+  { kind: 'builtin', key: 'priority' },
+  { kind: 'builtin', key: 'dueDate' },
+];
+
+/** A grouped or flat slice of rows ready to render. `key`/`label`/`count` are
+ *  null for the flat (ungrouped) case. */
+interface RowGroup {
+  key: string | null;
+  label: string | null;
+  count: number | null;
+  tasks: Task[];
+}
+
+export function TableView({ taskPage, activeView, customFields, onSelectionChange }: Props) {
+  const tasks = taskPage?.tasks ?? [];
+  const groups = taskPage?.groups ?? [];
+  const config = activeView.config;
+
+  const columns: FieldRef[] =
+    config.columns && config.columns.length > 0 ? config.columns : DEFAULT_COLUMNS;
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Drop selections for tasks that left the page (e.g. after a refresh) so the
+  // exposed selection never references stale ids.
+  useEffect(() => {
+    const live = new Set(tasks.map((t) => t.id));
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((id) => live.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tasks]);
+
+  useEffect(() => {
+    onSelectionChange?.([...selected]);
+  }, [selected, onSelectionChange]);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const allSelected = tasks.length > 0 && tasks.every((t) => selected.has(t.id));
+  const toggleAll = () =>
+    setSelected(allSelected ? new Set() : new Set(tasks.map((t) => t.id)));
+
+  // Client-side grouping: when config.groupBy is set, bucket rows by the field's
+  // value and align each bucket to a `taskPage.groups` entry for the count/label.
+  const rowGroups: RowGroup[] = useMemo(() => {
+    if (!config.groupBy) return [{ key: null, label: null, count: null, tasks }];
+    const groupBy = config.groupBy;
+    const buckets = new Map<string, Task[]>();
+    for (const t of tasks) {
+      const v = taskFieldValue(t, groupBy, customFields);
+      const k = v == null || v === '' ? '∅' : String(v);
+      const arr = buckets.get(k) ?? [];
+      arr.push(t);
+      buckets.set(k, arr);
+    }
+    return [...buckets.entries()].map(([key, groupTasks]) => {
+      const meta = groups.find((g) => g.key === key);
+      return {
+        key,
+        label: meta?.label ?? (key === '∅' ? '(empty)' : key),
+        count: meta?.count ?? groupTasks.length,
+        tasks: groupTasks,
+      };
+    });
+  }, [tasks, groups, config.groupBy, customFields]);
+
+  const colCount = columns.length + 1; // + selection column
+
+  return (
+    <div
+      data-testid="view-body-table"
+      className="flex h-full flex-col overflow-auto rounded-lg border border-border bg-background"
+    >
+      <table className="w-full border-collapse text-xs">
+        <thead className="sticky top-0 z-10 bg-muted/40">
+          <tr className="border-b border-border text-left text-muted-foreground">
+            <th className="w-9 px-2 py-2">
+              <Checkbox
+                size="sm"
+                checked={allSelected}
+                onCheckedChange={toggleAll}
+                aria-label="Select all rows"
+                data-testid="row-select-all"
+              />
+            </th>
+            {columns.map((c) => (
+              <th key={fieldKey(c)} className="px-3 py-2 font-medium">
+                {fieldRefLabel(c, customFields)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {tasks.length === 0 ? (
+            <tr>
+              <td colSpan={colCount} className="px-3 py-6 text-center text-muted-foreground">
+                No tasks.
+              </td>
+            </tr>
+          ) : (
+            rowGroups.map((g) => (
+              <GroupBlock
+                key={g.key ?? '__flat__'}
+                group={g}
+                columns={columns}
+                colCount={colCount}
+                customFields={customFields}
+                selected={selected}
+                onToggle={toggle}
+              />
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupBlock({
+  group,
+  columns,
+  colCount,
+  customFields,
+  selected,
+  onToggle,
+}: {
+  group: RowGroup;
+  columns: FieldRef[];
+  colCount: number;
+  customFields: CustomField[];
+  selected: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <>
+      {group.key !== null && (
+        <tr className="bg-muted/20" data-testid="table-group-header">
+          <td colSpan={colCount} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {group.label} {group.count != null && <span className="font-normal">({group.count})</span>}
+          </td>
+        </tr>
+      )}
+      {group.tasks.map((t) => (
+        <tr
+          key={t.id}
+          data-testid="table-row"
+          data-selected={selected.has(t.id) ? 'true' : undefined}
+          className={cn(
+            'border-b border-border/60 hover:bg-muted/30',
+            selected.has(t.id) && 'bg-primary/5',
+          )}
+        >
+          <td className="px-2 py-2 align-middle">
+            <Checkbox
+              size="sm"
+              checked={selected.has(t.id)}
+              onCheckedChange={() => onToggle(t.id)}
+              aria-label={`Select ${t.title}`}
+              data-testid="row-select"
+            />
+          </td>
+          {columns.map((c) => (
+            <td key={fieldKey(c)} className="px-3 py-2 align-middle text-foreground">
+              <Cell task={t} field={c} customFields={customFields} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function Cell({ task, field, customFields }: { task: Task; field: FieldRef; customFields: CustomField[] }) {
+  const v = taskFieldValue(task, field, customFields);
+  if (v == null || v === '') return <span className="text-muted-foreground/60">—</span>;
+  if (field.kind === 'builtin' && field.key === 'title') {
+    return <span className="font-medium">{String(v)}</span>;
+  }
+  return <span>{String(v)}</span>;
+}
+
+function fieldKey(f: FieldRef): string {
+  return `${f.kind}:${f.key}`;
+}

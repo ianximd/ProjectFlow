@@ -10,6 +10,7 @@ import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
 import { BoardViewEngine } from '@/components/views/board-view-engine';
 import { FilterBuilder } from '@/components/views/filter-builder';
+import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ViewTaskPageResult } from '@/server/queries/views';
@@ -44,9 +45,17 @@ export function ViewSurface({
   const activeView = views.find((v) => v.id === activeViewId) ?? null;
 
   // Bulk-bar selection (E6 consumes this). TableView/ListView own their own
-  // selection set and report it up via onSelectionChange.
-  const [, setSelectedIds] = useState<string[]>([]);
+  // selection set and report it up via onSelectionChange; we lift it here so the
+  // BulkBar can act on it and clear it after a successful bulk action.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const onSelectionChange = useCallback((ids: string[]) => setSelectedIds(ids), []);
+
+  // After a bulk action: drop the local selection and pull fresh SSR data (the
+  // child table/list re-renders with the updated rows and prunes stale ids).
+  const onBulkDone = useCallback(() => {
+    setSelectedIds([]);
+    router.refresh();
+  }, [router]);
 
   // Filter-builder panel is collapsible (table/list only).
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -116,6 +125,15 @@ export function ViewSurface({
           scopeId={scopeId}
           customFields={customFields}
           meMode={meMode}
+        />
+      )}
+
+      {selectedIds.length > 0 && (
+        <BulkBar
+          selectedIds={selectedIds}
+          scopeType={scopeType}
+          scopeId={scopeId}
+          onDone={onBulkDone}
         />
       )}
 

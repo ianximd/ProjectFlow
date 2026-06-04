@@ -1,0 +1,38 @@
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { request, json } from '../../../__tests__/setup/testServer.js';
+import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
+import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
+import { closePool } from '../../../shared/lib/db.js';
+
+beforeEach(async () => { await truncateAll(); });
+afterAll(async () => { await closePool(); });
+
+let seq = 0;
+async function setupTaskInList() {
+  seq += 1;
+  const owner = await createTestUser({ email: `cfv-${Date.now()}-${seq}@projectflow.test` });
+  const t = owner.accessToken;
+  const ws = await createTestWorkspace(t);
+  const space = await createTestProject(ws.Id, t, { name: 'CFV Space', key: `CV${(Date.now() + seq) % 100000}` });
+  const list = (await json<{ data: any }>(await request('/lists', {
+    method: 'POST', token: t, json: { workspaceId: ws.Id, spaceId: space.Id, folderId: null, name: 'Default', position: 0 },
+  }), 201)).data;
+  const listId = list.id ?? list.Id;
+  const task = (await json<{ data: any }>(await request('/tasks', {
+    method: 'POST', token: t, json: { workspaceId: ws.Id, listId, title: 'CFV task' },
+  }), 201)).data;
+  return { t, ws, space, list, task };
+}
+
+describe('custom field values', () => {
+  it('sets and persists a value; rejects an invalid one with 422', async () => {
+    const { t, space, task } = await setupTaskInList();
+    const f = (await json<{ data: any }>(await request('/custom-fields', { method: 'POST', token: t, json: { scopeType: 'SPACE', scopeId: space.Id, type: 'number', name: 'Estimate' } }), 201)).data;
+    const taskId = task.Id ?? task.id;
+    await json(await request(`/tasks/${taskId}/fields/${f.id}`, { method: 'PUT', token: t, json: { value: 42 } }), 200);
+    const eff = (await json<{ data: any[] }>(await request(`/tasks/${taskId}/fields`, { token: t }), 200)).data;
+    expect(eff.find((e) => e.field.id === f.id)?.value).toBe(42);
+    const bad = await request(`/tasks/${taskId}/fields/${f.id}`, { method: 'PUT', token: t, json: { value: 'not a number' } });
+    expect(bad.status).toBe(422);
+  });
+});

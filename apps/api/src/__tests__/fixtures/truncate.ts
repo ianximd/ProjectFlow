@@ -22,6 +22,9 @@ const TRUNCATION_ORDER = [
   // Children first (FK leaves)
   'TaskAssignees',
   'TaskDependencies',
+  // Phase 2 (0030) — value/watcher leaves, FK Tasks/CustomFields/Users.
+  'TaskCustomFieldValues',
+  'TaskWatchers',
   'CommentReactions',
   'Comments',
   'Attachments',
@@ -43,6 +46,8 @@ const TRUNCATION_ORDER = [
   'ObjectPermissions',
   // Mid-level
   'Tasks',
+  // Phase 2 (0030): Tasks.TaskTypeId FKs TaskTypes — delete after Tasks.
+  'TaskTypes',
   // Hierarchy (0029): Tasks FK Lists; Lists FK Folders; both FK Projects/Workflows.
   'Lists',
   'Folders',
@@ -50,6 +55,8 @@ const TRUNCATION_ORDER = [
   'Versions',
   'Components',
   'Labels',
+  // Phase 2 (0030): CustomFields FK Workspaces; its child TaskCustomFieldValues already wiped above.
+  'CustomFields',
   'WorkflowTransitions',
   'WorkflowStatuses',
   'WorkflowDefinitions',

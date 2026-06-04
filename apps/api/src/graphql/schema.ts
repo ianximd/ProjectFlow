@@ -5,6 +5,7 @@ import { pubsub }  from './pubsub.js';
 import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
+import { registerTagsGraphql } from './tags.schema.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -589,6 +590,11 @@ registerCustomFieldsGraphql();
 // Task Types (Phase 2) — TaskType type + taskTypes query + setTaskType mutation.
 // ─────────────────────────────────────────
 registerTaskTypesGraphql();
+
+// ─────────────────────────────────────────
+// Tags (Phase 2) — Tag type + spaceTags query + create/delete/link/unlink.
+// ─────────────────────────────────────────
+registerTagsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

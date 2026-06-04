@@ -14,6 +14,7 @@ export type PubSubChannels = {
   'list:updated':    [{ spaceId: string; list: unknown }];
   'customField:updated': [{ scopeId: string; field: unknown }];
   'taskType:updated': [{ workspaceId: string; taskType: unknown }];
+  'tag:updated': [{ spaceId: string; tag: unknown }];
 };
 
 /**

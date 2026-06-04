@@ -11,6 +11,7 @@ import { pubsub } from '../../graphql/pubsub.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
+import { tagService } from '../tags/tag.service.js';
 
 const log = subLogger('tasks-routes');
 
@@ -327,6 +328,36 @@ taskRoutes.patch(
       }
       throw err;
     }
+  });
+
+// GET /api/v1/tasks/:id/tags — tags linked to a task
+taskRoutes.get('/:id/tags', async (c) => c.json({ data: await tagService.listForTask(c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/tags/:tagId — link a tag (idempotent)
+taskRoutes.post(
+  '/:id/tags/:tagId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    try {
+      await tagService.linkTask(c.req.param('id')!, c.req.param('tagId')!);
+      await invalidateTaskCaches();
+      return c.json({ data: { taskId: c.req.param('id'), tagId: c.req.param('tagId') } });
+    } catch (err: any) {
+      if (err.number === 51341 || err.number === 51342) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/tags/:tagId — unlink a tag
+taskRoutes.delete(
+  '/:id/tags/:tagId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await tagService.unlinkTask(c.req.param('id')!, c.req.param('tagId')!);
+    await invalidateTaskCaches();
+    return c.json({ data: { taskId: c.req.param('id'), tagId: c.req.param('tagId') } });
   });
 
 // DELETE /api/v1/tasks/:id

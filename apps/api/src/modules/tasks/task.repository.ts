@@ -12,11 +12,17 @@ export interface AssigneeRow {
 
 export class TaskRepository {
 
-  /** Phase 2: whether the task's Space allows multiple assignees (defaults true if unknown). */
+  /**
+   * Phase 2: whether the task's Space allows multiple assignees. Fails CLOSED —
+   * if the task (or its space) can't be resolved, returns false so the
+   * multi-assignee gate blocks rather than silently allowing the write on a
+   * non-existent task.
+   */
   async getSpaceMultipleAssignees(taskId: string): Promise<boolean> {
     const rows = await execSpOne<{ MultipleAssignees: boolean }>('usp_Space_GetMultipleAssignees',
       [{ name: 'TaskId', type: sql.UniqueIdentifier, value: taskId }]);
-    return !!(rows[0]?.MultipleAssignees ?? 1);
+    if (!rows[0]) return false;
+    return !!rows[0].MultipleAssignees;
   }
 
   async create(input: CreateTaskInput): Promise<Task> {

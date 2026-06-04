@@ -69,10 +69,15 @@ BEGIN
                 SET @ResolvedAt = GETUTCDATE();
         END;
 
+        -- ResolvedAt reflects whether the task is CURRENTLY in a DONE-category
+        -- status: a timestamp when transitioning into DONE, cleared to NULL when
+        -- transitioning back out (reopen). The previous CASE kept a stale
+        -- timestamp on reopen, which left progress_auto counting reopened
+        -- subtasks as still-done forever.
         UPDATE Tasks
         SET
             Status     = @NewStatus,
-            ResolvedAt = CASE WHEN @ResolvedAt IS NOT NULL THEN @ResolvedAt ELSE ResolvedAt END,
+            ResolvedAt = @ResolvedAt,
             UpdatedAt  = GETUTCDATE()
         WHERE Id = @TaskId;
 

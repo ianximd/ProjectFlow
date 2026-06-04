@@ -48,9 +48,16 @@ taskTypeRoutes.post('/',
   requirePermission('label.manage', { resolveWorkspace: resolveWorkspaceFromBody }),
   async (c) => {
     const b = c.req.valid('json');
-    const taskType = await taskTypeService.create(b);
-    pubsub.publish('taskType:updated', { workspaceId: b.workspaceId, taskType });
-    return c.json({ data: taskType }, 201);
+    try {
+      const taskType = await taskTypeService.create(b);
+      pubsub.publish('taskType:updated', { workspaceId: b.workspaceId, taskType });
+      return c.json({ data: taskType }, 201);
+    } catch (err: any) {
+      if (err.number === 2627 || err.number === 2601) {
+        return c.json({ error: { code: 'TASK_TYPE_NAME_TAKEN', message: 'A task type with that name already exists in this workspace' } }, 409);
+      }
+      throw err;
+    }
   });
 
 // PATCH /task-types/:id — manage.
@@ -58,10 +65,17 @@ taskTypeRoutes.patch('/:id',
   requirePermission('label.manage', { resolveWorkspace: resolveTypeWorkspace }),
   zValidator('json', updateSchema),
   async (c) => {
-    const taskType = await taskTypeService.update(c.req.param('id')!, c.req.valid('json'));
-    if (!taskType) return c.json({ error: { code: 'NOT_FOUND', message: 'Task type not found' } }, 404);
-    pubsub.publish('taskType:updated', { workspaceId: taskType.workspaceId, taskType });
-    return c.json({ data: taskType });
+    try {
+      const taskType = await taskTypeService.update(c.req.param('id')!, c.req.valid('json'));
+      if (!taskType) return c.json({ error: { code: 'NOT_FOUND', message: 'Task type not found' } }, 404);
+      pubsub.publish('taskType:updated', { workspaceId: taskType.workspaceId, taskType });
+      return c.json({ data: taskType });
+    } catch (err: any) {
+      if (err.number === 2627 || err.number === 2601) {
+        return c.json({ error: { code: 'TASK_TYPE_NAME_TAKEN', message: 'A task type with that name already exists in this workspace' } }, 409);
+      }
+      throw err;
+    }
   });
 
 // DELETE /task-types/:id — manage. Blocks default; reassigns tasks to default.

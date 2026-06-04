@@ -1,11 +1,10 @@
-import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { taskTypeService } from '../modules/tasktypes/tasktype.service.js';
+import { TaskRepository } from '../modules/tasks/task.repository.js';
+import { requireWorkspacePermission } from './authz.js';
 import type { TaskType } from '@projectflow/types';
 
-function requireAuth(ctx: { user: unknown }): asserts ctx is { user: { userId: string } } {
-  if (!ctx.user) throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED' } });
-}
+const taskRepo = new TaskRepository();
 
 export function registerTaskTypesGraphql(): void {
   const TaskTypeType = builder.objectRef<TaskType>('TaskType');
@@ -24,7 +23,10 @@ export function registerTaskTypesGraphql(): void {
     taskTypes: t.field({
       type: [TaskTypeType],
       args: { workspaceId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); return taskTypeService.list(a.workspaceId); },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, a.workspaceId, 'workspace.read');
+        return taskTypeService.list(a.workspaceId);
+      },
     }),
   }));
 
@@ -33,7 +35,7 @@ export function registerTaskTypesGraphql(): void {
       type: 'Boolean',
       args: { taskId: t.arg.string({ required: true }), taskTypeId: t.arg.string({ required: true }) },
       resolve: async (_, a, ctx) => {
-        requireAuth(ctx);
+        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
         const task = await taskTypeService.setTaskType(a.taskId, a.taskTypeId);
         return task != null;
       },

@@ -1,11 +1,12 @@
-import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { tagService } from '../modules/tags/tag.service.js';
+import { ProjectRepository } from '../modules/projects/project.repository.js';
+import { TaskRepository } from '../modules/tasks/task.repository.js';
+import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import type { Tag } from '@projectflow/types';
 
-function requireAuth(ctx: { user: unknown }): asserts ctx is { user: { userId: string } } {
-  if (!ctx.user) throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED' } });
-}
+const projectRepo = new ProjectRepository();
+const taskRepo = new TaskRepository();
 
 export function registerTagsGraphql(): void {
   const TagType = builder.objectRef<Tag>('Tag');
@@ -21,7 +22,10 @@ export function registerTagsGraphql(): void {
     spaceTags: t.field({
       type: [TagType],
       args: { spaceId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); return tagService.list(a.spaceId); },
+      resolve: async (_, a, ctx) => {
+        await requireObjectLevel(ctx, 'SPACE', a.spaceId, 'VIEW');
+        return tagService.list(a.spaceId);
+      },
     }),
   }));
 
@@ -33,22 +37,34 @@ export function registerTagsGraphql(): void {
         name: t.arg.string({ required: true }),
         color: t.arg.string({ required: false }),
       },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); return tagService.create(a.spaceId, a.name, a.color ?? null); },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, await projectRepo.getWorkspaceId(a.spaceId), 'label.manage');
+        return tagService.create(a.spaceId, a.name, a.color ?? null);
+      },
     }),
     deleteTag: t.field({
       type: 'Boolean',
       args: { id: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); await tagService.delete(a.id); return true; },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, await tagService.getWorkspaceId(a.id), 'label.manage');
+        await tagService.delete(a.id); return true;
+      },
     }),
     linkTag: t.field({
       type: 'Boolean',
       args: { taskId: t.arg.string({ required: true }), tagId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); await tagService.linkTask(a.taskId, a.tagId); return true; },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        await tagService.linkTask(a.taskId, a.tagId); return true;
+      },
     }),
     unlinkTag: t.field({
       type: 'Boolean',
       args: { taskId: t.arg.string({ required: true }), tagId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); await tagService.unlinkTask(a.taskId, a.tagId); return true; },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        await tagService.unlinkTask(a.taskId, a.tagId); return true;
+      },
     }),
   }));
 }

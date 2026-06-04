@@ -130,6 +130,8 @@ taskRoutes.put('/:id/fields/:fieldId', zValidator('json', setValueSchema),
     } catch (err: any) {
       if (err instanceof FieldValidationError)
         return c.json({ error: { code: err.fieldCode, message: err.message } }, 422);
+      if (err.number === 51303)
+        return c.json({ error: { code: 'CUSTOM_FIELD_WORKSPACE_MISMATCH', message: err.message } }, 422);
       throw err;
     }
   });
@@ -241,8 +243,13 @@ taskRoutes.put(
 );
 
 // ── Watchers (Phase 2) ───────────────────────────────────────────────────────
-// GET /api/v1/tasks/:id/watchers
-taskRoutes.get('/:id/watchers', async (c) => c.json({ data: await watcherService.list(c.req.param('id')!) }));
+// GET /api/v1/tasks/:id/watchers — VIEW on the task's list (IDOR guard).
+taskRoutes.get('/:id/watchers',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await watcherService.list(c.req.param('id')!) }));
 
 // POST /api/v1/tasks/:id/watchers/:userId — add a watcher (idempotent)
 taskRoutes.post(
@@ -252,9 +259,11 @@ taskRoutes.post(
     try {
       const w = await watcherService.add(c.req.param('id')!, c.req.param('userId')!);
       await invalidateTaskCaches();
+      pubsub.publish('watcher:updated', { taskId: c.req.param('id')!, userId: c.req.param('userId')! });
       return c.json({ data: w });
     } catch (err: any) {
       if (err.number === 51360) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 51361) return c.json({ error: { code: 'WATCHER_NOT_MEMBER', message: err.message } }, 422);
       throw err;
     }
   });
@@ -266,6 +275,7 @@ taskRoutes.delete(
   async (c) => {
     await watcherService.remove(c.req.param('id')!, c.req.param('userId')!);
     await invalidateTaskCaches();
+    pubsub.publish('watcher:updated', { taskId: c.req.param('id')!, userId: c.req.param('userId')! });
     return c.json({ data: { taskId: c.req.param('id'), userId: c.req.param('userId') } });
   });
 
@@ -364,8 +374,13 @@ taskRoutes.patch(
     }
   });
 
-// GET /api/v1/tasks/:id/tags — tags linked to a task
-taskRoutes.get('/:id/tags', async (c) => c.json({ data: await tagService.listForTask(c.req.param('id')!) }));
+// GET /api/v1/tasks/:id/tags — tags linked to a task. VIEW on the task's list (IDOR guard).
+taskRoutes.get('/:id/tags',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await tagService.listForTask(c.req.param('id')!) }));
 
 // POST /api/v1/tasks/:id/tags/:tagId — link a tag (idempotent)
 taskRoutes.post(
@@ -379,6 +394,9 @@ taskRoutes.post(
     } catch (err: any) {
       if (err.number === 51341 || err.number === 51342) {
         return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      if (err.number === 51343) {
+        return c.json({ error: { code: 'TAG_WRONG_SPACE', message: err.message } }, 422);
       }
       throw err;
     }

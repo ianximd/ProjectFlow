@@ -15,6 +15,7 @@ export type PubSubChannels = {
   'customField:updated': [{ scopeId: string; field: unknown }];
   'taskType:updated': [{ workspaceId: string; taskType: unknown }];
   'tag:updated': [{ spaceId: string; tag: unknown }];
+  'watcher:updated': [{ taskId: string; userId: string }];
 };
 
 /**

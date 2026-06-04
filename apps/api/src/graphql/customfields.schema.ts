@@ -2,10 +2,14 @@ import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { customFieldService } from '../modules/customfields/customfield.service.js';
 import { FieldValidationError } from '../modules/customfields/customfield.errors.js';
-import type { CustomField, EffectiveField } from '@projectflow/types';
+import { TaskRepository } from '../modules/tasks/task.repository.js';
+import { requireObjectLevel } from './authz.js';
+import type { CustomField, EffectiveField, HierarchyNodeType } from '@projectflow/types';
 
-function requireAuth(ctx: { user: unknown }): asserts ctx is { user: { userId: string } } {
-  if (!ctx.user) throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED' } });
+const taskRepo = new TaskRepository();
+async function taskListId(taskId: string): Promise<string | null> {
+  const t = await taskRepo.getById(taskId);
+  return (t as any)?.listId ?? (t as any)?.ListId ?? null;
 }
 
 export function registerCustomFieldsGraphql(): void {
@@ -32,12 +36,18 @@ export function registerCustomFieldsGraphql(): void {
     customFields: t.field({
       type: [CustomFieldType],
       args: { scopeType: t.arg.string({ required: true }), scopeId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); return customFieldService.list(a.scopeType as any, a.scopeId); },
+      resolve: async (_, a, ctx) => {
+        await requireObjectLevel(ctx, a.scopeType as HierarchyNodeType, a.scopeId, 'VIEW');
+        return customFieldService.list(a.scopeType as any, a.scopeId);
+      },
     }),
     taskEffectiveFields: t.field({
       type: [EffectiveFieldType],
       args: { taskId: t.arg.string({ required: true }) },
-      resolve: async (_, a, ctx) => { requireAuth(ctx); return customFieldService.effectiveForTask(a.taskId); },
+      resolve: async (_, a, ctx) => {
+        await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'VIEW');
+        return customFieldService.effectiveForTask(a.taskId);
+      },
     }),
   }));
 
@@ -46,7 +56,7 @@ export function registerCustomFieldsGraphql(): void {
       type: [EffectiveFieldType],
       args: { taskId: t.arg.string({ required: true }), fieldId: t.arg.string({ required: true }), value: t.arg.string({ required: false }) },
       resolve: async (_, a, ctx) => {
-        requireAuth(ctx);
+        await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'EDIT');
         const decoded = a.value == null ? null : JSON.parse(a.value);
         try { await customFieldService.setValue(a.taskId, a.fieldId, decoded); }
         catch (e) { if (e instanceof FieldValidationError) throw new GraphQLError(e.message, { extensions: { code: e.fieldCode } }); throw e; }

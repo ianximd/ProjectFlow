@@ -31,8 +31,15 @@ describe('progress_auto', () => {
     const f = (await json<{ data: any }>(await request('/custom-fields', { method: 'POST', token: t, json: { scopeType: 'SPACE', scopeId: space.Id, type: 'progress_auto', name: 'Progress', config: { source: 'subtasks' } } }), 201)).data;
     const s1 = (await json<{ data: any }>(await request('/tasks', { method: 'POST', token: t, json: { workspaceId: ws.Id, listId, title: 's1', parentTaskId: parentId } }), 201)).data;
     await json(await request('/tasks', { method: 'POST', token: t, json: { workspaceId: ws.Id, listId, title: 's2', parentTaskId: parentId } }), 201);
-    await request(`/tasks/${s1.Id ?? s1.id}/transition`, { method: 'PATCH', token: t, json: { status: 'Done' } });
-    const eff = (await json<{ data: any[] }>(await request(`/tasks/${parentId}/fields`, { token: t }), 200)).data;
+    const s1Id = s1.Id ?? s1.id;
+    await request(`/tasks/${s1Id}/transition`, { method: 'PATCH', token: t, json: { status: 'Done' } });
+    let eff = (await json<{ data: any[] }>(await request(`/tasks/${parentId}/fields`, { token: t }), 200)).data;
     expect(eff.find((e) => e.field.id === f.id)?.value).toBe(50);
+
+    // Reopening the done subtask must DECREMENT progress back to 0 — the
+    // transition proc now clears ResolvedAt on a non-DONE transition.
+    await json(await request(`/tasks/${s1Id}/transition`, { method: 'PATCH', token: t, json: { status: 'To Do' } }), 200);
+    eff = (await json<{ data: any[] }>(await request(`/tasks/${parentId}/fields`, { token: t }), 200)).data;
+    expect(eff.find((e) => e.field.id === f.id)?.value).toBe(0);
   });
 });

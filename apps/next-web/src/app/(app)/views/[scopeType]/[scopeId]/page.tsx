@@ -1,9 +1,10 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { requireSession } from '@/server/session';
 import { getSavedViews, getViewTasks, type ViewTaskPageResult } from '@/server/queries/views';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface } from '@/components/views/view-surface';
+import { ensureBoardView } from './seed-board-view';
 
 // Mirrors board/page.tsx: gate the session first, then read the (async, Next 16)
 // route params + searchParams, run the SSR queries, and hand the data to a client
@@ -21,7 +22,7 @@ export default async function ViewsPage({
   searchParams,
 }: {
   params: Promise<{ scopeType: string; scopeId: string }>;
-  searchParams: Promise<{ viewId?: string; page?: string; meMode?: string }>;
+  searchParams: Promise<{ viewId?: string; page?: string; meMode?: string; view?: string }>;
 }) {
   await requireSession();
 
@@ -38,6 +39,19 @@ export default async function ViewsPage({
     scopeType === 'EVERYTHING' ? [] : await getCustomFields(scopeType, scopeId);
 
   const views = await getSavedViews(scopeType, scopeId);
+
+  // Seed-on-demand: ?view=board requests the engine Board. If the scope has no
+  // board-type saved view yet, create one (idempotent — ensureBoardView no-ops
+  // when a board view already exists) and redirect onto it so it becomes active.
+  if (sp.view === 'board' && !sp.viewId) {
+    const boardViewId = await ensureBoardView(views, scopeType, scopeId);
+    if (boardViewId) {
+      const qs = new URLSearchParams();
+      qs.set('viewId', boardViewId);
+      if (meMode) qs.set('meMode', '1');
+      redirect(`/views/${scopeType}/${scopeId}?${qs.toString()}`);
+    }
+  }
 
   // Active view = explicit ?viewId ?? the default view ?? the first view.
   const requested = sp.viewId ? views.find((v) => v.id === sp.viewId) : undefined;

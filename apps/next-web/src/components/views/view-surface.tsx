@@ -8,11 +8,11 @@ import { ViewTabs } from '@/components/views/view-tabs';
 import { TableView } from '@/components/views/table-view';
 import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
+import { BoardViewEngine } from '@/components/views/board-view-engine';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ViewTaskPageResult } from '@/server/queries/views';
-import type { Task } from '@/server/queries/normalize-task';
 import type { CustomField, SavedView, ViewScopeType, ViewType } from '@projectflow/types';
 
 interface Props {
@@ -126,6 +126,8 @@ export function ViewSurface({
             taskPage={taskPage}
             activeView={activeView}
             customFields={customFields}
+            scopeType={scopeType}
+            scopeId={scopeId}
             onSelectionChange={onSelectionChange}
           />
         ) : (
@@ -137,12 +139,14 @@ export function ViewSurface({
 }
 
 // ── View body ─────────────────────────────────────────────────────────────────
-// Table + List are now real components (E3). Calendar (E5) and Board (E4) still
-// render the typecheck-safe placeholder until those tasks land.
+// Table, List, Calendar, and Board are all real components now. Board (E5) is the
+// engine-backed BoardViewEngine, rendered behind a parity gate — the legacy
+// /board (board/page.tsx + board-view.tsx) is unchanged and still canonical.
 //
 // PROP CONTRACT for the real components:
 //   { taskPage: ViewTaskPageResult | null; activeView: SavedView;
 //     customFields: CustomField[]; onSelectionChange?: (ids: string[]) => void }
+//   Board additionally receives scopeType/scopeId.
 //   `tasks` are normalize-task `Task` objects (camelCase). `taskPage` is null only
 //   when there is no active view (handled by the caller).
 
@@ -151,12 +155,16 @@ function ViewBody({
   taskPage,
   activeView,
   customFields,
+  scopeType,
+  scopeId,
   onSelectionChange,
 }: {
   type: ViewType;
   taskPage: ViewTaskPageResult | null;
   activeView: SavedView;
   customFields: CustomField[];
+  scopeType: ViewScopeType;
+  scopeId: string;
   onSelectionChange?: (ids: string[]) => void;
 }) {
   switch (type) {
@@ -183,8 +191,14 @@ function ViewBody({
         <CalendarView taskPage={taskPage} activeView={activeView} customFields={customFields} />
       );
     case 'board':
-      // TODO(E4): replace with <BoardViewEngine ... />
-      return <PlaceholderBody type={type} testId="view-body-board" taskPage={taskPage} />;
+      return (
+        <BoardViewEngine
+          taskPage={taskPage}
+          activeView={activeView}
+          scopeType={scopeType}
+          scopeId={scopeId}
+        />
+      );
     default:
       return (
         <ListView
@@ -195,44 +209,6 @@ function ViewBody({
         />
       );
   }
-}
-
-function PlaceholderBody({
-  type,
-  testId,
-  taskPage,
-}: {
-  type: ViewType;
-  testId: string;
-  taskPage: ViewTaskPageResult | null;
-}) {
-  const tasks: Task[] = taskPage?.tasks ?? [];
-  return (
-    <div
-      data-testid={testId}
-      className="flex h-full flex-col gap-2 rounded-lg border border-border bg-muted/20 p-3"
-    >
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {type} view ({taskPage?.total ?? 0})
-      </div>
-      {tasks.length === 0 ? (
-        <div className="text-xs text-muted-foreground">No tasks.</div>
-      ) : (
-        <ul className="flex flex-col gap-1">
-          {tasks.map((t) => (
-            <li
-              key={t.id}
-              data-testid="view-task-row"
-              className="flex items-center justify-between gap-3 rounded border border-border bg-background px-2 py-1 text-xs"
-            >
-              <span className="truncate text-foreground">{t.title}</span>
-              <span className="shrink-0 text-muted-foreground">{t.status}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
 }
 
 function EmptyViewsState() {

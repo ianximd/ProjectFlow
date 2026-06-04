@@ -8,6 +8,8 @@ import { requireObjectAccess } from '../access/access.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import { pubsub } from '../../graphql/pubsub.js';
+import { customFieldService } from '../customfields/customfield.service.js';
+import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 
 const log = subLogger('tasks-routes');
 
@@ -92,6 +94,41 @@ const taskService = new TaskService(taskRepo);
 const resolveTaskWorkspace = (c: any) => taskRepo.getWorkspaceId(c.req.param('id'));
 
 export const taskRoutes = new Hono();
+
+// ── Custom-field values (Phase 2) ────────────────────────────────────────────
+// usp_Task_GetById returns SELECT * (PascalCase); read both casings defensively.
+const taskListId = (t: any): string | null => t?.listId ?? t?.ListId ?? null;
+const taskProjectId = (t: any): string | null => t?.projectId ?? t?.ProjectId ?? null;
+
+// GET /api/v1/tasks/:id/fields — effective fields + current values. VIEW on the task's list.
+taskRoutes.get('/:id/fields',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await customFieldService.effectiveForTask(c.req.param('id')!) }));
+
+// PUT /api/v1/tasks/:id/fields/:fieldId — set one value. EDIT on the task's list.
+const setValueSchema = z.object({ value: z.unknown() });
+taskRoutes.put('/:id/fields/:fieldId', zValidator('json', setValueSchema),
+  requireObjectAccess('EDIT', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => {
+    const taskId = c.req.param('id')!;
+    try {
+      await customFieldService.setValue(taskId, c.req.param('fieldId')!, c.req.valid('json').value);
+      const fields = await customFieldService.effectiveForTask(taskId);
+      const t = await taskRepo.getById(taskId);
+      if (t) pubsub.publish('task:updated', { projectId: taskProjectId(t) as any, task: t });
+      return c.json({ data: fields });
+    } catch (err: any) {
+      if (err instanceof FieldValidationError)
+        return c.json({ error: { code: err.fieldCode, message: err.message } }, 422);
+      throw err;
+    }
+  });
 
 // GET /api/v1/tasks/:id
 taskRoutes.get('/:id', async (c) => {
@@ -259,6 +296,9 @@ taskRoutes.patch(
     await invalidateTaskCaches(task.projectId);
     return c.json({ data: task });
   } catch (err: any) {
+    if (err instanceof RequiredFieldsUnmetError) {
+      return c.json({ error: { code: 'CUSTOM_FIELD_REQUIRED', message: err.message, missing: err.missing } }, 422);
+    }
     if (err.number === 50003 || err.number === 50004) {
       return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
     }

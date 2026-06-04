@@ -1,16 +1,28 @@
 import { TaskRepository, type AssigneeRow } from './task.repository.js';
 import { notificationService } from '../notifications/notification.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
+import { customFieldService } from '../customfields/customfield.service.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
 
 const log = subLogger('tasks');
+
+/** Parent-task id, casing-tolerant: task SPs return PascalCase (SELECT *) in
+ *  some paths and camelCase in others. */
+function parentIdOf(task: unknown): string | null {
+  const t = task as any;
+  return t?.parentTaskId ?? t?.ParentTaskId ?? null;
+}
 
 export class TaskService {
   constructor(private repo: TaskRepository) {}
 
   async createTask(input: CreateTaskInput, actorId: string): Promise<Task> {
     const task = await this.repo.create(input);
+
+    // A new subtask changes its parent's subtask count — recompute progress_auto.
+    const parentId = parentIdOf(task);
+    if (parentId) customFieldService.recomputeProgressAuto(parentId).catch(() => {});
 
     // Notify assignees (if provided at creation)
     if ((input as any).assigneeId) {
@@ -83,7 +95,12 @@ export class TaskService {
   }
 
   async transitionTask(taskId: string, newStatus: string, actorId: string): Promise<Task> {
+    // Block DONE-category transitions while required custom fields are unfilled.
+    await customFieldService.assertRequiredMetForStatus(taskId, newStatus); // throws RequiredFieldsUnmetError
     const task = await this.repo.transition(taskId, newStatus, actorId);
+    // A transition may flip this task's resolved state — recompute the PARENT's progress_auto.
+    const parentId = parentIdOf(task);
+    if (parentId) customFieldService.recomputeProgressAuto(parentId).catch(() => {});
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.updated', {
       id: task.id, issueKey: task.issueKey, title: task.title,
       status: newStatus, projectId: task.projectId,
@@ -93,6 +110,9 @@ export class TaskService {
 
   async deleteTask(taskId: string, actorId: string): Promise<Task> {
     const task = await this.repo.delete(taskId, actorId);
+    // Removing a subtask changes its parent's subtask count — recompute progress_auto.
+    const parentId = parentIdOf(task);
+    if (parentId) customFieldService.recomputeProgressAuto(parentId).catch(() => {});
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.deleted', {
       id: task.id, issueKey: task.issueKey, projectId: task.projectId,
     }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));

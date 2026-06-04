@@ -15,8 +15,11 @@ import {
 } from '@/server/actions/tasks';
 import { loadWorkspaceMembers } from '@/server/actions/members';
 import { getCurrentUserId } from '@/server/actions/auth';
+import { loadTaskCustomFields } from '@/server/actions/custom-fields';
+import { CustomFieldCell } from './custom-fields/CustomFieldCell';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
+import type { EffectiveField } from '@projectflow/types';
 import styles from './TaskDrawer.module.css';
 
 interface Task {
@@ -194,6 +197,19 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   }, [onClose]);
 
   const mutationTaskId = task?.Id ?? task?.id ?? '';
+
+  // Effective custom fields (Phase 2). Loaded client-side when the drawer opens
+  // or the task changes — mirrors the member-picker lazy-load pattern.
+  const [effectiveFields, setEffectiveFields] = useState<EffectiveField[]>([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!mutationTaskId) { setEffectiveFields([]); return; }
+    let cancelled = false;
+    loadTaskCustomFields(mutationTaskId)
+      .then((fs) => { if (!cancelled) setEffectiveFields(fs); })
+      .catch(() => { if (!cancelled) setEffectiveFields([]); });
+    return () => { cancelled = true; };
+  }, [mutationTaskId]);
 
   // Single endpoint covers both StartDate (DATE) and DueDate (DATETIME2). The
   // `clear*` flags tell the SP to actively NULL the column when we pass an empty
@@ -865,6 +881,23 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             )}
           </div>
 
+
+          {effectiveFields.length > 0 && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Custom fields</p>
+              {effectiveFields.map((ef) => (
+                <div
+                  key={ef.field.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}
+                >
+                  <label style={{ minWidth: 120, fontSize: 13, color: '#718096' }}>{ef.field.name}</label>
+                  <div style={{ flex: 1 }}>
+                    <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>Attachments</p>

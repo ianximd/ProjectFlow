@@ -138,3 +138,14 @@ export async function setTaskAssignees(id: string, userIds: string[]): Promise<A
   for (const p of TASK_LIST_PATHS) revalidatePath(p);
   return { ok: true, data: rows };
 }
+
+/** PUT /tasks/:id/fields/:fieldId — TaskDrawer inline custom-field edit. */
+export async function setTaskCustomField(taskId: string, fieldId: string, value: unknown): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/tasks/${encodeURIComponent(taskId)}/fields/${encodeURIComponent(fieldId)}`, {
+      method: 'PUT',
+      body:   JSON.stringify({ value }),
+    }),
+    TASK_LIST_PATHS,
+  );
+}

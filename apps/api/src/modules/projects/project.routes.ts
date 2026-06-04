@@ -68,7 +68,7 @@ projectRoutes.patch(
   '/:id',
   requirePermission('project.update', { resolveWorkspace: resolveProjectWorkspace }),
   async (c) => {
-  const { name, description, avatarUrl, type, startDate, endDate, visibility, maxSubtaskDepth } = await c.req.json();
+  const { name, description, avatarUrl, type, startDate, endDate, visibility, maxSubtaskDepth, multipleAssignees } = await c.req.json();
   try {
     const project = await projectService.update(c.req.param('id')!, {
       name,
@@ -80,6 +80,8 @@ projectRoutes.patch(
       // Hierarchy (0029): Space-level visibility + subtask depth.
       visibility: visibility === 'PUBLIC' || visibility === 'PRIVATE' ? visibility : undefined,
       maxSubtaskDepth: typeof maxSubtaskDepth === 'number' ? maxSubtaskDepth : undefined,
+      // Phase 2 (0030): multiple-assignees toggle.
+      multipleAssignees: typeof multipleAssignees === 'boolean' ? multipleAssignees : undefined,
     });
     if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
     await invalidateProjectCaches();

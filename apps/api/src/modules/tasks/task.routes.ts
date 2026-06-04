@@ -8,6 +8,12 @@ import { requireObjectAccess } from '../access/access.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import { pubsub } from '../../graphql/pubsub.js';
+import { customFieldService } from '../customfields/customfield.service.js';
+import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
+import { taskTypeService } from '../tasktypes/tasktype.service.js';
+import { tagService } from '../tags/tag.service.js';
+import { watcherService } from '../watchers/watcher.service.js';
+import { MultipleAssigneesDisabledError } from './task.errors.js';
 
 const log = subLogger('tasks-routes');
 
@@ -92,6 +98,41 @@ const taskService = new TaskService(taskRepo);
 const resolveTaskWorkspace = (c: any) => taskRepo.getWorkspaceId(c.req.param('id'));
 
 export const taskRoutes = new Hono();
+
+// ── Custom-field values (Phase 2) ────────────────────────────────────────────
+// usp_Task_GetById returns SELECT * (PascalCase); read both casings defensively.
+const taskListId = (t: any): string | null => t?.listId ?? t?.ListId ?? null;
+const taskProjectId = (t: any): string | null => t?.projectId ?? t?.ProjectId ?? null;
+
+// GET /api/v1/tasks/:id/fields — effective fields + current values. VIEW on the task's list.
+taskRoutes.get('/:id/fields',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await customFieldService.effectiveForTask(c.req.param('id')!) }));
+
+// PUT /api/v1/tasks/:id/fields/:fieldId — set one value. EDIT on the task's list.
+const setValueSchema = z.object({ value: z.unknown() });
+taskRoutes.put('/:id/fields/:fieldId', zValidator('json', setValueSchema),
+  requireObjectAccess('EDIT', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => {
+    const taskId = c.req.param('id')!;
+    try {
+      await customFieldService.setValue(taskId, c.req.param('fieldId')!, c.req.valid('json').value);
+      const fields = await customFieldService.effectiveForTask(taskId);
+      const t = await taskRepo.getById(taskId);
+      if (t) pubsub.publish('task:updated', { projectId: taskProjectId(t) as any, task: t });
+      return c.json({ data: fields });
+    } catch (err: any) {
+      if (err instanceof FieldValidationError)
+        return c.json({ error: { code: err.fieldCode, message: err.message } }, 422);
+      throw err;
+    }
+  });
 
 // GET /api/v1/tasks/:id
 taskRoutes.get('/:id', async (c) => {
@@ -187,6 +228,9 @@ taskRoutes.put(
       await invalidateTaskCaches();
       return c.json({ data: assignees });
     } catch (err: any) {
+      if (err instanceof MultipleAssigneesDisabledError) {
+        return c.json({ error: { code: 'MULTIPLE_ASSIGNEES_DISABLED', message: err.message } }, 422);
+      }
       if (err.number === 51030) {
         return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       }
@@ -195,6 +239,35 @@ taskRoutes.put(
     }
   },
 );
+
+// ── Watchers (Phase 2) ───────────────────────────────────────────────────────
+// GET /api/v1/tasks/:id/watchers
+taskRoutes.get('/:id/watchers', async (c) => c.json({ data: await watcherService.list(c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/watchers/:userId — add a watcher (idempotent)
+taskRoutes.post(
+  '/:id/watchers/:userId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    try {
+      const w = await watcherService.add(c.req.param('id')!, c.req.param('userId')!);
+      await invalidateTaskCaches();
+      return c.json({ data: w });
+    } catch (err: any) {
+      if (err.number === 51360) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/watchers/:userId — remove a watcher
+taskRoutes.delete(
+  '/:id/watchers/:userId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await watcherService.remove(c.req.param('id')!, c.req.param('userId')!);
+    await invalidateTaskCaches();
+    return c.json({ data: { taskId: c.req.param('id'), userId: c.req.param('userId') } });
+  });
 
 // PATCH /api/v1/tasks/:id/position — drag-end persistence. Optional status
 // is set when a card is dropped into a different column so the board can
@@ -259,12 +332,67 @@ taskRoutes.patch(
     await invalidateTaskCaches(task.projectId);
     return c.json({ data: task });
   } catch (err: any) {
+    if (err instanceof RequiredFieldsUnmetError) {
+      return c.json({ error: { code: 'CUSTOM_FIELD_REQUIRED', message: err.message, missing: err.missing } }, 422);
+    }
     if (err.number === 50003 || err.number === 50004) {
       return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
     }
     return c.json({ error: { message: 'Internal Server Error' } }, 500);
   }
 });
+
+// PATCH /api/v1/tasks/:id/type — set the task's custom task type (syncs legacy Type)
+const setTypeSchema = z.object({ taskTypeId: z.string().uuid() });
+taskRoutes.patch(
+  '/:id/type',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', setTypeSchema),
+  async (c) => {
+    try {
+      const task = await taskTypeService.setTaskType(c.req.param('id')!, c.req.valid('json').taskTypeId);
+      if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task type not found' } }, 404);
+      const projectId = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
+      await invalidateTaskCaches(projectId);
+      pubsub.publish('task:updated', { projectId: projectId as any, task });
+      return c.json({ data: task });
+    } catch (err: any) {
+      if (err.number === 51322 || err.number === 51323) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      throw err;
+    }
+  });
+
+// GET /api/v1/tasks/:id/tags — tags linked to a task
+taskRoutes.get('/:id/tags', async (c) => c.json({ data: await tagService.listForTask(c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/tags/:tagId — link a tag (idempotent)
+taskRoutes.post(
+  '/:id/tags/:tagId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    try {
+      await tagService.linkTask(c.req.param('id')!, c.req.param('tagId')!);
+      await invalidateTaskCaches();
+      return c.json({ data: { taskId: c.req.param('id'), tagId: c.req.param('tagId') } });
+    } catch (err: any) {
+      if (err.number === 51341 || err.number === 51342) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/tags/:tagId — unlink a tag
+taskRoutes.delete(
+  '/:id/tags/:tagId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await tagService.unlinkTask(c.req.param('id')!, c.req.param('tagId')!);
+    await invalidateTaskCaches();
+    return c.json({ data: { taskId: c.req.param('id'), tagId: c.req.param('tagId') } });
+  });
 
 // DELETE /api/v1/tasks/:id
 taskRoutes.delete(

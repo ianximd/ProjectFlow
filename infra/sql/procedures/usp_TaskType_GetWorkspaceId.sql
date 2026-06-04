@@ -1,0 +1,4 @@
+CREATE OR ALTER PROCEDURE dbo.usp_TaskType_GetWorkspaceId
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN SET NOCOUNT ON; SELECT WorkspaceId FROM dbo.TaskTypes WHERE Id = @Id AND DeletedAt IS NULL; END;

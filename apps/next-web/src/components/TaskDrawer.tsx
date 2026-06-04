@@ -12,11 +12,18 @@ import {
   updateTaskFields,
   updateTaskSchedule,
   setTaskAssignees,
+  loadTaskTypes,
 } from '@/server/actions/tasks';
 import { loadWorkspaceMembers } from '@/server/actions/members';
 import { getCurrentUserId } from '@/server/actions/auth';
+import { loadTaskCustomFields } from '@/server/actions/custom-fields';
+import { CustomFieldCell } from './custom-fields/CustomFieldCell';
+import { TaskTypeSelector } from './TaskTypeSelector';
+import { TagPicker } from './TagPicker';
+import { WatcherControl } from './WatcherControl';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
+import type { EffectiveField, TaskType } from '@projectflow/types';
 import styles from './TaskDrawer.module.css';
 
 interface Task {
@@ -195,6 +202,30 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
   const mutationTaskId = task?.Id ?? task?.id ?? '';
 
+  // Effective custom fields (Phase 2). Loaded client-side when the drawer opens
+  // or the task changes — mirrors the member-picker lazy-load pattern.
+  const [effectiveFields, setEffectiveFields] = useState<EffectiveField[]>([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!mutationTaskId) { setEffectiveFields([]); return; }
+    let cancelled = false;
+    loadTaskCustomFields(mutationTaskId)
+      .then((fs) => { if (!cancelled) setEffectiveFields(fs); })
+      .catch(() => { if (!cancelled) setEffectiveFields([]); });
+    return () => { cancelled = true; };
+  }, [mutationTaskId]);
+
+  // Task types (Phase 2) for the type picker — loaded once per workspace.
+  const [taskTypes, setTaskTypes] = useState<TaskType[]>([]);
+  useEffect(() => {
+    if (!workspaceId) { setTaskTypes([]); return; }
+    let cancelled = false;
+    loadTaskTypes(workspaceId)
+      .then((ts) => { if (!cancelled) setTaskTypes(ts); })
+      .catch(() => { if (!cancelled) setTaskTypes([]); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
   // Single endpoint covers both StartDate (DATE) and DueDate (DATETIME2). The
   // `clear*` flags tell the SP to actively NULL the column when we pass an empty
   // string — without them an undefined value would be a no-op.
@@ -302,6 +333,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const status      = task.Status ?? task.status ?? '';
   const priority    = task.Priority ?? task.priority ?? '';
   const type        = task.Type   ?? task.type   ?? '';
+  const taskTypeId  = ((task as any).TaskTypeId ?? (task as any).taskTypeId ?? null) as string | null;
+  const spaceId     = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
+  const selectedType = taskTypes.find((t) => t.id === taskTypeId) ?? null;
   const storyPoints = task.StoryPoints ?? task.storyPoints;
   const startDate   = task.StartDate ?? task.startDate;
   const dueDate     = task.DueDate   ?? task.dueDate;
@@ -865,6 +899,51 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             )}
           </div>
 
+
+          {workspaceId && taskTypes.length > 0 && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Type</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <TaskTypeSelector taskId={taskId} types={taskTypes} value={taskTypeId} />
+                </div>
+                {selectedType?.isMilestone && (
+                  <span aria-label="Milestone" title="Milestone" style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {spaceId && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Tags</p>
+              <TagPicker taskId={taskId} spaceId={spaceId} />
+            </div>
+          )}
+
+          {workspaceId && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Watchers</p>
+              <WatcherControl taskId={taskId} workspaceId={workspaceId} />
+            </div>
+          )}
+
+          {effectiveFields.length > 0 && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Custom fields</p>
+              {effectiveFields.map((ef) => (
+                <div
+                  key={ef.field.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}
+                >
+                  <label style={{ minWidth: 120, fontSize: 13, color: '#718096' }}>{ef.field.name}</label>
+                  <div style={{ flex: 1 }}>
+                    <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>Attachments</p>

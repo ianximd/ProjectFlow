@@ -1,0 +1,7 @@
+CREATE OR ALTER PROCEDURE dbo.usp_CustomField_GetById
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT * FROM dbo.CustomFields WHERE Id = @Id AND DeletedAt IS NULL;
+END;

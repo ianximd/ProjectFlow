@@ -7,15 +7,20 @@ function getUserId(c: Context): string | null {
   return u?.userId ?? null;
 }
 
-/** Gate a route on the caller's effective level for a hierarchy object. */
+/** Gate a route on the caller's effective level for a hierarchy object.
+ *  `resolveObject` may be sync or async (e.g. when it must look the object's
+ *  scope up by id); awaiting a sync return value is a harmless no-op. */
 export function requireObjectAccess(
   min: ObjectPermissionLevel,
-  resolveObject: (c: Context) => { type: HierarchyNodeType; id: string } | null,
+  resolveObject: (c: Context) =>
+    | { type: HierarchyNodeType; id: string }
+    | null
+    | Promise<{ type: HierarchyNodeType; id: string } | null>,
 ) {
   return async (c: Context, next: Next) => {
     const userId = getUserId(c);
     if (!userId) return c.json({ error: { code: 'UNAUTHORIZED', message: 'Authentication required' } }, 401);
-    const obj = resolveObject(c);
+    const obj = await resolveObject(c);
     if (!obj?.id) return c.json({ error: { code: 'NOT_FOUND', message: 'Resource not found' } }, 404);
 
     const { level, found } = await accessService.resolveOrNull(userId, obj.type, obj.id);

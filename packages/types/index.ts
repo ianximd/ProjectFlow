@@ -110,6 +110,7 @@ export interface List {
 export interface SpaceExtras {
   visibility: Visibility;
   maxSubtaskDepth: number | null;
+  multipleAssignees: boolean;   // Phase 2
 }
 
 export interface CreateTaskInput {
@@ -821,4 +822,76 @@ export interface RoleMember {
   workspaceName: string | null;
   assignedBy:    string | null;
   assignedAt:    string;
+}
+
+// ─── Custom Fields (Phase 2, migration 0030) ──────────────────────────────
+export type CustomFieldType =
+  | 'text' | 'text_area' | 'number' | 'currency' | 'checkbox' | 'date'
+  | 'url' | 'email' | 'phone' | 'dropdown' | 'labels' | 'rating'
+  | 'people' | 'progress_manual' | 'progress_auto';
+
+export type CustomFieldScopeType = 'SPACE' | 'FOLDER' | 'LIST';
+
+export interface DropdownOption { id: string; name: string; color: string | null; }
+
+/** Discriminated by the owning field's `type`; all members optional on the wire. */
+export interface CustomFieldConfig {
+  options?: DropdownOption[];   // dropdown, labels
+  currencyCode?: string;        // currency (ISO-4217)
+  max?: number;                 // rating
+  precision?: number;           // number
+  includeTime?: boolean;        // date
+  source?: 'subtasks';          // progress_auto
+}
+
+export interface CustomField {
+  id: string;
+  workspaceId: string;
+  scopeType: CustomFieldScopeType;
+  scopeId: string;
+  scopePath: string;
+  type: CustomFieldType;
+  name: string;
+  config: CustomFieldConfig | null;
+  required: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskCustomFieldValue {
+  taskId: string;
+  fieldId: string;
+  value: unknown;          // JSON-decoded; shape depends on the field type
+  updatedAt: string;
+}
+
+/** A custom field that applies to a task, joined to its current value (null when unset). */
+export interface EffectiveField {
+  field: CustomField;
+  value: unknown;
+}
+
+// ─── Task Types (Phase 2) ─────────────────────────────────────────────────
+export interface TaskType {
+  id: string;
+  workspaceId: string;
+  nameSingular: string;
+  namePlural: string;
+  icon: string | null;
+  isMilestone: boolean;
+  isDefault: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Tags (Phase 2 — alias over Label) ────────────────────────────────────
+export type Tag = Label;
+
+// ─── Watchers (Phase 2) ───────────────────────────────────────────────────
+export interface TaskWatcher {
+  taskId: string;
+  userId: string;
+  createdAt: string;
 }

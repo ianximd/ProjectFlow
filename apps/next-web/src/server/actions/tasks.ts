@@ -6,6 +6,7 @@ import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
 import type { AssigneeRow } from '@/components/TaskCard';
+import type { TaskType } from '@projectflow/types';
 
 /** Run a task mutation: gate the session, call the API, revalidate the affected
  *  routes, and map any thrown ApiError into an ActionFail (rethrowing Next
@@ -137,4 +138,35 @@ export async function setTaskAssignees(id: string, userIds: string[]): Promise<A
   }
   for (const p of TASK_LIST_PATHS) revalidatePath(p);
   return { ok: true, data: rows };
+}
+
+/** PUT /tasks/:id/fields/:fieldId — TaskDrawer inline custom-field edit. */
+export async function setTaskCustomField(taskId: string, fieldId: string, value: unknown): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/tasks/${encodeURIComponent(taskId)}/fields/${encodeURIComponent(fieldId)}`, {
+      method: 'PUT',
+      body:   JSON.stringify({ value }),
+    }),
+    TASK_LIST_PATHS,
+  );
+}
+
+export async function setTaskType(taskId: string, taskTypeId: string): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/tasks/${encodeURIComponent(taskId)}/type`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ taskTypeId }),
+    }),
+    TASK_LIST_PATHS,
+  );
+}
+
+/** Client-callable loader for the task-type picker (mirrors loadTaskCustomFields). */
+export async function loadTaskTypes(workspaceId: string): Promise<TaskType[]> {
+  await requireSession();
+  try {
+    return (await serverFetch<TaskType[]>(`/task-types?workspaceId=${encodeURIComponent(workspaceId)}`)) ?? [];
+  } catch {
+    return [];
+  }
 }

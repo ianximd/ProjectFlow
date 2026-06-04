@@ -1,0 +1,2 @@
+CREATE OR ALTER PROCEDURE dbo.usp_TaskWatcher_List @TaskId UNIQUEIDENTIFIER
+AS BEGIN SET NOCOUNT ON; SELECT * FROM dbo.TaskWatchers WHERE TaskId = @TaskId ORDER BY CreatedAt; END;

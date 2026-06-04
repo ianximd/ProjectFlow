@@ -3,10 +3,10 @@
 import { useMemo, useState, useTransition } from 'react';
 import {
   Settings, Tag, Boxes, GitPullRequest, MessageSquare, Webhook,
-  Plus, Trash2, Edit3, Search, Filter,
+  Plus, Trash2, Edit3, Search, Filter, ListChecks,
 } from 'lucide-react';
 
-import type { Label, ProjectComponent } from '@projectflow/types';
+import type { CustomField, Label, ProjectComponent } from '@projectflow/types';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { createLabel, updateLabel, deleteLabel } from '@/server/actions/labels';
@@ -19,6 +19,7 @@ import type { WorkspaceProjectContext } from '@/server/context';
 import GitIntegrationSettings from '@/components/GitIntegrationSettings';
 import SlackTeamsSettings     from '@/components/SlackTeamsSettings';
 import WebhookManager         from '@/components/WebhookManager';
+import { FieldManager }       from '@/components/custom-fields/FieldManager';
 
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -32,11 +33,12 @@ import { cn } from '@/lib/utils';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-type Tab = 'labels' | 'components' | 'git' | 'messaging' | 'webhooks';
+type Tab = 'labels' | 'components' | 'custom-fields' | 'git' | 'messaging' | 'webhooks';
 const TABS: Array<{ value: Tab; label: string; icon: typeof Tag }> = [
-  { value: 'labels',     label: 'Labels',          icon: Tag },
-  { value: 'components', label: 'Components',      icon: Boxes },
-  { value: 'git',        label: 'Git Integration', icon: GitPullRequest },
+  { value: 'labels',        label: 'Labels',          icon: Tag },
+  { value: 'components',    label: 'Components',      icon: Boxes },
+  { value: 'custom-fields', label: 'Custom Fields',   icon: ListChecks },
+  { value: 'git',           label: 'Git Integration', icon: GitPullRequest },
   { value: 'messaging',  label: 'Slack & Teams',   icon: MessageSquare },
   { value: 'webhooks',   label: 'Webhooks',        icon: Webhook },
 ];
@@ -52,13 +54,14 @@ const PRESET_COLORS = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Props {
-  ctx:        WorkspaceProjectContext;
-  labels:     Label[];
-  components: ProjectComponent[];
-  initialTab: string;
+  ctx:          WorkspaceProjectContext;
+  labels:       Label[];
+  components:   ProjectComponent[];
+  customFields: CustomField[];
+  initialTab:   string;
 }
 
-export function ProjectSettingsView({ ctx, labels, components, initialTab }: Props) {
+export function ProjectSettingsView({ ctx, labels, components, customFields, initialTab }: Props) {
   // Allow ?tab=git deep links (the sidebar uses /project-settings?tab=git). Seeded
   // once from the server-resolved searchParam, matching the original CSR behaviour.
   const isTab = (t: string): t is Tab => TABS.some((x) => x.value === t);
@@ -122,6 +125,10 @@ export function ProjectSettingsView({ ctx, labels, components, initialTab }: Pro
           </TabsContent>
           <TabsContent value="components" className="mt-3 flex-1 min-h-0">
             <ComponentsTab projectId={ctx.activeProjectId!} components={components} />
+          </TabsContent>
+          <TabsContent value="custom-fields" className="mt-3 flex-1 min-h-0">
+            {/* Active Project == Space; custom fields are SPACE-scoped here. */}
+            <FieldManager scopeType="SPACE" scopeId={ctx.activeProjectId!} fields={customFields} />
           </TabsContent>
           {/* Deferred to Phase 3: self-fetching integration components (still react-query + token). */}
           <TabsContent value="git" className="mt-3 flex-1 min-h-0">

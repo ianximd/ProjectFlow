@@ -33,6 +33,15 @@ BEGIN
             VALUES (@OwnerId, @OwnerRoleId, @NewId, @OwnerId);
         END
 
+        -- Phase 2: seed default Task + Milestone task types for the new workspace,
+        -- mirroring the one-time 0030 backfill so workspaces created AFTER the
+        -- migration also get their default types. Deferred name resolution makes
+        -- referencing dbo.TaskTypes safe even on installs predating 0030.
+        IF NOT EXISTS (SELECT 1 FROM dbo.TaskTypes WHERE WorkspaceId = @NewId AND IsDefault = 1 AND DeletedAt IS NULL)
+            INSERT INTO dbo.TaskTypes (Id, WorkspaceId, NameSingular, NamePlural, Icon, IsMilestone, IsDefault, Position)
+            VALUES (NEWID(), @NewId, 'Task', 'Tasks', NULL, 0, 1, 0),
+                   (NEWID(), @NewId, 'Milestone', 'Milestones', 'diamond', 1, 0, 1);
+
         SELECT * FROM Workspaces WHERE Id = @NewId;
     END TRY
     BEGIN CATCH

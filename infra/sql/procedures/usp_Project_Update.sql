@@ -8,7 +8,9 @@ CREATE OR ALTER PROCEDURE usp_Project_Update
     @EndDate     DATE             = NULL,
     -- Hierarchy (0029): Space-level visibility + subtask depth. Both NULL = leave as-is.
     @Visibility       NVARCHAR(10) = NULL,
-    @MaxSubtaskDepth  INT          = NULL
+    @MaxSubtaskDepth  INT          = NULL,
+    -- Phase 2 (0030): Space-level multiple-assignees toggle. NULL = leave as-is.
+    @MultipleAssignees BIT         = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -25,6 +27,7 @@ BEGIN
             EndDate     = ISNULL(@EndDate,     EndDate),
             Visibility       = ISNULL(@Visibility,      Visibility),
             MaxSubtaskDepth  = ISNULL(@MaxSubtaskDepth, MaxSubtaskDepth),
+            MultipleAssignees = ISNULL(@MultipleAssignees, MultipleAssignees),
             UpdatedAt   = GETUTCDATE()
         WHERE Id = @Id
           AND Status <> 'DELETED';

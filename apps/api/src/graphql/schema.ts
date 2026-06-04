@@ -4,6 +4,7 @@ import { builder } from './builder.js';
 import { pubsub }  from './pubsub.js';
 import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
+import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -583,6 +584,11 @@ registerHierarchyGraphql();
 // Custom Fields (Phase 2) — CustomField/EffectiveField types + queries/mutation.
 // ─────────────────────────────────────────
 registerCustomFieldsGraphql();
+
+// ─────────────────────────────────────────
+// Task Types (Phase 2) — TaskType type + taskTypes query + setTaskType mutation.
+// ─────────────────────────────────────────
+registerTaskTypesGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

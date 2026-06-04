@@ -10,6 +10,7 @@ import { subLogger } from '../../shared/lib/logger.js';
 import { pubsub } from '../../graphql/pubsub.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
+import { taskTypeService } from '../tasktypes/tasktype.service.js';
 
 const log = subLogger('tasks-routes');
 
@@ -305,6 +306,28 @@ taskRoutes.patch(
     return c.json({ error: { message: 'Internal Server Error' } }, 500);
   }
 });
+
+// PATCH /api/v1/tasks/:id/type — set the task's custom task type (syncs legacy Type)
+const setTypeSchema = z.object({ taskTypeId: z.string().uuid() });
+taskRoutes.patch(
+  '/:id/type',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', setTypeSchema),
+  async (c) => {
+    try {
+      const task = await taskTypeService.setTaskType(c.req.param('id')!, c.req.valid('json').taskTypeId);
+      if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task type not found' } }, 404);
+      const projectId = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
+      await invalidateTaskCaches(projectId);
+      pubsub.publish('task:updated', { projectId: projectId as any, task });
+      return c.json({ data: task });
+    } catch (err: any) {
+      if (err.number === 51322 || err.number === 51323) {
+        return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      }
+      throw err;
+    }
+  });
 
 // DELETE /api/v1/tasks/:id
 taskRoutes.delete(

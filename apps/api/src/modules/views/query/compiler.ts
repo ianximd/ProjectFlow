@@ -145,10 +145,6 @@ function bindLike(value: unknown, bind: Bind): string {
   return bind(`%${escaped}%`);
 }
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [value];
-}
-
 function asNonEmptyArray(value: unknown): unknown[] {
   const arr = Array.isArray(value) ? value : [value];
   if (!arr.length) throw new ViewQueryError(`'in'/'not_in' requires at least one value`);

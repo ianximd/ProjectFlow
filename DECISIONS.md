@@ -62,3 +62,8 @@ CRUD remains SP-per-op (`usp_View_*`).
 - The Playwright e2e (`e2e/views.spec.ts`) is written + discovered (3 scenarios) but its LIVE run
   requires the full local stack with a fully-migrated DB (the API .env points at prod; the e2e API must
   target a deployed `ProjectFlow_Test`). Spec compiles + lists; live run pending a deployed-DB e2e env.
+- The EVERYTHING (workspace-wide) scope is backend-complete and tested (compiler/service/GraphQL with
+  `requireWorkspacePermission` authz), but is NOT yet surfaced from the web UI — `page.tsx`/`getSavedViews`/
+  `getViewTasks` don't pass `workspaceId` and there is no nav entry to an EVERYTHING views route. The
+  backend gate fails closed (BAD_REQUEST without a workspaceId), so this is an un-surfaced entry point,
+  not a regression. Wiring the EVERYTHING surface is deferred.

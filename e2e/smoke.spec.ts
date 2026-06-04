@@ -106,7 +106,10 @@ test('register → login → create workspace → create project', async ({ page
 
   await page.getByRole('button', { name: /^create project$/i }).click();
 
-  await expect(page.getByText(projName, { exact: true })).toBeVisible({ timeout: 10_000 });
+  // Scope to the page body: Phase 1's sidebar tree also lists the project as
+  // a Space node, so an unscoped getByText(projName) matches twice (strict-
+  // mode violation). The project card lives in #main-content.
+  await expect(page.locator('#main-content').getByText(projName, { exact: true })).toBeVisible({ timeout: 10_000 });
 
   // ── 6. Cleanup — soft-delete the workspace via API ──────────────────────
   // Login again via API to get a token (the page session uses cookies +

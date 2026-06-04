@@ -22,6 +22,8 @@ const TRUNCATION_ORDER = [
   // Children first (FK leaves)
   'TaskAssignees',
   'TaskDependencies',
+  // Phase 3 (0032): SavedViews — FK Workspaces/Users, delete before them.
+  'SavedViews',
   // Phase 2 (0030) — value/watcher leaves, FK Tasks/CustomFields/Users.
   'TaskCustomFieldValues',
   'TaskWatchers',

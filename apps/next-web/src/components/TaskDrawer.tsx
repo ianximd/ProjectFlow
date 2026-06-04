@@ -19,6 +19,7 @@ import { getCurrentUserId } from '@/server/actions/auth';
 import { loadTaskCustomFields } from '@/server/actions/custom-fields';
 import { CustomFieldCell } from './custom-fields/CustomFieldCell';
 import { TaskTypeSelector } from './TaskTypeSelector';
+import { TagPicker } from './TagPicker';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -332,6 +333,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const priority    = task.Priority ?? task.priority ?? '';
   const type        = task.Type   ?? task.type   ?? '';
   const taskTypeId  = ((task as any).TaskTypeId ?? (task as any).taskTypeId ?? null) as string | null;
+  const spaceId     = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
   const selectedType = taskTypes.find((t) => t.id === taskTypeId) ?? null;
   const storyPoints = task.StoryPoints ?? task.storyPoints;
   const startDate   = task.StartDate ?? task.startDate;
@@ -908,6 +910,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   <span aria-label="Milestone" title="Milestone" style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {spaceId && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>Tags</p>
+              <TagPicker taskId={taskId} spaceId={spaceId} />
             </div>
           )}
 

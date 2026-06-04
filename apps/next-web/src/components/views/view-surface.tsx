@@ -7,6 +7,7 @@ import { LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import { ViewTabs } from '@/components/views/view-tabs';
 import { TableView } from '@/components/views/table-view';
 import { ListView } from '@/components/views/list-view';
+import { CalendarView } from '@/components/views/calendar-view';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -178,8 +179,9 @@ function ViewBody({
         />
       );
     case 'calendar':
-      // TODO(E5): replace with <CalendarView ... />
-      return <PlaceholderBody type={type} testId="view-body-calendar" taskPage={taskPage} />;
+      return (
+        <CalendarView taskPage={taskPage} activeView={activeView} customFields={customFields} />
+      );
     case 'board':
       // TODO(E4): replace with <BoardViewEngine ... />
       return <PlaceholderBody type={type} testId="view-body-board" taskPage={taskPage} />;

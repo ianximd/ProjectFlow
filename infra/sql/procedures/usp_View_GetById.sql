@@ -1,0 +1,7 @@
+CREATE OR ALTER PROCEDURE dbo.usp_View_GetById
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT * FROM dbo.SavedViews WHERE Id = @Id AND DeletedAt IS NULL;
+END;

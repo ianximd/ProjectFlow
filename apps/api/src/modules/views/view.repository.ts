@@ -78,6 +78,11 @@ export class ViewRepository {
     return (rows as any[]).map(mapSavedViewRow);
   }
 
+  async getById(id: string): Promise<SavedView | null> {
+    const rows = await execSpOne('usp_View_GetById', [{ name: 'Id', type: sql.UniqueIdentifier, value: id }]);
+    return rows[0] ? mapSavedViewRow(rows[0]) : null;
+  }
+
   async queryTasks(compiled: CompiledQuery, opts: { page: number; pageSize: number }): Promise<ViewTaskPage> {
     if (!Number.isInteger(opts.page) || opts.page < 1) throw new Error('page must be an integer >= 1');
     if (!Number.isInteger(opts.pageSize) || opts.pageSize < 1) throw new Error('pageSize must be an integer >= 1');

@@ -7,6 +7,7 @@ import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
+import { registerViewsGraphql } from './views.schema.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -82,7 +83,7 @@ interface SprintShape {
   createdAt: IsoOrDate;
 }
 
-interface TaskShape {
+export interface TaskShape {
   id: string;
   projectId: string;
   workspaceId: string;
@@ -139,7 +140,7 @@ const UserType         = builder.objectRef<UserShape>('User');
 const WorkspaceType    = builder.objectRef<WorkspaceShape>('Workspace');
 const ProjectType      = builder.objectRef<ProjectShape>('Project');
 const SprintType       = builder.objectRef<SprintShape>('Sprint');
-const TaskType         = builder.objectRef<TaskShape>('Task');
+export const TaskType  = builder.objectRef<TaskShape>('Task');
 const CommentType      = builder.objectRef<CommentShape>('Comment');
 const NotificationType = builder.objectRef<NotificationShape>('Notification');
 
@@ -601,6 +602,12 @@ registerTagsGraphql();
 // Watchers (Phase 2) — TaskWatcher type + taskWatchers query + add/remove.
 // ─────────────────────────────────────────
 registerWatchersGraphql();
+
+// ─────────────────────────────────────────
+// Views (Phase 3) — SavedView/ViewTaskPage/ViewGroup types + savedViews/
+// viewTasks/previewViewTasks queries + create/update/delete/reorder mutations.
+// ─────────────────────────────────────────
+registerViewsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

@@ -16,6 +16,7 @@ export type PubSubChannels = {
   'taskType:updated': [{ workspaceId: string; taskType: unknown }];
   'tag:updated': [{ spaceId: string; tag: unknown }];
   'watcher:updated': [{ taskId: string; userId: string }];
+  'savedView:updated': [{ scopeType: string; scopeId: string | null }];
 };
 
 /**

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
@@ -34,7 +35,26 @@ type Adding = { kind: 'folder' | 'list'; spaceId: string; folderId: string | nul
 
 export function SidebarTree({ data }: { data: HierarchyTreeData }) {
   const [, startTransition] = useTransition();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // When the current route is a List page, reveal that list in the tree by
+  // seeding the expanded set with its ancestry (space + folder). Client-only
+  // expand/collapse state is otherwise lost on a full reload, which would
+  // leave the active list hidden inside a collapsed space/folder.
+  const pathname = usePathname();
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const seed = new Set<string>();
+    const activeListId = pathname?.match(/^\/lists\/([^/?#]+)/)?.[1] ?? null;
+    if (activeListId) {
+      for (const [spaceId, lists] of Object.entries(data.listsBySpace)) {
+        const found = lists.find((l) => l.id === activeListId);
+        if (found) {
+          seed.add(spaceId);
+          if (found.folderId) seed.add(found.folderId);
+          break;
+        }
+      }
+    }
+    return seed;
+  });
   const [adding, setAdding] = useState<Adding>(null);
   const [addName, setAddName] = useState('');
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -45,6 +65,12 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+
+  // Adding a child reveals an inline input that is rendered inside the
+  // container's (collapsed-by-default) body, so the container MUST be
+  // expanded for the input to mount. Auto-expand on add.
+  const expand = (id: string) =>
+    setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
 
   function run(p: Promise<{ ok: boolean; error?: string }>) {
     startTransition(async () => {
@@ -95,8 +121,8 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
             space={space}
             open={open}
             onToggle={() => toggle(space.id)}
-            onAddFolder={() => { setAdding({ kind: 'folder', spaceId: space.id, folderId: null }); setAddName(''); }}
-            onAddList={() => { setAdding({ kind: 'list', spaceId: space.id, folderId: null }); setAddName(''); }}
+            onAddFolder={() => { expand(space.id); setAdding({ kind: 'folder', spaceId: space.id, folderId: null }); setAddName(''); }}
+            onAddList={() => { expand(space.id); setAdding({ kind: 'list', spaceId: space.id, folderId: null }); setAddName(''); }}
           >
             {adding?.spaceId === space.id && adding.folderId === null && addInput}
             <DndContext
@@ -130,7 +156,7 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
                         <button
                           type="button" data-testid="list-add" aria-label="Add list"
                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
-                          onClick={() => { setAdding({ kind: 'list', spaceId: space.id, folderId: folder.id }); setAddName(''); }}
+                          onClick={() => { expand(folder.id); setAdding({ kind: 'list', spaceId: space.id, folderId: folder.id }); setAddName(''); }}
                         >
                           <Plus className="size-3.5" />
                         </button>

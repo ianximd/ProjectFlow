@@ -6,6 +6,7 @@ import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
+import { registerWatchersGraphql } from './watchers.schema.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -595,6 +596,11 @@ registerTaskTypesGraphql();
 // Tags (Phase 2) — Tag type + spaceTags query + create/delete/link/unlink.
 // ─────────────────────────────────────────
 registerTagsGraphql();
+
+// ─────────────────────────────────────────
+// Watchers (Phase 2) — TaskWatcher type + taskWatchers query + add/remove.
+// ─────────────────────────────────────────
+registerWatchersGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

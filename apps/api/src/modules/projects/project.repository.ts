@@ -44,6 +44,7 @@ export class ProjectRepository {
     endDate?: Date | null;
     visibility?: 'PUBLIC' | 'PRIVATE';
     maxSubtaskDepth?: number | null;
+    multipleAssignees?: boolean;
   }) {
     const rows = await execSpOne('usp_Project_Update', [
       { name: 'Id',          type: sql.UniqueIdentifier,  value: id },
@@ -55,6 +56,7 @@ export class ProjectRepository {
       { name: 'EndDate',     type: sql.Date,              value: fields.endDate ?? null },
       { name: 'Visibility',      type: sql.NVarChar(10), value: fields.visibility ?? null },
       { name: 'MaxSubtaskDepth', type: sql.Int,          value: fields.maxSubtaskDepth ?? null },
+      { name: 'MultipleAssignees', type: sql.Bit,        value: fields.multipleAssignees == null ? null : (fields.multipleAssignees ? 1 : 0) },
     ]);
     return rows[0] ?? null;
   }

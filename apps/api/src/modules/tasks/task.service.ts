@@ -2,6 +2,7 @@ import { TaskRepository, type AssigneeRow } from './task.repository.js';
 import { notificationService } from '../notifications/notification.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
 import { customFieldService } from '../customfields/customfield.service.js';
+import { MultipleAssigneesDisabledError } from './task.errors.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
 
@@ -57,6 +58,10 @@ export class TaskService {
   }
 
   async setAssignees(taskId: string, userIds: string[], actorId: string): Promise<AssigneeRow[]> {
+    if (userIds.length > 1) {
+      const allowed = await this.repo.getSpaceMultipleAssignees(taskId);
+      if (!allowed) throw new MultipleAssigneesDisabledError();
+    }
     const before = await this.repo.getById(taskId);
     const rows = await this.repo.setAssignees(taskId, userIds);
 

@@ -12,6 +12,8 @@ import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
+import { watcherService } from '../watchers/watcher.service.js';
+import { MultipleAssigneesDisabledError } from './task.errors.js';
 
 const log = subLogger('tasks-routes');
 
@@ -226,6 +228,9 @@ taskRoutes.put(
       await invalidateTaskCaches();
       return c.json({ data: assignees });
     } catch (err: any) {
+      if (err instanceof MultipleAssigneesDisabledError) {
+        return c.json({ error: { code: 'MULTIPLE_ASSIGNEES_DISABLED', message: err.message } }, 422);
+      }
       if (err.number === 51030) {
         return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
       }
@@ -234,6 +239,35 @@ taskRoutes.put(
     }
   },
 );
+
+// ── Watchers (Phase 2) ───────────────────────────────────────────────────────
+// GET /api/v1/tasks/:id/watchers
+taskRoutes.get('/:id/watchers', async (c) => c.json({ data: await watcherService.list(c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/watchers/:userId — add a watcher (idempotent)
+taskRoutes.post(
+  '/:id/watchers/:userId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    try {
+      const w = await watcherService.add(c.req.param('id')!, c.req.param('userId')!);
+      await invalidateTaskCaches();
+      return c.json({ data: w });
+    } catch (err: any) {
+      if (err.number === 51360) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/watchers/:userId — remove a watcher
+taskRoutes.delete(
+  '/:id/watchers/:userId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await watcherService.remove(c.req.param('id')!, c.req.param('userId')!);
+    await invalidateTaskCaches();
+    return c.json({ data: { taskId: c.req.param('id'), userId: c.req.param('userId') } });
+  });
 
 // PATCH /api/v1/tasks/:id/position — drag-end persistence. Optional status
 // is set when a card is dropped into a different column so the board can

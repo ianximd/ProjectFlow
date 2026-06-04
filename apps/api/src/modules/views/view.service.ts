@@ -4,7 +4,19 @@ import { CustomFieldRepository } from '../customfields/customfield.repository.js
 import { buildCatalog } from './query/field-catalog.js';
 import { compile, builtinGroupExpr } from './query/compiler.js';
 import { ViewNotFoundError, ViewValidationError } from './view.errors.js';
-import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField } from '@projectflow/types';
+import { TaskService } from '../tasks/task.service.js';
+import { TaskRepository } from '../tasks/task.repository.js';
+import { customFieldService } from '../customfields/customfield.service.js';
+import { isWorkspaceMember } from '../workspaces/membership.js';
+import { accessService } from '../access/access.service.js';
+import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult } from '@projectflow/types';
+
+const _taskRepo = new TaskRepository();
+const _taskService = new TaskService(_taskRepo);
+
+// usp_Task_GetById returns SELECT * (PascalCase); read both casings defensively.
+// Mirrors the helper used by the single-task REST custom-field route.
+const taskListId = (t: any): string | null => t?.listId ?? t?.ListId ?? null;
 
 interface ScopeNode { workspaceId: string; scopePath: string | null }
 
@@ -134,6 +146,84 @@ export class ViewService {
     const v = await this.repo.getById(id);
     if (!v) throw new ViewNotFoundError();
     return v;
+  }
+
+  /**
+   * Bulk-apply one action to many tasks. Partial-success: a per-task error
+   * pushes to `failed` without aborting the rest of the batch.
+   *
+   * Per-task permission: we resolve the task's workspaceId and assert that the
+   * caller is a workspace member. The individual task-service methods do NOT
+   * self-check access, so this explicit gate is mandatory. On top of that
+   * baseline, set_custom_field and move_to_list additionally enforce object-level
+   * (hierarchy ACL) EDIT, mirroring their single-task REST routes.
+   */
+  async bulkUpdate(
+    userId: string,
+    input: { taskIds: string[]; action: BulkAction },
+  ): Promise<BulkUpdateResult> {
+    const updated: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of input.taskIds) {
+      try {
+        await this.applyAction(userId, id, input.action);
+        updated.push(id);
+      } catch (e) {
+        failed.push({ id, reason: (e as Error).message });
+      }
+    }
+    return { updated, failed };
+  }
+
+  private async applyAction(userId: string, taskId: string, action: BulkAction): Promise<void> {
+    // Per-task permission baseline: resolve the workspace the task belongs to and
+    // verify the caller is a member. None of the task-service methods enforce this
+    // themselves, so we must gate here before calling any of them. This is the
+    // cheap cross-workspace gate; object-level (hierarchy ACL) checks are layered
+    // on top below for the actions whose single-task REST routes enforce them.
+    const workspaceId = await _taskRepo.getWorkspaceId(taskId);
+    if (!workspaceId) throw new Error(`Task not found: ${taskId}`);
+    const isMember = await isWorkspaceMember(workspaceId, userId);
+    if (!isMember) throw new Error(`User is not a member of the task's workspace`);
+
+    switch (action.kind) {
+      case 'set_status':
+        await _taskService.transitionTask(taskId, action.status, userId);
+        break;
+      case 'set_priority':
+        await _taskService.updateTask(taskId, { priority: action.priority }, userId);
+        break;
+      case 'set_assignees':
+        await _taskService.setAssignees(taskId, action.userIds, userId);
+        break;
+      case 'set_custom_field': {
+        // Object-level parity with PUT /tasks/:id/fields/:fieldId, which gates on
+        // EDIT access to the task's OWN List. A workspace member excluded from a
+        // private List (explicit sub-EDIT grant) must not bulk-write fields there.
+        const listId = taskListId(await _taskRepo.getById(taskId));
+        if (!listId) throw new Error(`Task is not in a List: ${taskId}`);
+        if (!(await accessService.can(userId, 'LIST', listId, 'EDIT')))
+          throw new Error(`User lacks EDIT access on the task's list`);
+        await customFieldService.setValue(taskId, action.fieldId, action.value);
+        break;
+      }
+      case 'move_to_list': {
+        // Object-level parity with PATCH /tasks/:id/move, which gates on EDIT
+        // access to the DESTINATION List (not the task's current List).
+        if (!(await accessService.can(userId, 'LIST', action.listId, 'EDIT')))
+          throw new Error(`User lacks EDIT access on the destination list`);
+        await _taskService.moveTask(taskId, action.listId, 0);
+        break;
+      }
+      case 'delete':
+        await _taskService.deleteTask(taskId, userId);
+        break;
+      default: {
+        // Exhaustive check — TypeScript will error if a BulkAction kind is unhandled
+        const _exhaustive: never = action;
+        throw new Error(`Unknown action kind: ${(_exhaustive as any).kind}`);
+      }
+    }
   }
 
   async runView(

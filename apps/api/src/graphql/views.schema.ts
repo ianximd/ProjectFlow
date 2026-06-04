@@ -80,6 +80,23 @@ function mapTaskRow(r: any): TaskShape {
 }
 
 export function registerViewsGraphql(): void {
+  // ── Bulk-edit result types ─────────────────────────────────────────────────
+  const BulkFailType = builder.objectRef<{ id: string; reason: string }>('BulkUpdateFailure');
+  BulkFailType.implement({
+    fields: (t) => ({
+      id:     t.exposeString('id'),
+      reason: t.exposeString('reason'),
+    }),
+  });
+
+  const BulkResultType = builder.objectRef<{ updated: string[]; failed: Array<{ id: string; reason: string }> }>('BulkUpdateResult');
+  BulkResultType.implement({
+    fields: (t) => ({
+      updated: t.exposeStringList('updated'),
+      failed:  t.field({ type: [BulkFailType], resolve: (r) => r.failed }),
+    }),
+  });
+
   const SavedViewType = builder.objectRef<SavedView>('SavedView');
   SavedViewType.implement({ fields: (t) => ({
     id:          t.exposeString('id'),
@@ -239,6 +256,22 @@ export function registerViewsGraphql(): void {
         await requireOwnerOrNodeEdit(ctx, a.id);
         try { return await viewService.reorder(a.id, a.position); }
         catch (e) { throw toGraphqlError(e); }
+      },
+    }),
+    bulkUpdateTasks: t.field({
+      type: BulkResultType,
+      args: {
+        taskIds: t.arg.stringList({ required: true }),
+        action:  t.arg.string({ required: true }),
+      },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        let parsedAction: unknown;
+        try { parsedAction = JSON.parse(a.action); }
+        catch {
+          throw new GraphQLError('Invalid action JSON', { extensions: { code: 'BAD_REQUEST' } });
+        }
+        return viewService.bulkUpdate(userId, { taskIds: a.taskIds, action: parsedAction as any });
       },
     }),
   }));

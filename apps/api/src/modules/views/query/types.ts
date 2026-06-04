@@ -9,6 +9,8 @@ export interface FieldDescriptor {
   column?: string;
   /** join-backed built-in (assignee/tags/watchers): returns an EXISTS clause given a param placeholder */
   exists?: (param: string) => string;
+  /** join-backed built-in: a bare-existence EXISTS clause with NO user predicate (for is_empty/is_not_empty) */
+  existsBare?: () => string;
   /** custom field id (GUID) when the FieldRef.kind === 'custom' */
   customFieldId?: string;
 }

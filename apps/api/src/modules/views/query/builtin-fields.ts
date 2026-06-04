@@ -32,7 +32,7 @@ export const BUILTIN_FIELDS: Record<string, FieldDescriptor> = {
   position:    { logical: 'number', column: 'Position' },
   reporter:    { logical: 'user',   column: 'ReporterId' },
   sprint:      { logical: 'enum',   column: 'SprintId' },
-  assignee:    { logical: 'user',   exists: (p) => `EXISTS (SELECT 1 FROM TaskAssignees a WHERE a.TaskId = t.Id AND a.UserId = ${p})` },
-  tags:        { logical: 'array',  exists: (p) => `EXISTS (SELECT 1 FROM TaskLabelLinks tl WHERE tl.TaskId = t.Id AND tl.LabelId = ${p})` },
-  watchers:    { logical: 'array',  exists: (p) => `EXISTS (SELECT 1 FROM TaskWatchers w WHERE w.TaskId = t.Id AND w.UserId = ${p})` },
+  assignee:    { logical: 'user',   exists: (p) => `EXISTS (SELECT 1 FROM TaskAssignees a WHERE a.TaskId = t.Id AND a.UserId = ${p})`,   existsBare: () => 'EXISTS (SELECT 1 FROM TaskAssignees a WHERE a.TaskId = t.Id)' },
+  tags:        { logical: 'array',  exists: (p) => `EXISTS (SELECT 1 FROM TaskLabelLinks tl WHERE tl.TaskId = t.Id AND tl.LabelId = ${p})`, existsBare: () => 'EXISTS (SELECT 1 FROM TaskLabelLinks tl WHERE tl.TaskId = t.Id)' },
+  watchers:    { logical: 'array',  exists: (p) => `EXISTS (SELECT 1 FROM TaskWatchers w WHERE w.TaskId = t.Id AND w.UserId = ${p})`,    existsBare: () => 'EXISTS (SELECT 1 FROM TaskWatchers w WHERE w.TaskId = t.Id)' },
 };

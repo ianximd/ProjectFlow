@@ -895,3 +895,55 @@ export interface TaskWatcher {
   userId: string;
   createdAt: string;
 }
+
+// ───────────────────────── Views Engine (Phase 3) ─────────────────────────
+export type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
+export type ViewType = 'list' | 'board' | 'table' | 'calendar';
+
+export type FieldRefKind = 'builtin' | 'custom';
+export interface FieldRef { kind: FieldRefKind; key: string } // custom key = CustomFields.Id (GUID)
+
+export type FilterOperator =
+  | '=' | '!=' | '>' | '>=' | '<' | '<='
+  | 'in' | 'not_in' | 'contains' | 'is_empty' | 'is_not_empty';
+
+export interface FilterRule { field: FieldRef; op: FilterOperator; value?: unknown }
+export interface FilterGroup { conjunction: 'AND' | 'OR'; rules: Array<FilterRule | FilterGroup> }
+export interface SortKey { field: FieldRef; dir: 'ASC' | 'DESC' }
+
+export interface ViewConfig {
+  filter: FilterGroup;          // default { conjunction:'AND', rules:[] }
+  groupBy?: FieldRef;
+  sort: SortKey[];              // default [{ field:{kind:'builtin',key:'position'}, dir:'ASC' }]
+  columns?: FieldRef[];
+  dateField?: FieldRef;
+  meMode?: boolean;
+  pageSize?: number;            // default 25
+}
+
+export interface SavedView {
+  id: string;
+  workspaceId: string;
+  ownerId: string;
+  scopeType: ViewScopeType;
+  scopeId: string | null;
+  type: ViewType;
+  name: string;
+  isShared: boolean;
+  isDefault: boolean;
+  config: ViewConfig;
+  position: number;
+}
+
+export interface ViewGroup { key: string; label: string; count: number }
+export interface ViewTaskPage { tasks: Task[]; total: number; groups?: ViewGroup[] }
+
+export type BulkAction =
+  | { kind: 'set_status'; status: string }
+  | { kind: 'set_priority'; priority: string }
+  | { kind: 'set_assignees'; userIds: string[] }
+  | { kind: 'set_custom_field'; fieldId: string; value: unknown }
+  | { kind: 'move_to_list'; listId: string }
+  | { kind: 'delete' };
+
+export interface BulkUpdateResult { updated: string[]; failed: Array<{ id: string; reason: string }> }

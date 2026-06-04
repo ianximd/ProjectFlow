@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { ViewRepository } from '../view.repository.js';
 import { buildCatalog } from '../query/field-catalog.js';
-import { compile } from '../query/compiler.js';
+import { compile, builtinGroupExpr } from '../query/compiler.js';
 import { createTestUser, createTestWorkspace, createTestProject, createTestTask } from '../../../__tests__/fixtures/factories.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { closePool, getPool } from '../../../shared/lib/db.js';
@@ -77,5 +77,16 @@ describe('ViewRepository.queryTasks', () => {
     const cat = buildCatalog([]);
     const compiled = compile({ workspaceId: ws.Id, scope: { scopeType: 'SPACE', scopePath: `/${p.Id}/` }, catalog: cat, filter: { conjunction: 'AND', rules: [] }, sort: [] });
     await expect(repo.queryTasks(compiled, { page: 0, pageSize: 25 })).rejects.toThrow();
+  });
+
+  it('returns grouped counts by status', async () => {
+    const u = await createTestUser(); const ws = await createTestWorkspace(u.accessToken); const p = await createTestProject(ws.Id, u.accessToken);
+    const a = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'a' });
+    const b = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'b' });
+    await setTaskListPath(a.Id, `/${p.Id}/`); await setTaskListPath(b.Id, `/${p.Id}/`);
+    const cat = buildCatalog([]);
+    const compiled = compile({ workspaceId: ws.Id, scope: { scopeType: 'SPACE', scopePath: `/${p.Id}/` }, catalog: cat, filter: { conjunction: 'AND', rules: [] }, sort: [] });
+    const groups = await repo.groupCounts(compiled, builtinGroupExpr(cat, { kind: 'builtin', key: 'status' }));
+    expect(groups.reduce((s, g) => s + g.count, 0)).toBe(2);
   });
 });

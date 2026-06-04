@@ -1,5 +1,6 @@
 import type { FilterGroup, FilterRule, SortKey, ViewScopeType, FieldRef, FilterOperator } from '@projectflow/types';
 import { ViewQueryError, type Catalog } from './field-catalog.js';
+import { BUILTIN_FIELDS } from './builtin-fields.js';
 import type { FieldDescriptor } from './types.js';
 
 export interface CompileScope { scopeType: ViewScopeType; scopePath: string | null }
@@ -172,4 +173,17 @@ function compileSort(sort: SortKey[], cat: Catalog): { orderSql: string; joins: 
     return `t.${d.column} ${dir}`;
   });
   return { orderSql: parts.join(', '), joins };
+}
+
+/**
+ * Returns a safe, allow-listed SQL column expression for grouping by a built-in field.
+ * Only built-in fields with a scalar `column` mapping are supported (v1).
+ * The returned string is a fixed `t.<Column>` token — never user-supplied text —
+ * making it safe to interpolate into the GROUP BY clause.
+ */
+export function builtinGroupExpr(_catalog: Catalog, ref: FieldRef): string {
+  if (ref.kind !== 'builtin') throw new ViewQueryError('Group counts support built-in fields in v1');
+  const d = BUILTIN_FIELDS[ref.key];
+  if (!d?.column) throw new ViewQueryError(`Field ${ref.key} is not groupable`);
+  return `t.${d.column}`;
 }

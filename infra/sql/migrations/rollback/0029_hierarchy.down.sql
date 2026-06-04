@@ -27,6 +27,14 @@ IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Lists')             DROP TABLE
 IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Folders')           DROP TABLE dbo.Folders;
 GO
 IF EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Projects_Visibility') ALTER TABLE dbo.Projects DROP CONSTRAINT CK_Projects_Visibility;
+-- Projects.Visibility was added as NOT NULL DEFAULT 'PUBLIC', creating an
+-- auto-named DEFAULT constraint (DF__Projects__Visibi__*). It must be dropped
+-- before the column, or DROP COLUMN fails (Msg 5074 / 4922).
+DECLARE @dfVis NVARCHAR(128);
+SELECT @dfVis = dc.name FROM sys.default_constraints dc
+WHERE dc.parent_object_id = OBJECT_ID('dbo.Projects')
+  AND dc.parent_column_id = COLUMNPROPERTY(OBJECT_ID('dbo.Projects'), 'Visibility', 'ColumnId');
+IF @dfVis IS NOT NULL EXEC('ALTER TABLE dbo.Projects DROP CONSTRAINT ' + @dfVis);
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Projects') AND name = 'MaxSubtaskDepth') ALTER TABLE dbo.Projects DROP COLUMN MaxSubtaskDepth;
 IF EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Projects') AND name = 'Visibility')      ALTER TABLE dbo.Projects DROP COLUMN Visibility;
 GO

@@ -1,4 +1,7 @@
+'use client';
+
 import { ReactNode, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Badge,
   Bolt,
@@ -41,6 +44,7 @@ import {
 } from './';
 
 export function SearchDialog({ trigger }: { trigger: ReactNode }) {
+  const t = useTranslations('Search');
   const [searchInput, setSearchInput] = useState('');
 
   const mixedSettingsItems: SearchSettingsItem[] = [
@@ -253,7 +257,7 @@ export function SearchDialog({ trigger }: { trigger: ReactNode }) {
               value={searchInput}
               className="ps-6 outline-none! ring-0! shadow-none! border-0"
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search..."
+              placeholder={t('placeholder')}
             />
           </div>
         </DialogHeader>
@@ -261,13 +265,13 @@ export function SearchDialog({ trigger }: { trigger: ReactNode }) {
           <Tabs defaultValue="1">
             <TabsList className="justify-between px-5 mb-2.5" variant="line">
               <div className="flex items-center gap-5">
-                <TabsTrigger value="1">Mixed</TabsTrigger>
-                <TabsTrigger value="2">Settings</TabsTrigger>
-                <TabsTrigger value="3">Integrations</TabsTrigger>
-                <TabsTrigger value="4">Users</TabsTrigger>
-                <TabsTrigger value="5">Docs</TabsTrigger>
-                <TabsTrigger value="6">Empty</TabsTrigger>
-                <TabsTrigger value="7">No Results</TabsTrigger>
+                <TabsTrigger value="1">{t('tabMixed')}</TabsTrigger>
+                <TabsTrigger value="2">{t('tabSettings')}</TabsTrigger>
+                <TabsTrigger value="3">{t('tabIntegrations')}</TabsTrigger>
+                <TabsTrigger value="4">{t('tabUsers')}</TabsTrigger>
+                <TabsTrigger value="5">{t('tabDocs')}</TabsTrigger>
+                <TabsTrigger value="6">{t('tabEmpty')}</TabsTrigger>
+                <TabsTrigger value="7">{t('tabNoResults')}</TabsTrigger>
               </div>
 
               <DropdownMenu4

@@ -56,6 +56,25 @@
     "english": "English",
     "indonesian": "Indonesian"
   },
+  "Search": {
+    "placeholder": "Search...",
+    "tabMixed": "Mixed",
+    "tabSettings": "Settings",
+    "tabIntegrations": "Integrations",
+    "tabUsers": "Users",
+    "tabDocs": "Docs",
+    "tabEmpty": "Empty",
+    "tabNoResults": "No Results",
+    "sectionSettings": "Settings",
+    "sectionIntegrations": "Integrations",
+    "sectionUsers": "Users",
+    "goToUsers": "Go to Users",
+    "viewProjects": "View Projects",
+    "emptyHeading": "Looking for something..",
+    "emptyBody": "Initiate your digital experience with our intuitive dashboard",
+    "noResultsHeading": "No Results Found",
+    "noResultsBody": "Refine your query to discover relevant items"
+  },
   "Auth": {
     "signInTitle": "Sign in to ProjectFlow",
     "noAccount": "Don't have an account?",

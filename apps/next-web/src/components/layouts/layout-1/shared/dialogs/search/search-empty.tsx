@@ -1,7 +1,11 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Button } from '@/components/ui/button';
 
 export function SearchEmpty() {
+  const t = useTranslations('Search');
   return (
     <div className="flex flex-col text-center py-9 gap-5">
       <div className="flex justify-center">
@@ -18,15 +22,14 @@ export function SearchEmpty() {
       </div>
       <div className="flex flex-col gap-1.5">
         <h3 className="text-base font-semibold text-mono text-center">
-          Looking for something..
+          {t('emptyHeading')}
         </h3>
         <span className="text-sm font-medium text-center text-secondary-foreground">
-          Initiate your digital experience with <br />
-          our intuitive dashboard
+          {t('emptyBody')}
         </span>
       </div>
       <div className="flex justify-center">
-        <Button variant="outline">View Projects</Button>
+        <Button variant="outline">{t('viewProjects')}</Button>
       </div>
     </div>
   );

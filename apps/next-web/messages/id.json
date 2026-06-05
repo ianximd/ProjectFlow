@@ -56,6 +56,25 @@
     "english": "Inggris",
     "indonesian": "Indonesia"
   },
+  "Search": {
+    "placeholder": "Cari...",
+    "tabMixed": "Campuran",
+    "tabSettings": "Pengaturan",
+    "tabIntegrations": "Integrasi",
+    "tabUsers": "Pengguna",
+    "tabDocs": "Dokumen",
+    "tabEmpty": "Kosong",
+    "tabNoResults": "Tidak Ada Hasil",
+    "sectionSettings": "Pengaturan",
+    "sectionIntegrations": "Integrasi",
+    "sectionUsers": "Pengguna",
+    "goToUsers": "Lihat Pengguna",
+    "viewProjects": "Lihat Proyek",
+    "emptyHeading": "Sedang mencari sesuatu..",
+    "emptyBody": "Mulai pengalaman digital Anda dengan dasbor intuitif kami",
+    "noResultsHeading": "Tidak Ada Hasil",
+    "noResultsBody": "Perbaiki kueri Anda untuk menemukan item yang relevan"
+  },
   "Auth": {
     "signInTitle": "Masuk ke ProjectFlow",
     "noAccount": "Belum punya akun?",

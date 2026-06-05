@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import {
   AccordionMenu,
@@ -16,6 +19,7 @@ export function SearchIntegrations({
   items: SearchIntegrationsItem[];
   more?: boolean;
 }) {
+  const t = useTranslations('Search');
   return (
     <AccordionMenu
       type="single"
@@ -64,7 +68,7 @@ export function SearchIntegrations({
         {!more || (
           <AccordionMenuItem className="px-4 pt-2" value={''}>
             <Button variant="outline" className="mx-auto w-full max-w-full">
-              Go to Users
+              {t('goToUsers')}
             </Button>
           </AccordionMenuItem>
         )}

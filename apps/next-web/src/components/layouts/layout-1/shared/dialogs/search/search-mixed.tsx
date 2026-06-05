@@ -1,3 +1,6 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
 import {
   AccordionMenu,
   AccordionMenuGroup,
@@ -22,10 +25,11 @@ export function SearchMixed({
   integrations,
   users,
 }: SearchMixedProps) {
+  const t = useTranslations('Search');
   return (
     <div className="flex flex-col gap-2.5">
       <div className="text-xs text-secondary-foreground font-medium pt-2.5 pb-1.5 ps-3">
-        <span className="ps-2">Settings</span>
+        <span className="ps-2">{t('sectionSettings')}</span>
 
         <div className="pt-2">
           <AccordionMenu
@@ -45,7 +49,7 @@ export function SearchMixed({
       <div className="border-b border-b-border"></div>
 
       <div className="text-xs text-secondary-foreground font-medium pt-2.5 pb-1.5">
-        <span className="ps-4">Integrations</span>
+        <span className="ps-4">{t('sectionIntegrations')}</span>
 
         <div className="pt-2">
           <SearchIntegrations items={integrations} />
@@ -55,7 +59,7 @@ export function SearchMixed({
       <div className="border-b border-b-border"></div>
 
       <div className="text-xs text-secondary-foreground font-medium pt-2.5 pb-1.5">
-        <span className="ps-4">Users</span>
+        <span className="ps-4">{t('sectionUsers')}</span>
 
         <div className="pt-2">
           <SearchUsers items={users} />

@@ -16,10 +16,12 @@ BEGIN
     SET NOCOUNT ON;
     BEGIN TRANSACTION;
     BEGIN TRY
+        -- Per-owner default: clearing the prior default only affects this owner's
+        -- views in the same scope, never another member's (incl. private) views.
         IF @IsDefault = 1
             UPDATE dbo.SavedViews
                SET IsDefault = 0, UpdatedAt = SYSUTCDATETIME()
-             WHERE WorkspaceId = @WorkspaceId AND ScopeType = @ScopeType
+             WHERE WorkspaceId = @WorkspaceId AND OwnerId = @OwnerId AND ScopeType = @ScopeType
                AND ((@ScopeId IS NULL AND ScopeId IS NULL) OR ScopeId = @ScopeId)
                AND Type = @Type AND DeletedAt IS NULL;
 

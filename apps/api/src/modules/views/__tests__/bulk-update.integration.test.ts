@@ -189,4 +189,73 @@ describe('ViewService.bulkUpdate', () => {
     )).data;
     expect(eff.find((e) => e.field.id === fieldId)?.value ?? null).toBeNull();
   });
+
+  // ── Security: permission-slug parity with single-task REST routes ────────────
+  // set_status/set_priority/set_assignees/delete must require the SAME workspace
+  // permission slug their single-task routes enforce (task.transition/update/
+  // assign/delete). The baseline isWorkspaceMember gate is strictly weaker than
+  // the slug: a workspace-viewer/-member is a member yet lacks some slugs. Without
+  // the slug check the bulk endpoint is a privilege-escalation path.
+
+  // A plain MEMBER (workspace-member role) holds task.update but NOT task.delete.
+  // So they can bulk set_priority but must be rejected on bulk delete — exactly
+  // mirroring DELETE /tasks/:id (task.delete) vs PATCH /tasks/:id (task.update).
+  it('permission slug: a workspace member without task.delete is rejected on bulk delete, but allowed on set_priority', async () => {
+    const owner = await createTestUser();
+    const ws = await createTestWorkspace(owner.accessToken);
+    const p = await createTestProject(ws.Id, owner.accessToken);
+    const t1 = await createTestTask(p.Id, ws.Id, owner.accessToken);
+
+    const member = await createTestUser();
+    const pool = await getPool();
+    await pool.request()
+      .input('WorkspaceId', ws.Id).input('UserId', member.user.Id).input('Role', 'MEMBER')
+      .execute('usp_WorkspaceMember_Add');
+    expect(await isWorkspaceMember(ws.Id, member.user.Id)).toBe(true);
+
+    // delete → needs task.delete, which workspace-member lacks → failed.
+    const del = await viewService.bulkUpdate(member.user.Id, {
+      taskIds: [t1.Id], action: { kind: 'delete' },
+    });
+    expect(del.updated).toEqual([]);
+    expect(del.failed.length).toBe(1);
+    expect(del.failed[0]!.id).toBe(t1.Id);
+    expect(del.failed[0]!.reason).toMatch(/task\.delete|permission/i);
+
+    // set_priority → needs task.update, which workspace-member holds → succeeds.
+    const prio = await viewService.bulkUpdate(member.user.Id, {
+      taskIds: [t1.Id], action: { kind: 'set_priority', priority: 'HIGH' },
+    });
+    expect(prio.updated).toEqual([t1.Id]);
+    expect(prio.failed).toEqual([]);
+  });
+
+  // A VIEWER (workspace-viewer role) is a member with read-only slugs — it holds
+  // none of task.transition/update/assign/delete, so every mutating bulk action
+  // must be rejected.
+  it('permission slug: a workspace viewer is rejected on bulk set_priority and set_status', async () => {
+    const owner = await createTestUser();
+    const ws = await createTestWorkspace(owner.accessToken);
+    const p = await createTestProject(ws.Id, owner.accessToken);
+    const t1 = await createTestTask(p.Id, ws.Id, owner.accessToken);
+
+    const viewer = await createTestUser();
+    const pool = await getPool();
+    await pool.request()
+      .input('WorkspaceId', ws.Id).input('UserId', viewer.user.Id).input('Role', 'VIEWER')
+      .execute('usp_WorkspaceMember_Add');
+    expect(await isWorkspaceMember(ws.Id, viewer.user.Id)).toBe(true);
+
+    const prio = await viewService.bulkUpdate(viewer.user.Id, {
+      taskIds: [t1.Id], action: { kind: 'set_priority', priority: 'LOW' },
+    });
+    expect(prio.updated).toEqual([]);
+    expect(prio.failed[0]!.reason).toMatch(/task\.update|permission/i);
+
+    const status = await viewService.bulkUpdate(viewer.user.Id, {
+      taskIds: [t1.Id], action: { kind: 'set_status', status: 'In Progress' },
+    });
+    expect(status.updated).toEqual([]);
+    expect(status.failed[0]!.reason).toMatch(/task\.transition|permission/i);
+  });
 });

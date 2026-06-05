@@ -34,6 +34,26 @@ export async function gqlData<T>(query: string, variables: Record<string, unknow
 // ── SavedView shape returned by the schema: `config` is a JSON string. ─────────
 interface RawSavedView extends Omit<SavedView, 'config'> { config: string }
 
+/** An empty-but-valid config (filter + sort are required on ViewConfig). */
+const EMPTY_VIEW_CONFIG: ViewConfig = { filter: { conjunction: 'AND', rules: [] }, sort: [] };
+
+/** Parse a view's stored `config` JSON. A malformed/empty string would otherwise
+ *  throw a SyntaxError inside this cache()-wrapped SSR helper and surface as a
+ *  full-page 500; fall back to an empty config so the surface still renders. */
+function parseViewConfig(raw: string): ViewConfig {
+  try {
+    const parsed = JSON.parse(raw) as Partial<ViewConfig>;
+    return {
+      ...EMPTY_VIEW_CONFIG,
+      ...parsed,
+      filter: parsed.filter ?? EMPTY_VIEW_CONFIG.filter,
+      sort: parsed.sort ?? EMPTY_VIEW_CONFIG.sort,
+    };
+  } catch {
+    return EMPTY_VIEW_CONFIG;
+  }
+}
+
 const SAVED_VIEWS_QUERY = /* GraphQL */ `
   query SavedViews($scopeType: String!, $scopeId: String, $workspaceId: String) {
     savedViews(scopeType: $scopeType, scopeId: $scopeId, workspaceId: $workspaceId) {
@@ -66,7 +86,7 @@ export const getSavedViews = cache(async (
   });
   return (savedViews ?? []).map((v) => ({
     ...v,
-    config: JSON.parse(v.config) as ViewConfig,
+    config: parseViewConfig(v.config),
   }));
 });
 
@@ -107,7 +127,7 @@ export const getViewTasks = cache(async (
   meMode = false,
 ): Promise<ViewTaskPageResult> => {
   const { viewTasks } = await gqlData<{
-    viewTasks: { total: number; groups: ViewGroup[] | null; tasks: any[] } | null;
+    viewTasks: { total: number; groups: ViewGroup[] | null; tasks: Record<string, unknown>[] } | null;
   }>(VIEW_TASKS_QUERY, { viewId, page, meMode });
 
   return {
@@ -157,7 +177,7 @@ export const previewViewTasks = cache(async (
   workspaceId?: string,
 ): Promise<ViewTaskPageResult> => {
   const { previewViewTasks: r } = await gqlData<{
-    previewViewTasks: { total: number; groups: ViewGroup[] | null; tasks: any[] } | null;
+    previewViewTasks: { total: number; groups: ViewGroup[] | null; tasks: Record<string, unknown>[] } | null;
   }>(PREVIEW_VIEW_TASKS_QUERY, {
     scopeType,
     scopeId: scopeId ?? null,

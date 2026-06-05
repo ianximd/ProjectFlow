@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -95,7 +95,7 @@ function buildWeeks(monthStart: Date, tasksByDay: Map<string, Task[]>): DayCell[
   gridEnd.setDate(gridEnd.getDate() + (6 - gridEnd.getDay()));
 
   const weeks: DayCell[][] = [];
-  let current = new Date(gridStart);
+  const current = new Date(gridStart);
   while (current <= gridEnd) {
     const week: DayCell[] = [];
     for (let i = 0; i < 7; i++) {
@@ -114,12 +114,17 @@ function buildWeeks(monthStart: Date, tasksByDay: Map<string, Task[]>): DayCell[
   return weeks;
 }
 
+// Client-only flag without a setState-in-effect: getServerSnapshot returns false
+// (matching SSR + the initial hydration render), getSnapshot returns true on the
+// client. Used to defer the `new Date()` "current month" fallback to the browser.
+const subscribeNoop = () => () => {};
+
 export function CalendarView({ taskPage, activeView, customFields = [] }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const tasks = taskPage?.tasks ?? [];
+  const tasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
   const dateField = activeView.config.dateField ?? DEFAULT_DATE_FIELD;
 
   // Hydration safety: the displayed month is parsed from the SSR-stable ?month=
@@ -129,8 +134,7 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
   // flag and render a neutral first paint until the client takes over.
   const monthParam = searchParams.get('month');
   const monthFromParam = parseMonthParam(monthParam);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
   // The month actually shown. With a valid param this is deterministic; without
   // one we only resolve to the live current month after mount.

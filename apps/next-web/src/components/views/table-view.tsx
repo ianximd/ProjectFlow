@@ -39,8 +39,8 @@ interface RowGroup {
 }
 
 export function TableView({ taskPage, activeView, customFields, onSelectionChange }: Props) {
-  const tasks = taskPage?.tasks ?? [];
-  const groups = taskPage?.groups ?? [];
+  const tasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
+  const groups = useMemo(() => taskPage?.groups ?? [], [taskPage]);
   const config = activeView.config;
 
   const columns: FieldRef[] =
@@ -48,19 +48,17 @@ export function TableView({ taskPage, activeView, customFields, onSelectionChang
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Drop selections for tasks that left the page (e.g. after a refresh) so the
-  // exposed selection never references stale ids.
-  useEffect(() => {
+  // Effective selection = stored selection ∩ currently-visible tasks. Derived
+  // during render (not via a setState effect) so ids for tasks that left the page
+  // (e.g. after a refresh) never leak through onSelectionChange.
+  const liveSelected = useMemo(() => {
     const live = new Set(tasks.map((t) => t.id));
-    setSelected((prev) => {
-      const next = new Set([...prev].filter((id) => live.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [tasks]);
+    return [...selected].filter((id) => live.has(id));
+  }, [tasks, selected]);
 
   useEffect(() => {
-    onSelectionChange?.([...selected]);
-  }, [selected, onSelectionChange]);
+    onSelectionChange?.(liveSelected);
+  }, [liveSelected, onSelectionChange]);
 
   const toggle = (id: string) =>
     setSelected((prev) => {

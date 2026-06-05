@@ -23,6 +23,10 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   }
   revalidatePath('/board');
   revalidatePath('/lists/[listId]', 'page');
+  // The views surface itself renders saved views + their task pages, so a view
+  // (or bulk-task) mutation must invalidate it too — without this, other clients
+  // serve a stale tab row / task list from the route cache.
+  revalidatePath('/views/[scopeType]/[scopeId]', 'page');
   return { ok: true, data: result } as ActionResult<T>;
 }
 

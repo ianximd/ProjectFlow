@@ -354,14 +354,21 @@ function NestedGroupEditor({
   // Only flat rules inside a nested group (one level of grouping).
   const rules = group.rules.filter((r): r is FilterRule => !isGroup(r));
 
-  // Stable keys for nested rule rows — seeded once from the group's current
-  // rule count and extended/trimmed as rules are added/removed.
-  const nestedKeysRef = useRef<string[]>(rules.map(() => crypto.randomUUID()));
-  // Keep the ref array in sync with the current rule count.
-  while (nestedKeysRef.current.length < rules.length) {
-    nestedKeysRef.current.push(crypto.randomUUID());
-  }
-  nestedKeysRef.current = nestedKeysRef.current.slice(0, rules.length);
+  // Stable keys for nested rule rows, seeded once. Every length change flows
+  // through the add/remove handlers below, which update keys and rules together
+  // by position — so keys stay aligned without mutating during render (a React
+  // rule violation). The parent remounts this editor with a fresh key whenever
+  // the underlying group identity changes, which reseeds these keys.
+  const [keys, setKeys] = useState<string[]>(() => rules.map(() => crypto.randomUUID()));
+
+  const removeRuleAt = (i: number) => {
+    setKeys((ks) => ks.filter((_, j) => j !== i));
+    onChange({ ...group, rules: rules.filter((_, j) => j !== i) });
+  };
+  const addRule = () => {
+    setKeys((ks) => [...ks, crypto.randomUUID()]);
+    onChange({ ...group, rules: [...rules, { field: firstField, op: '=', value: '' }] });
+  };
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-border bg-background/60 p-2" data-testid="filter-group">
@@ -373,7 +380,7 @@ function NestedGroupEditor({
       </div>
       {rules.map((r, i) => (
         <RuleEditor
-          key={nestedKeysRef.current[i]}
+          key={keys[i] ?? i}
           rule={r}
           options={options}
           onChange={(nr) => {
@@ -381,17 +388,14 @@ function NestedGroupEditor({
             next[i] = nr;
             onChange({ ...group, rules: next });
           }}
-          onRemove={() => {
-            nestedKeysRef.current = nestedKeysRef.current.filter((_, j) => j !== i);
-            onChange({ ...group, rules: rules.filter((_, j) => j !== i) });
-          }}
+          onRemove={() => removeRuleAt(i)}
         />
       ))}
       <Button
         type="button"
         size="sm"
         variant="dashed"
-        onClick={() => onChange({ ...group, rules: [...rules, { field: firstField, op: '=', value: '' }] })}
+        onClick={addRule}
       >
         <Plus className="size-3.5" /> Add filter
       </Button>

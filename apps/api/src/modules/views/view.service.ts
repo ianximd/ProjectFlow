@@ -9,10 +9,26 @@ import { TaskRepository } from '../tasks/task.repository.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
 import { accessService } from '../access/access.service.js';
+import { roleService } from '../roles/role.service.js';
 import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult } from '@projectflow/types';
+
+// Bulk action → the workspace permission slug its single-task REST route enforces.
+// set_custom_field / move_to_list are intentionally absent: their single-task
+// routes (PUT /tasks/:id/fields/:fieldId, PATCH /tasks/:id/move) gate on
+// object-level EDIT via requireObjectAccess — NOT a slug — and the bulk path
+// mirrors that with accessService.can(...,'EDIT') below.
+const ACTION_PERMISSION_SLUG: Partial<Record<BulkAction['kind'], string>> = {
+  set_status:    'task.transition', // PATCH /tasks/:id/transition
+  set_priority:  'task.update',     // PATCH /tasks/:id
+  set_assignees: 'task.assign',     // PUT   /tasks/:id/assignees
+  delete:        'task.delete',     // DELETE /tasks/:id
+};
 
 const _taskRepo = new TaskRepository();
 const _taskService = new TaskService(_taskRepo);
+
+/** Hard cap on a single view page — bounds client-supplied config.pageSize. */
+const MAX_PAGE_SIZE = 200;
 
 // usp_Task_GetById returns SELECT * (PascalCase); read both casings defensively.
 // Mirrors the helper used by the single-task REST custom-field route.
@@ -164,9 +180,12 @@ export class ViewService {
   ): Promise<BulkUpdateResult> {
     const updated: string[] = [];
     const failed: Array<{ id: string; reason: string }> = [];
+    // Cache the caller's permission slugs per workspace so a batch of tasks in the
+    // same workspace resolves slugs once, not per task.
+    const permCache = new Map<string, Set<string>>();
     for (const id of input.taskIds) {
       try {
-        await this.applyAction(userId, id, input.action);
+        await this.applyAction(userId, id, input.action, permCache);
         updated.push(id);
       } catch (e) {
         failed.push({ id, reason: (e as Error).message });
@@ -175,7 +194,12 @@ export class ViewService {
     return { updated, failed };
   }
 
-  private async applyAction(userId: string, taskId: string, action: BulkAction): Promise<void> {
+  private async applyAction(
+    userId: string,
+    taskId: string,
+    action: BulkAction,
+    permCache: Map<string, Set<string>>,
+  ): Promise<void> {
     // Per-task permission baseline: resolve the workspace the task belongs to and
     // verify the caller is a member. None of the task-service methods enforce this
     // themselves, so we must gate here before calling any of them. This is the
@@ -185,6 +209,23 @@ export class ViewService {
     if (!workspaceId) throw new Error(`Task not found: ${taskId}`);
     const isMember = await isWorkspaceMember(workspaceId, userId);
     if (!isMember) throw new Error(`User is not a member of the task's workspace`);
+
+    // Permission-slug parity with the single-task REST routes. isWorkspaceMember is
+    // strictly weaker than the slug a single-task route requires (e.g. a
+    // workspace-viewer is a member but holds no task.* mutation slug), so without
+    // this the bulk endpoint would let a member perform a mutation their
+    // single-task route rejects (privilege escalation). set_custom_field /
+    // move_to_list have no entry here — they use object-level EDIT below instead.
+    const requiredSlug = ACTION_PERMISSION_SLUG[action.kind];
+    if (requiredSlug) {
+      let slugs = permCache.get(workspaceId);
+      if (!slugs) {
+        slugs = await roleService.getUserPermissionSlugs(userId, workspaceId);
+        permCache.set(workspaceId, slugs);
+      }
+      if (!slugs.has(requiredSlug))
+        throw new Error(`User lacks '${requiredSlug}' permission`);
+    }
 
     switch (action.kind) {
       case 'set_status':
@@ -253,7 +294,11 @@ export class ViewService {
       sort: config.sort ?? [],
       meUserId: (opts.meMode ?? config.meMode) ? userId : undefined,
     });
-    const pageSize = opts.pageSize ?? config.pageSize ?? 25;
+    // Clamp pageSize to a sane integer range. config.pageSize comes from
+    // client-supplied JSON (notably previewViewTasks), so cap it to avoid an
+    // unbounded page that would scan/return the entire scope.
+    const requestedSize = opts.pageSize ?? config.pageSize ?? 25;
+    const pageSize = Math.min(Math.max(Math.floor(Number(requestedSize)) || 25, 1), MAX_PAGE_SIZE);
     const page = await this.repo.queryTasks(compiled, { page: opts.page, pageSize });
     if (config.groupBy) {
       page.groups = await this.repo.groupCounts(compiled, builtinGroupExpr(catalog, config.groupBy));

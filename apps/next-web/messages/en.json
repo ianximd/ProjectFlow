@@ -1259,5 +1259,9 @@
     "empty_comments_body": "New comments on issues you follow will appear here.",
     "empty_saved_title": "Nothing saved",
     "empty_saved_body": "Save notifications for later and find them here."
+  },
+  "Presence": {
+    "viewing": "{count, plural, one {# person viewing} other {# people viewing}}",
+    "typing": "{count, plural, one {# person typing…} other {# people typing…}}"
   }
 }

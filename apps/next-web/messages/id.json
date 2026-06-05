@@ -1259,5 +1259,9 @@
     "empty_comments_body": "Komentar baru pada isu yang Anda ikuti akan muncul di sini.",
     "empty_saved_title": "Tidak ada yang disimpan",
     "empty_saved_body": "Simpan notifikasi untuk nanti dan temukan di sini."
+  },
+  "Presence": {
+    "viewing": "{count, plural, other {# orang melihat}}",
+    "typing": "{count, plural, other {# orang sedang mengetik…}}"
   }
 }

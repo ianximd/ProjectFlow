@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CommentSection }  from './CommentSection';
+import { usePresence } from '@/components/presence/usePresence';
+import { PresenceBar } from '@/components/presence/PresenceBar';
 import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
 import { PullRequestsSection } from './PullRequestsSection';
@@ -325,6 +327,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     return () => document.removeEventListener('mousedown', handler);
   }, [pickerOpen]);
 
+  // Task-detail presence (viewer avatars + typing). Hooks must run
+  // unconditionally, so this stays above the `!task` short-circuit; the drawer
+  // only renders on a real task, so the id is always populated when visible.
+  const presenceTaskId = task?.Id ?? task?.id ?? '';
+  const { viewers, setTyping } = usePresence(presenceTaskId);
+
   if (!task) return null;
 
   // Normalize — API returns PascalCase, some callers may use camelCase
@@ -348,6 +356,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       <div className={styles.drawer} ref={drawerRef} role="dialog" aria-modal="true">
         <div className={styles.header}>
           <span className={styles.issueKey}>{issueKey ?? taskId.slice(0, 8).toUpperCase()}</span>
+          <PresenceBar viewers={viewers} currentUserId={currentUserId} />
           <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -966,7 +975,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>{t('commentsSection')}</p>
-            <CommentSection taskId={taskId} currentUserId={currentUserId} workspaceId={workspaceId} />
+            <CommentSection taskId={taskId} currentUserId={currentUserId} workspaceId={workspaceId} onTyping={setTyping} />
           </div>
         </div>
       </div>

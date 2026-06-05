@@ -31,6 +31,9 @@ interface Props {
    *  affordances simply have no members in that case. */
   workspaceId: string | null;
   initialComments?: Comment[];
+  /** Presence typing signal — fired from the NEW-comment composer only.
+   *  true while the viewer is typing, false on submit/clear. */
+  onTyping?: (typing: boolean) => void;
 }
 
 function initials(name: string | null | undefined) {
@@ -77,7 +80,7 @@ function mapLiveComment(c: {
   };
 }
 
-export function CommentSection({ taskId, currentUserId, workspaceId, initialComments }: Props) {
+export function CommentSection({ taskId, currentUserId, workspaceId, initialComments, onTyping }: Props) {
   const t = useTranslations('Comments');
   const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
   const [loaded, setLoaded] = useState<boolean>(initialComments != null);
@@ -131,6 +134,7 @@ export function CommentSection({ taskId, currentUserId, workspaceId, initialComm
     const r = await addComment(taskId, body);
     if (!r.ok) return notifyActionError(r);
     setNewBody('');
+    onTyping?.(false);
     await refetch();
   });
 
@@ -314,7 +318,11 @@ export function CommentSection({ taskId, currentUserId, workspaceId, initialComm
         <div style={{ flex: 1 }}>
           <MentionInput
             value={newBody}
-            onChange={setNewBody}
+            onChange={(next) => {
+              setNewBody(next);
+              // Presence typing signal: emit while there's content, clear when emptied.
+              onTyping?.(next.trim().length > 0);
+            }}
             members={members}
             placeholder={t('addCommentPlaceholder')}
             onSubmit={() => newBody.trim() && onAdd(newBody)}

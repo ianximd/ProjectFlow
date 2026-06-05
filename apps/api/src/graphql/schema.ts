@@ -434,7 +434,7 @@ builder.queryType({
         page:       t.arg.int({ required: false }),
         pageSize:   t.arg.int({ required: false }),
         unreadOnly: t.arg.boolean({ required: false }),
-        types:      t.arg({ type: ['String'], required: false }),
+        types:      t.arg.stringList({ required: false }),
         savedOnly:  t.arg.boolean({ required: false }),
       },
       resolve: async (_, args, ctx) => {

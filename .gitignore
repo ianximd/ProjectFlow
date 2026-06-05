@@ -23,6 +23,9 @@ playwright-report
 test-results
 .playwright
 
+# Claude Code
+.claude/scheduled_tasks.lock
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

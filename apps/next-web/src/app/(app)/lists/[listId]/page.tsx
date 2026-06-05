@@ -8,5 +8,12 @@ export default async function ListPage({ params }: { params: Promise<{ listId: s
   const { listId } = await params;
   const ctx = await getWorkspaceProjectContext();
   const tasks = await getEverythingUnder('LIST', listId);
-  return <ListView listId={listId} workspaceId={ctx.activeWorkspaceId} tasks={tasks ?? []} />;
+  return (
+    <ListView
+      listId={listId}
+      workspaceId={ctx.activeWorkspaceId}
+      projectId={ctx.activeProjectId}
+      tasks={tasks ?? []}
+    />
+  );
 }

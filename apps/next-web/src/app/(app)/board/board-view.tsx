@@ -12,6 +12,7 @@ import type { BoardColumn } from '@/components/Column';
 import { TaskDrawer } from '@/components/TaskDrawer';
 import { notifyApiError, notifyActionError } from '@/lib/apiErrorToast';
 import { reorderTask, createTask, deleteTask } from '@/server/actions/tasks';
+import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
 import {
   WorkspaceProjectSwitcher,
 } from '@/app/(app)/_components/selection-bridge';
@@ -112,9 +113,14 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ── Live task updates (board taskUpdated subscription) ─────────────────────
+  // SSR `tasks` stays the base; live deltas patch existing cards in place. This
+  // feeds the optimistic-reorder layer so a drag still overrides the live value.
+  const liveTasks = useLiveTasks(ctx.activeProjectId, tasks);
+
   // ── Optimistic reorder ─────────────────────────────────────────────────────
   const [optimisticTasks, applyMove] = useOptimistic(
-    tasks,
+    liveTasks,
     (state: Task[], m: OptimisticMove) =>
       state.map((task) =>
         task.id === m.taskId

@@ -266,3 +266,50 @@ and comment assign/resolve. Backend-first with minimal (non-realtime) UI.
   (high-frequency); a list-id-by-task cache could optimize. Out of scope.
 - **`computeActiveViewers` test:** add an explicit `lastSeen` missing/0 → stale assertion (currently covered
   via the TTL-window + malformed cases).
+
+## 2026-06-06 — Phase 3.5 follow-ups (polish + board/list taskUpdated)
+
+Cleared the deferred follow-ups from 3.5b/3.5c on `feat/phase3.5-followups`.
+
+### Polish (resolves the 3.5b/3.5c "known follow-ups" above)
+
+- **Presence typing edge-guard:** `usePresence` now returns a `setTyping` that only beats on the
+  false→true / true→false transition (the composer fires per-keystroke); the 20s keepalive + mount
+  snapshot still beat unconditionally. Cuts heartbeat volume to ~2 per typing burst.
+- **Empty-taskId guard:** `usePresence` skips the subscription (`skip: !taskId`) and every mutation when
+  `taskId` is falsy (rules-of-hooks unconditional call from null-task drawers) — no more no-op round-trips.
+- **Bell aria-label i18n:** `NotificationBell` uses `useTranslations('Inbox')` → `Inbox.unreadAria` (ICU
+  plural, en + id) instead of a hardcoded English string.
+- **Tab-aware inbox live prepend:** `matchesInboxTab(tab, {type,isRead})` (in `inbox-tabs.ts`, unit-tested)
+  mirrors the server `INBOX_TABS` filter so a `notificationAdded` delta only prepends into the active tab
+  (Saved never matches a live delta — re-seeds from SSR). Previously every delta prepended regardless of tab.
+
+### Board/list `taskUpdated` live subscription (spec §9 — was deferred in 3.5b)
+
+- **Consumes the existing server subscription** `taskUpdated(projectId)` (no backend change). `TASK_UPDATED`
+  selects the card-rendered camelCase fields; `taskService` returns camelCase, so the happy-path delta is
+  well-shaped (verified via `task.service.ts` webhook dispatch using `task.id/title/status/projectId`).
+- **`mergeTaskDelta(tasks, delta)`** (pure, unit-tested): UPDATE-ONLY by id, DEFENSIVE merge (only non-null
+  delta fields overwrite, so the known partial publisher — the custom-field value-set path that emits
+  `{ task: { id } }` — can't blank a title). `position` is never touched (GraphQL Task carries none; ordering
+  stays local/optimistic). Returns the same array ref when nothing matched (skips re-render).
+- **`useLiveTasks(projectId, base)`** feeds the board's `useOptimistic` layer (SSR base → live patch →
+  optimistic drag). The hierarchy list-view gets an inline PascalCase-aware merge (title/issueKey) + a new
+  `projectId` prop from its page.
+- **Scoping by id-match, not projectId:** the server channel is global (`task:updated`); `taskUpdated`'s
+  `projectId` arg is a server-ignored placeholder. Since the board only holds the active project's tasks,
+  matching the delta id against visible tasks scopes correctly and drops cross-project chatter without
+  relying on the (uncertainly-shaped) delta `projectId`.
+
+#### Deferred (not blockers)
+
+- **Live add/remove:** update-only. A task newly created/moved-in by another user appears on the next SSR
+  re-seed (navigation/revalidation), not instantly. Add-on-unknown-id was rejected because the partial
+  `{ task: { id } }` publisher would create ghost cards.
+- **Views Engine surfaces:** `components/views/board-view-engine.tsx` + `components/views/list-view.tsx`
+  (config-driven view rendering) are NOT wired — only the canonical `/board` and `/lists/[listId]` surfaces.
+  They can adopt `useLiveTasks` when revisited.
+- **Over-broadcast:** every authed SSE client receives all `task:updated` events; the client filter is the
+  only scope. Per-project channel keying is a backend optimization out of scope here.
+- **Live run:** unit + tsc + build green; an end-to-end live verification rides the same deferred coordinated
+  local-DB stack run as the realtime/presence e2e.

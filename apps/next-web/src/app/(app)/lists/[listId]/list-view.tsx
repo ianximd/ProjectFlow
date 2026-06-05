@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
+import { useSubscription } from '@apollo/client/react';
 import { createTaskInList } from '@/server/actions/hierarchy';
+import { TASK_UPDATED } from '@/lib/realtime/operations';
+import type { TaskDelta } from '@/lib/realtime/merge-task-delta';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 
 const ListIcon = HIERARCHY_ICONS.list;
@@ -13,15 +16,41 @@ const ListIcon = HIERARCHY_ICONS.list;
 export function ListView({
   listId,
   workspaceId,
+  projectId,
   tasks,
 }: {
   listId: string;
   workspaceId: string;
+  projectId: string | null;
   tasks: any[];
 }) {
   const t = useTranslations('Lists');
   const [, startTransition] = useTransition();
   const [title, setTitle] = useState('');
+
+  // Live task updates: SSR rows stay the base; a `taskUpdated` delta patches the
+  // matching row's title/key in place. Rows are PascalCase REST shapes, so write
+  // both casings. Update-only (no live add/remove) — re-seeds from SSR on nav.
+  const [rows, setRows] = useState<any[]>(tasks);
+  useEffect(() => { setRows(tasks); }, [tasks]);
+
+  useSubscription<{ taskUpdated: TaskDelta }>(TASK_UPDATED, {
+    variables: { projectId: projectId ?? '' },
+    skip: !projectId,
+    onData: ({ data }) => {
+      const d = data.data?.taskUpdated;
+      if (!d) return;
+      setRows((prev) => prev.map((r) =>
+        (r.Id ?? r.id) === d.id
+          ? {
+              ...r,
+              ...(d.title    != null ? { Title: d.title, title: d.title } : {}),
+              ...(d.issueKey != null ? { IssueKey: d.issueKey, issueKey: d.issueKey } : {}),
+            }
+          : r,
+      ));
+    },
+  });
 
   function add() {
     const t = title.trim();
@@ -50,7 +79,7 @@ export function ListView({
       />
 
       <ul className="space-y-1 max-w-xl">
-        {tasks.map((task: any) => (
+        {rows.map((task: any) => (
           <li
             key={task.Id ?? task.id}
             data-testid="list-task"
@@ -60,7 +89,7 @@ export function ListView({
             <span className="grow truncate">{task.Title ?? task.title}</span>
           </li>
         ))}
-        {tasks.length === 0 && (
+        {rows.length === 0 && (
           <li className="text-sm text-muted-foreground px-3 py-2">{t('noTasks')}</li>
         )}
       </ul>

@@ -22,3 +22,25 @@ export const COMMENT_ADDED = gql`
     }
   }
 `;
+
+// Live task updates for the board/list. The server channel is global
+// (`task:updated`) — the `projectId` arg is currently a required placeholder and
+// scoping happens client-side by matching the delta's id against the visible
+// tasks (see mergeTaskDelta). Selection is limited to the card-rendered fields.
+export const TASK_UPDATED = gql`
+  subscription TaskUpdated($projectId: String!) {
+    taskUpdated(projectId: $projectId) {
+      id
+      projectId
+      issueKey
+      title
+      status
+      priority
+      type
+      storyPoints
+      dueDate
+      sprintId
+      updatedAt
+    }
+  }
+`;

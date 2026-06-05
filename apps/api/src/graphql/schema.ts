@@ -9,6 +9,7 @@ import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
+import { registerPresenceGraphql } from './presence.schema.js';
 import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -701,6 +702,12 @@ registerWatchersGraphql();
 // viewTasks/previewViewTasks queries + create/update/delete/reorder mutations.
 // ─────────────────────────────────────────
 registerViewsGraphql();
+
+// ─────────────────────────────────────────
+// Presence (Phase 3.5c) — PresenceUser type + presenceHeartbeat/presenceLeave
+// mutations + presenceUpdated subscription (VIEW-gated, per-task channel).
+// ─────────────────────────────────────────
+registerPresenceGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

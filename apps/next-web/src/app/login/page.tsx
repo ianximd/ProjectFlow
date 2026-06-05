@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertCircle, Loader2, ShieldCheck } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { login as loginAction } from '@/server/actions/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,13 +14,14 @@ import { Alert, AlertDescription, AlertIcon } from '@/components/ui/alert';
 
 // Provider name → display label + brand color. Adding a 4th provider
 // is one row per provider here.
-const PROVIDER_META: Record<string, { label: string; bg: string }> = {
-  google:    { label: 'Continue with Google',    bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
-  github:    { label: 'Continue with GitHub',    bg: 'bg-gray-900 text-white hover:bg-gray-800' },
-  microsoft: { label: 'Continue with Microsoft', bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
+const PROVIDER_META: Record<string, { labelKey: string; bg: string }> = {
+  google:    { labelKey: 'continueWithGoogle',    bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
+  github:    { labelKey: 'continueWithGitHub',    bg: 'bg-gray-900 text-white hover:bg-gray-800' },
+  microsoft: { labelKey: 'continueWithMicrosoft', bg: 'bg-white text-gray-900 border border-gray-300 hover:bg-gray-50' },
 };
 
 export default function LoginPage() {
+  const t = useTranslations('Auth');
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,15 +65,15 @@ export default function LoginPage() {
           <CardContent className="p-6 sm:p-8 space-y-6">
             <div className="space-y-2">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                Sign in to ProjectFlow
+                {t('signInTitle')}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Don&apos;t have an account?{' '}
+                {t('noAccount')}{' '}
                 <Link
                   href="/register"
                   className="font-medium text-primary hover:underline"
                 >
-                  Create one
+                  {t('createAccount')}
                 </Link>
               </p>
             </div>
@@ -99,7 +101,7 @@ export default function LoginPage() {
                       href={`/api/v1/auth/oauth/${p.name}/start`}
                       className={`flex items-center justify-center w-full h-10 rounded-md text-sm font-medium transition-colors ${meta.bg}`}
                     >
-                      {meta.label}
+                      {t(meta.labelKey)}
                     </a>
                   );
                 })}
@@ -108,7 +110,7 @@ export default function LoginPage() {
                     <div className="w-full border-t border-border" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">or</span>
+                    <span className="bg-background px-2 text-muted-foreground">{t('orDivider')}</span>
                   </div>
                 </div>
               </div>
@@ -116,13 +118,13 @@ export default function LoginPage() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-1.5">
-                <Label htmlFor="email">Email address</Label>
+                <Label htmlFor="email">{t('emailLabel')}</Label>
                 <Input
                   id="email"
                   type="email"
                   autoComplete="email"
                   required
-                  placeholder="name@company.com"
+                  placeholder={t('emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -130,12 +132,12 @@ export default function LoginPage() {
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">{t('passwordLabel')}</Label>
                   <Link
                     href="#"
                     className="text-xs font-medium text-primary hover:underline"
                   >
-                    Forgot password?
+                    {t('forgotPassword')}
                   </Link>
                 </div>
                 <Input
@@ -143,7 +145,7 @@ export default function LoginPage() {
                   type="password"
                   autoComplete="current-password"
                   required
-                  placeholder="••••••••"
+                  placeholder={t('passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -157,12 +159,12 @@ export default function LoginPage() {
                 {isPending && (
                   <Loader2 className="size-4 animate-spin" />
                 )}
-                {isPending ? 'Signing in...' : 'Sign in'}
+                {isPending ? t('signingIn') : t('signIn')}
               </Button>
             </form>
 
             <p className="text-center text-xs text-muted-foreground">
-              By continuing you agree to our Terms and Privacy Policy.
+              {t('termsNotice')}
             </p>
           </CardContent>
         </Card>
@@ -194,13 +196,13 @@ export default function LoginPage() {
           <div className="space-y-5 max-w-md">
             <div className="inline-flex items-center gap-2 rounded-full bg-primary-foreground/10 px-3 py-1 text-xs font-medium backdrop-blur">
               <ShieldCheck className="size-3.5" />
-              Secure dashboard access
+              {t('secureAccess')}
             </div>
             <h2 className="text-3xl xl:text-4xl font-semibold leading-tight tracking-tight">
-              Modern project management for engineering teams.
+              {t('heroTagline')}
             </h2>
             <p className="text-base text-primary-foreground/80">
-              Plan sprints, run boards, and ship faster — all in one place.
+              {t('heroSubtitle')}
             </p>
           </div>
 

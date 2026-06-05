@@ -15,9 +15,11 @@
 
 import { Suspense, useEffect, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { mfaChallenge } from '@/server/actions/auth';
 
 function MfaInner() {
+  const t       = useTranslations('Auth');
   const router  = useRouter();
   const params  = useSearchParams();
 
@@ -51,7 +53,7 @@ function MfaInner() {
         // mfaChallenge set the session cookies server-side; just navigate.
         router.replace(returnTo || '/board');
       } else {
-        setError('error' in result ? result.error : 'Verification failed');
+        setError('error' in result ? result.error : t('verificationFailed'));
       }
     });
   }
@@ -65,11 +67,11 @@ function MfaInner() {
         className="w-full max-w-sm rounded-lg border border-border bg-card p-6 space-y-4"
       >
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Two-factor verification</h1>
+          <h1 className="text-lg font-semibold text-foreground">{t('twoFactorTitle')}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {mode === 'totp'
-              ? 'Enter the 6-digit code from your authenticator app.'
-              : 'Enter one of your single-use recovery codes.'}
+              ? t('totpPrompt')
+              : t('recoveryPrompt')}
           </p>
         </div>
 
@@ -95,7 +97,7 @@ function MfaInner() {
           disabled={isPending || !code}
           className="w-full rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium disabled:opacity-60"
         >
-          {isPending ? 'Verifying…' : 'Verify and continue'}
+          {isPending ? t('verifying') : t('verifyAndContinue')}
         </button>
 
         <button
@@ -103,7 +105,7 @@ function MfaInner() {
           onClick={() => { setMode((m) => m === 'totp' ? 'recovery' : 'totp'); setCode(''); setError(null); }}
           className="w-full text-xs text-muted-foreground hover:text-foreground"
         >
-          {mode === 'totp' ? 'Use a recovery code instead' : 'Use the authenticator app instead'}
+          {mode === 'totp' ? t('useRecoveryCode') : t('useAuthenticatorApp')}
         </button>
       </form>
     </div>

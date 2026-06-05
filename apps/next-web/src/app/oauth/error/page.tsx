@@ -3,41 +3,48 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
-const REASON_COPY: Record<string, { title: string; body: string }> = {
+type ReasonKeys = {
+  titleKey: string;
+  bodyKey: string;
+};
+
+const REASON_KEYS: Record<string, ReasonKeys> = {
   INVALID_STATE: {
-    title: 'Sign-in could not be completed',
-    body:  "The sign-in attempt expired or doesn't match. Please try again from the login page.",
+    titleKey: 'oauthErrorInvalidStateTitle',
+    bodyKey:  'oauthErrorInvalidStateBody',
   },
   PROVIDER_ERROR: {
-    title: 'Provider error',
-    body:  "We couldn't reach the sign-in provider. Try again in a moment.",
+    titleKey: 'oauthErrorProviderErrorTitle',
+    bodyKey:  'oauthErrorProviderErrorBody',
   },
   NO_EMAIL: {
-    title: 'No email available',
-    body:  'Your account did not return an email address. Make a verified email visible on the provider and try again.',
+    titleKey: 'oauthErrorNoEmailTitle',
+    bodyKey:  'oauthErrorNoEmailBody',
   },
   ACCOUNT_EXISTS: {
-    title: 'Account already exists',
-    body:  'An account with this email already exists. Sign in with your password — once linking ships, you can connect this provider from settings.',
+    titleKey: 'oauthErrorAccountExistsTitle',
+    bodyKey:  'oauthErrorAccountExistsBody',
   },
 };
 
 function ErrorInner() {
+  const t      = useTranslations('Auth');
   const params = useSearchParams();
   const reason = params.get('reason') ?? 'INVALID_STATE';
-  const copy   = REASON_COPY[reason] ?? REASON_COPY['INVALID_STATE']!;
+  const keys   = REASON_KEYS[reason] ?? REASON_KEYS['INVALID_STATE']!;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center space-y-4">
-        <h1 className="text-xl font-semibold text-gray-900">{copy.title}</h1>
-        <p className="text-sm text-gray-600">{copy.body}</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t(keys.titleKey)}</h1>
+        <p className="text-sm text-gray-600">{t(keys.bodyKey)}</p>
         <Link
           href="/login"
           className="inline-flex items-center justify-center w-full h-10 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
         >
-          Back to sign in
+          {t('backToSignIn')}
         </Link>
       </div>
     </div>

@@ -3,9 +3,11 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { register as registerAction } from '@/server/actions/auth';
 
 export default function RegisterPage() {
+  const t = useTranslations('Auth');
   const router = useRouter();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,7 +23,7 @@ export default function RegisterPage() {
       if (result.ok) {
         router.push('/login?registered=1');
       } else {
-        setErrorMsg(result.error ?? 'Registration failed');
+        setErrorMsg(result.error ?? t('registrationFailed'));
       }
     });
   };
@@ -35,12 +37,12 @@ export default function RegisterPage() {
             <span className="text-2xl font-bold text-gray-900 tracking-tight">ProjectFlow</span>
           </div>
           <h2 className="text-center text-xl font-semibold text-gray-900">
-            Create your account
+            {t('createYourAccount')}
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Already have an account?{' '}
+            {t('alreadyHaveAccount')}{' '}
             <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
-              Sign in
+              {t('signIn')}
             </Link>
           </p>
         </div>
@@ -63,7 +65,7 @@ export default function RegisterPage() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name</label>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">{t('fullNameLabel')}</label>
               <div className="mt-1">
                 <input
                   id="name"
@@ -71,7 +73,7 @@ export default function RegisterPage() {
                   autoComplete="name"
                   required
                   className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                  placeholder="John Doe"
+                  placeholder={t('fullNamePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                 />
@@ -79,7 +81,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email address</label>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">{t('emailLabel')}</label>
               <div className="mt-1">
                 <input
                   id="email"
@@ -87,7 +89,7 @@ export default function RegisterPage() {
                   autoComplete="email"
                   required
                   className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                  placeholder="name@company.com"
+                  placeholder={t('emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
@@ -95,7 +97,7 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password</label>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">{t('passwordLabel')}</label>
               <div className="mt-1">
                 <input
                   id="password"
@@ -104,7 +106,7 @@ export default function RegisterPage() {
                   required
                   minLength={8}
                   className="appearance-none block w-full px-3 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition-shadow"
-                  placeholder="••••••••"
+                  placeholder={t('passwordPlaceholder')}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -118,7 +120,7 @@ export default function RegisterPage() {
               disabled={isPending}
               className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              {isPending ? 'Creating account...' : 'Sign up'}
+              {isPending ? t('creatingAccount') : t('signUp')}
             </button>
           </div>
         </form>

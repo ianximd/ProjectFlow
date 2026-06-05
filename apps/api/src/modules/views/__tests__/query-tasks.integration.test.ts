@@ -72,6 +72,28 @@ describe('ViewRepository.queryTasks', () => {
     expect(page.tasks.map((t: any) => t.Title)).toEqual(['high']);
   });
 
+  it('projects custom-field values onto the returned task rows (keyed by lowercased FieldId)', async () => {
+    const u = await createTestUser(); const ws = await createTestWorkspace(u.accessToken); const p = await createTestProject(ws.Id, u.accessToken);
+    const t1 = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'has-cf' });
+    const t2 = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'no-cf' });
+    await setTaskListPath(t1.Id, `/${p.Id}/`); await setTaskListPath(t2.Id, `/${p.Id}/`);
+
+    const cf = new CustomFieldRepository();
+    const field = await cf.create({ id: randomUUID(), workspaceId: ws.Id, scopeType: 'SPACE', scopeId: p.Id, scopePath: `/${p.Id}/`, type: 'number', name: 'Est', config: null, required: false, position: 0 });
+    await cf.setValue(t1.Id, field.id, JSON.stringify(8));
+
+    const cat = buildCatalog([field]);
+    const compiled = compile({ workspaceId: ws.Id, scope: { scopeType: 'SPACE', scopePath: `/${p.Id}/` }, catalog: cat,
+      filter: { conjunction: 'AND', rules: [] }, sort: [{ field: { kind: 'builtin', key: 'title' }, dir: 'ASC' }] });
+    const page = await repo.queryTasks(compiled, { page: 1, pageSize: 25 });
+    const byTitle = Object.fromEntries(page.tasks.map((t: any) => [t.Title, t]));
+    // The raw stored JSON string ('8'), keyed by the field id lowercased so a
+    // client column ref (whatever case it carries) resolves it deterministically.
+    expect(byTitle['has-cf'].CustomFieldValues[field.id.toLowerCase()]).toBe(JSON.stringify(8));
+    // A task with no value for the field gets an empty map, not null/undefined.
+    expect(byTitle['no-cf'].CustomFieldValues).toEqual({});
+  });
+
   it('rejects an invalid page number', async () => {
     const u = await createTestUser(); const ws = await createTestWorkspace(u.accessToken); const p = await createTestProject(ws.Id, u.accessToken);
     const cat = buildCatalog([]);

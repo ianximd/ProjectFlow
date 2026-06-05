@@ -27,6 +27,10 @@ export interface Task {
   resolvedAt: string | null;
   position: number | null;
   sprintId: string | null;
+  /** Custom-field values keyed by lowercased FieldId, parsed from their stored
+   *  JSON (number/boolean/string/array). Empty when the row carries none — only
+   *  the Views engine task projection populates these. */
+  customFieldValues: Record<string, unknown>;
 }
 
 /** Non-empty string → string, otherwise null. */
@@ -39,6 +43,29 @@ const n = (v: unknown): number | null => {
   const num = Number(v);
   return Number.isNaN(num) ? null : num;
 };
+
+/**
+ * Parse the `customFieldValues` payload (a JSON object string of
+ * `{ [fieldId]: rawStoredJsonString }`) into `{ [fieldId]: parsedValue }`.
+ * Each stored value is itself JSON ('8' → 8, '"hi"' → 'hi', '["a","b"]' →
+ * ['a','b']); a value that fails to parse is kept as its raw string. Returns
+ * an empty object for null/empty/malformed input so callers can index safely.
+ */
+function parseCustomFieldValues(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'string' || raw.length === 0) return {};
+  let outer: Record<string, unknown>;
+  try { outer = JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  if (outer == null || typeof outer !== 'object') return {};
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(outer)) {
+    if (typeof v === 'string') {
+      try { out[k] = JSON.parse(v); } catch { out[k] = v; }
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
 
 export function normalizeTask(r: any): Task {
   return {
@@ -55,5 +82,6 @@ export function normalizeTask(r: any): Task {
     resolvedAt:  s(r?.ResolvedAt       ?? r?.resolvedAt),
     position:    n(r?.Position         ?? r?.position),
     sprintId:    s(r?.SprintId         ?? r?.sprintId),
+    customFieldValues: parseCustomFieldValues(r?.customFieldValues ?? r?.CustomFieldValues),
   };
 }

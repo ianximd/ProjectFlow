@@ -107,10 +107,51 @@ export class ViewRepository {
     pageReq.input('__size', sql.Int, opts.pageSize);
     const pageRes = await pageReq.query(pageSql);
 
+    const rows = pageRes.recordset as any[];
+    await this.attachCustomFieldValues(pool, rows);
+
     const countReq = bindAll(pool.request());
     const countRes = await countReq.query(`SELECT COUNT(*) AS Total FROM Tasks t WHERE ${compiled.whereSql}`);
 
-    return { tasks: pageRes.recordset as any, total: countRes.recordset[0]?.Total ?? 0 };
+    return { tasks: rows as any, total: countRes.recordset[0]?.Total ?? 0 };
+  }
+
+  /**
+   * Widen the page rows with their custom-field values so the table/list views
+   * can render custom columns (filter/sort/group already resolve them in SQL,
+   * but `SELECT t.*` never carried the values). One batched lookup keyed on the
+   * page's task ids — bounded by pageSize — keeps this O(1) round-trips.
+   *
+   * Each row gets `CustomFieldValues: { [fieldId]: rawValue }` where `rawValue`
+   * is the value EXACTLY as stored (a JSON string, e.g. '8' or '["a","b"]') and
+   * the key is the FieldId LOWERCASED. mssql returns UNIQUEIDENTIFIER uppercase,
+   * but a custom-field id can reach the client in either case; lowercasing both
+   * here and at the client lookup makes the column resolve deterministic.
+   */
+  private async attachCustomFieldValues(pool: sql.ConnectionPool, rows: any[]): Promise<void> {
+    for (const r of rows) r.CustomFieldValues = {};
+    if (rows.length === 0) return;
+
+    const req = pool.request();
+    const idParams = rows.map((r, i) => {
+      const k = `cfid${i}`;
+      req.input(k, sql.UniqueIdentifier, r.Id);
+      return `@${k}`;
+    });
+    const res = await req.query(
+      `SELECT TaskId, FieldId, Value FROM TaskCustomFieldValues WHERE TaskId IN (${idParams.join(', ')})`,
+    );
+
+    const byTask = new Map<string, Record<string, string>>();
+    for (const v of res.recordset as any[]) {
+      const tid = String(v.TaskId).toLowerCase();
+      const m = byTask.get(tid) ?? {};
+      m[String(v.FieldId).toLowerCase()] = v.Value;
+      byTask.set(tid, m);
+    }
+    for (const r of rows) {
+      r.CustomFieldValues = byTask.get(String(r.Id).toLowerCase()) ?? {};
+    }
   }
 
   /**

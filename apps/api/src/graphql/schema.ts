@@ -99,6 +99,10 @@ export interface TaskShape {
   dueDate?: IsoOrDate | null;
   createdAt: IsoOrDate;
   updatedAt: IsoOrDate;
+  /** Custom-field values for this task, keyed by lowercased FieldId. Only the
+   *  Views engine projection populates this (see ViewRepository.queryTasks);
+   *  other task sources leave it undefined and the GraphQL field resolves null. */
+  customFieldValues?: Record<string, unknown>;
 }
 
 interface CommentShape {
@@ -214,6 +218,13 @@ TaskType.implement({
     dueDate:     t.field({ type: 'Date', nullable: true, resolve: (tk) => tk.dueDate ? new Date(tk.dueDate) : null }),
     createdAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.createdAt) }),
     updatedAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.updatedAt) }),
+    // JSON object string of { [lowercasedFieldId]: rawStoredValue }. Mirrors how
+    // SavedView.config is transported as a String. Null when the task carries no
+    // custom values (or came from a non-views source that doesn't populate them).
+    customFieldValues: t.string({ nullable: true, resolve: (tk) =>
+      tk.customFieldValues && Object.keys(tk.customFieldValues).length > 0
+        ? JSON.stringify(tk.customFieldValues)
+        : null }),
   }),
 });
 

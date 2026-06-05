@@ -76,6 +76,8 @@ function mapTaskRow(r: any): TaskShape {
     dueDate:     r.DueDate ?? null,
     createdAt:   r.CreatedAt,
     updatedAt:   r.UpdatedAt,
+    // Populated by ViewRepository.queryTasks: { [lowercasedFieldId]: rawValue }.
+    customFieldValues: r.CustomFieldValues ?? {},
   };
 }
 

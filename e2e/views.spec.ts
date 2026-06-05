@@ -251,3 +251,52 @@ test('bulk bar: select rows and set status applies to all selected', async ({ pa
 
   await seed.api.dispose();
 });
+
+// ── (d) A custom-field column renders the task's stored value (not "—") ────────
+test('table: a custom-field column renders the stored value', async ({ page }) => {
+  const seed = await apiSetup();
+
+  // A SPACE-scoped text custom field. Filter/sort/group already resolved custom
+  // fields server-side, but the table cell used to render "—" because the
+  // viewTasks projection never carried the values (the gap this test guards).
+  const cfRes = await seed.api.post(`${API_BASE}/custom-fields`, {
+    headers: { Authorization: `Bearer ${seed.token}` },
+    data: { scopeType: 'SPACE', scopeId: seed.spaceId, type: 'text', name: `Owner ${seed.s}`, position: 0 },
+  });
+  const field = (await cfRes.json()).data;
+  const fieldId: string = field.id ?? field.Id;
+
+  // A task carrying a DISTINCTIVE alpha value — `seed.s` is all digits and also
+  // appears in the row's title, so a numeric marker could false-match the title.
+  const marker = `cfmark${seed.s.replace(/\D/g, '')}`;
+  const taskId = await createTask(seed, `CF row ${seed.s}`);
+  await seed.api.put(`${API_BASE}/tasks/${taskId}/fields/${fieldId}`, {
+    headers: { Authorization: `Bearer ${seed.token}` },
+    data: { value: marker },
+  });
+
+  // A table view whose columns include the custom field.
+  const { createSavedView } = await gql<{ createSavedView: { id: string } }>(seed.api, seed.token, /* GraphQL */ `
+    mutation Create($input: CreateSavedViewInput!) { createSavedView(input: $input) { id } }
+  `, {
+    input: {
+      scopeType: 'SPACE', scopeId: seed.spaceId, type: 'table', name: `CF Table ${seed.s}`,
+      isShared: true, isDefault: false,
+      config: JSON.stringify({
+        filter: { conjunction: 'AND', rules: [] }, sort: [],
+        columns: [{ kind: 'builtin', key: 'title' }, { kind: 'custom', key: fieldId }],
+      }),
+    },
+  });
+
+  await uiLogin(page, seed.email, seed.password);
+  await page.goto(`/views/SPACE/${seed.spaceId}?viewId=${createSavedView.id}`);
+
+  // The task's row renders the custom value (the `cfmark…` marker lives only in
+  // the custom-field cell — the column header is in <thead>, not a table-row).
+  const row = page.getByTestId('table-row').filter({ hasText: `CF row ${seed.s}` });
+  await expect(row).toBeVisible({ timeout: 15000 });
+  await expect(row).toContainText(marker);
+
+  await seed.api.dispose();
+});

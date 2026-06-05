@@ -106,6 +106,7 @@ const VIEW_TASKS_QUERY = /* GraphQL */ `
         storyPoints
         dueDate
         sprintId
+        customFieldValues
       }
     }
   }
@@ -159,6 +160,7 @@ const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
         storyPoints
         dueDate
         sprintId
+        customFieldValues
       }
     }
   }

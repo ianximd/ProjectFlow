@@ -7,12 +7,14 @@ import { Button } from '@/components/ui/button';
 import { loadWorkspaceMembers } from '@/server/actions/members';
 import { loadTaskWatchers, addWatcher, removeWatcher } from '@/server/actions/watchers';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { useTranslations } from 'next-intl';
 
 /**
  * Watcher control for the task drawer. Lists current watchers and lets the user
  * toggle any workspace member as a watcher. Optimistic with rollback.
  */
 export function WatcherControl({ taskId, workspaceId }: { taskId: string; workspaceId: string }) {
+  const t = useTranslations('Task');
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [watcherIds, setWatcherIds] = useState<Set<string>>(new Set());
   const [, start] = useTransition();
@@ -52,17 +54,17 @@ export function WatcherControl({ taskId, workspaceId }: { taskId: string; worksp
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      {watching.length === 0 && <span style={{ fontSize: 13, color: '#718096' }}>No watchers</span>}
+      {watching.length === 0 && <span style={{ fontSize: 13, color: '#718096' }}>{t('noWatchers')}</span>}
       {watching.map((m) => (
         <span key={m.id} style={{ fontSize: 12, color: '#4a5568' }}>{m.name ?? m.email}</span>
       ))}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" className="font-normal" aria-label="Edit watchers">Watchers</Button>
+          <Button variant="outline" className="font-normal" aria-label={t('editWatchers')}>{t('editWatchers')}</Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 p-2">
           <div className="flex flex-col gap-1">
-            {members.length === 0 && <span className="px-2 py-1 text-xs text-muted-foreground">No members</span>}
+            {members.length === 0 && <span className="px-2 py-1 text-xs text-muted-foreground">{t('noMembers')}</span>}
             {members.map((m) => (
               <label key={m.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent cursor-pointer">
                 <input type="checkbox" checked={watcherIds.has(m.id.toUpperCase())} onChange={() => toggle(m.id)} />

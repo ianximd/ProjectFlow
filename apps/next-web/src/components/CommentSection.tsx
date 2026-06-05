@@ -11,6 +11,7 @@ import {
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { Comment } from '@/server/queries/comments';
 import styles from './CommentSection.module.css';
+import { useTranslations } from 'next-intl';
 
 interface Props {
   taskId: string;
@@ -41,6 +42,7 @@ function relativeTime(iso: string) {
 }
 
 export function CommentSection({ taskId, currentUserId, initialComments }: Props) {
+  const t = useTranslations('Comments');
   const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
   const [loaded, setLoaded] = useState<boolean>(initialComments != null);
   const [pending, start] = useTransition();
@@ -87,16 +89,16 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
   return (
     <div className={styles.comments}>
       {!loaded ? (
-        <p className={styles.empty}>Loading comments…</p>
+        <p className={styles.empty}>{t('loading')}</p>
       ) : comments.length === 0 ? (
-        <p className={styles.empty}>No comments yet. Be the first!</p>
+        <p className={styles.empty}>{t('noCommentsYet')}</p>
       ) : (
         comments.map((c) => (
           <div key={c.id} className={styles.comment}>
             <div className={styles.avatar}>{initials(c.authorName)}</div>
             <div className={styles.commentBody}>
               <div className={styles.commentHeader}>
-                <span className={styles.authorName}>{c.authorName || 'Unknown'}</span>
+                <span className={styles.authorName}>{c.authorName || t('unknown')}</span>
                 <span className={styles.commentDate}>
                   {c.createdAt ? relativeTime(c.createdAt) : ''}
                 </span>
@@ -116,10 +118,10 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
                       onClick={() => onEdit(c.id, editBody)}
                       disabled={!editBody.trim() || pending}
                     >
-                      Save
+                      {t('save')}
                     </button>
                     <button className={styles.actionBtn} onClick={() => setEditingId(null)}>
-                      Cancel
+                      {t('cancel')}
                     </button>
                   </div>
                 </>
@@ -157,13 +159,13 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
                             setEditBody(c.body);
                           }}
                         >
-                          Edit
+                          {t('edit')}
                         </button>
                         <button
                           className={styles.actionBtn}
                           onClick={() => onDelete(c.id)}
                         >
-                          Delete
+                          {t('delete')}
                         </button>
                       </>
                     )}
@@ -179,7 +181,7 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
       <div className={styles.form}>
         <textarea
           className={styles.textarea}
-          placeholder="Add a comment…"
+          placeholder={t('addCommentPlaceholder')}
           value={newBody}
           onChange={(e) => setNewBody(e.target.value)}
           onKeyDown={(e) => {
@@ -194,7 +196,7 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
           onClick={() => newBody.trim() && onAdd(newBody)}
           disabled={!newBody.trim() || pending}
         >
-          {pending ? 'Saving…' : 'Comment'}
+          {pending ? t('saving') : t('submit')}
         </button>
       </div>
     </div>

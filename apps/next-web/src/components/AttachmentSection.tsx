@@ -10,6 +10,7 @@ import {
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { Attachment } from '@/server/queries/attachments';
 import styles from './AttachmentSection.module.css';
+import { useTranslations } from 'next-intl';
 
 interface Props {
   taskId: string;
@@ -34,6 +35,7 @@ function mimeIcon(mime: string | null | undefined) {
 }
 
 export function AttachmentSection({ taskId }: Props) {
+  const t = useTranslations('Attachments');
   const inputRef    = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -78,7 +80,7 @@ export function AttachmentSection({ taskId }: Props) {
   // browser. The presigned URL is signed and time-limited, so it's safe to open.
   const openDownload = async (id: string) => {
     const r = await getAttachmentDownloadUrl(id);
-    if (!r.ok) { setUploadError('Failed to open attachment'); return notifyActionError(r); }
+    if (!r.ok) { setUploadError(t('failedOpen')); return notifyActionError(r); }
     if (r.data.url) window.open(r.data.url, '_blank', 'noopener,noreferrer');
   };
 
@@ -97,6 +99,7 @@ export function AttachmentSection({ taskId }: Props) {
         onDragLeave={() => setDragover(false)}
         onDrop={onDrop}
         onClick={() => inputRef.current?.click()}
+        aria-label={t('dropzoneLabel')}
       >
         <input
           ref={inputRef}
@@ -107,20 +110,20 @@ export function AttachmentSection({ taskId }: Props) {
           onClick={(e) => e.stopPropagation()}
         />
         <p className={styles.dropzoneText}>
-          Drop files here or <span>browse</span> — max 25 MB
+          {t('dropzoneLabel')}
         </p>
       </div>
 
       {pending && (
-        <p className={styles.uploading}>Uploading…</p>
+        <p className={styles.uploading}>{t('uploading')}</p>
       )}
       {uploadError && <p className={styles.error}>{uploadError}</p>}
 
       {/* Attachment list */}
       {!loaded ? (
-        <p className={styles.empty}>Loading attachments…</p>
+        <p className={styles.empty}>{t('loading')}</p>
       ) : attachments.length === 0 ? (
-        <p className={styles.empty}>No attachments yet.</p>
+        <p className={styles.empty}>{t('noAttachments')}</p>
       ) : (
         <div className={styles.list}>
           {attachments.map((a) => (
@@ -153,7 +156,7 @@ export function AttachmentSection({ taskId }: Props) {
                 className={styles.deleteBtn}
                 onClick={() => onDeleteAttachment(a.Id)}
                 disabled={pending}
-                aria-label="Delete attachment"
+                aria-label={t('deleteAttachment')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="3 6 5 6 21 6" />

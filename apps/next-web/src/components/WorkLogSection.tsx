@@ -5,6 +5,7 @@ import { addWorkLog, editWorkLog, deleteWorkLog, loadWorkLogs } from '@/server/a
 import { notifyActionError } from '@/lib/apiErrorToast';
 import styles from './WorkLogSection.module.css';
 import type { WorkLog, WorkLogTotals, WorkLogListResult } from '@projectflow/types';
+import { useTranslations } from 'next-intl';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ interface Props {
 }
 
 export function WorkLogSection({ taskId, currentUserId }: Props) {
+  const t = useTranslations('WorkLog');
   const [data, setData]       = useState<WorkLogListResult | null>(null);
   const [loaded, setLoaded]   = useState(false);
   const [pending, start]      = useTransition();
@@ -82,7 +84,7 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
 
   const onCreate = () => {
     const secs = parseDuration(timeInput);
-    if (!secs) { setError('Invalid time format'); return; }
+    if (!secs) { setError(t('invalidTimeFormat')); return; }
     start(async () => {
       const r = await addWorkLog(taskId, {
         timeSpentSeconds: secs,
@@ -122,10 +124,10 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
       {/* header */}
       <div className={styles.header}>
         <span className={styles.totalBadge}>
-          Total: <strong>{formatDuration(totalSeconds)}</strong>
+          {t('total', { duration: formatDuration(totalSeconds) })}
         </span>
         <button className={styles.logBtn} onClick={() => setShowForm(v => !v)}>
-          {showForm ? 'Cancel' : '+ Log work'}
+          {showForm ? t('cancelLogWork') : t('logWork')}
         </button>
       </div>
 
@@ -134,16 +136,16 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
         <div className={styles.form}>
           <div className={styles.formRow}>
             <div className={styles.formField}>
-              <label className={styles.fieldLabel}>Time spent</label>
+              <label className={styles.fieldLabel}>{t('timeSpentLabel')}</label>
               <input
                 className={styles.input}
-                placeholder="e.g. 1h 30m"
+                placeholder={t('timeSpentPlaceholder')}
                 value={timeInput}
                 onChange={e => setTimeInput(e.target.value)}
               />
             </div>
             <div className={styles.formField}>
-              <label className={styles.fieldLabel}>Date</label>
+              <label className={styles.fieldLabel}>{t('dateLabel')}</label>
               <input
                 className={styles.input}
                 type="date"
@@ -154,7 +156,7 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
           </div>
           <textarea
             className={styles.textarea}
-            placeholder="Work description (optional)"
+            placeholder={t('workDescPlaceholder')}
             value={descInput}
             onChange={e => setDescInput(e.target.value)}
           />
@@ -164,7 +166,7 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
               onClick={onCreate}
               disabled={pending || !timeInput.trim()}
             >
-              {pending ? 'Saving…' : 'Save'}
+              {pending ? t('saving') : t('save')}
             </button>
           </div>
           {error && <p className={styles.error}>{error}</p>}
@@ -174,20 +176,20 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
       {/* totals by user */}
       {(data?.totals?.length ?? 0) > 0 && (
         <div className={styles.totals}>
-          {data!.totals.map((t: WorkLogTotals) => (
-            <div key={t.user.id} className={styles.totalRow}>
-              <div className={styles.avatar}>{initials(t.user.name)}</div>
-              <span className={styles.userName}>{t.user.name}</span>
-              <span className={styles.userTotal}>{formatDuration(t.totalSeconds)}</span>
+          {data!.totals.map((tot: WorkLogTotals) => (
+            <div key={tot.user.id} className={styles.totalRow}>
+              <div className={styles.avatar}>{initials(tot.user.name)}</div>
+              <span className={styles.userName}>{tot.user.name}</span>
+              <span className={styles.userTotal}>{formatDuration(tot.totalSeconds)}</span>
             </div>
           ))}
         </div>
       )}
 
       {/* log list */}
-      {!loaded && <p className={styles.empty}>Loading…</p>}
+      {!loaded && <p className={styles.empty}>{t('loading')}</p>}
       {loaded && data?.logs.length === 0 && (
-        <p className={styles.empty}>No work logged yet.</p>
+        <p className={styles.empty}>{t('noWorkLogged')}</p>
       )}
 
       <div className={styles.logList}>
@@ -199,21 +201,21 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
                   className={styles.input}
                   value={editTime}
                   onChange={e => setEditTime(e.target.value)}
-                  placeholder="Time (e.g. 2h)"
+                  placeholder={t('editTimePlaceholder')}
                 />
                 <textarea
                   className={styles.textarea}
                   value={editDesc}
                   onChange={e => setEditDesc(e.target.value)}
-                  placeholder="Description"
+                  placeholder={t('descriptionPlaceholder')}
                 />
                 <div className={styles.formActions}>
                   <button
                     className={styles.saveBtn}
                     onClick={() => onUpdate(log.id)}
                     disabled={pending}
-                  >Save</button>
-                  <button className={styles.cancelBtn} onClick={() => setEditingId(null)}>Cancel</button>
+                  >{t('save')}</button>
+                  <button className={styles.cancelBtn} onClick={() => setEditingId(null)}>{t('cancel')}</button>
                 </div>
               </div>
             ) : (
@@ -241,12 +243,12 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
                         setEditTime(formatDuration(log.timeSpentSeconds));
                         setEditDesc(log.description ?? '');
                       }}
-                    >Edit</button>
+                    >{t('edit')}</button>
                     <button
                       className={styles.deleteBtn}
                       onClick={() => onDelete(log.id)}
                       disabled={pending}
-                    >Delete</button>
+                    >{t('delete')}</button>
                   </div>
                 )}
               </>

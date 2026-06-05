@@ -5,6 +5,7 @@ import type { TaskType } from '@projectflow/types';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { setTaskType } from '@/server/actions/tasks';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { useTranslations } from 'next-intl';
 
 /**
  * Task-type picker for the task drawer. Optimistically commits via setTaskType
@@ -21,6 +22,7 @@ export function TaskTypeSelector({
   value:     string | null;
   disabled?: boolean;
 }) {
+  const t = useTranslations('Task');
   const [local, setLocal] = useState<string | null>(value);
   const [, start] = useTransition();
 
@@ -38,11 +40,11 @@ export function TaskTypeSelector({
 
   return (
     <Select value={local ?? ''} disabled={disabled} onValueChange={onChange}>
-      <SelectTrigger aria-label="Task type"><SelectValue placeholder="Task" /></SelectTrigger>
+      <SelectTrigger aria-label={t('typeSection')}><SelectValue placeholder={t('taskTypePlaceholder')} /></SelectTrigger>
       <SelectContent>
-        {types.map((t) => (
-          <SelectItem key={t.id} value={t.id}>
-            {t.isMilestone ? '◆ ' : ''}{t.nameSingular}
+        {types.map((type) => (
+          <SelectItem key={type.id} value={type.id}>
+            {type.isMilestone ? '◆ ' : ''}{type.nameSingular}
           </SelectItem>
         ))}
       </SelectContent>

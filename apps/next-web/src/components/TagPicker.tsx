@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { loadSpaceTags, loadTaskTags, createTag, linkTag, unlinkTag } from '@/server/actions/tags';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { useTranslations } from 'next-intl';
 
 function Chip({ tag }: { tag: Tag }) {
   return (
@@ -22,6 +23,7 @@ function Chip({ tag }: { tag: Tag }) {
 }
 
 export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string }) {
+  const t = useTranslations('Task');
   const [spaceTags, setSpaceTags] = useState<Tag[]>([]);
   const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState('');
@@ -33,7 +35,7 @@ export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string
       .then(([all, linked]) => {
         if (cancelled) return;
         setSpaceTags(all);
-        setLinkedIds(new Set(linked.map((t) => t.id)));
+        setLinkedIds(new Set(linked.map((tag) => tag.id)));
       })
       .catch(() => { /* leave empty */ });
     return () => { cancelled = true; };
@@ -73,22 +75,22 @@ export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string
     });
   }
 
-  const linked = spaceTags.filter((t) => linkedIds.has(t.id));
+  const linked = spaceTags.filter((tag) => linkedIds.has(tag.id));
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-      {linked.map((t) => <Chip key={t.id} tag={t} />)}
+      {linked.map((tag) => <Chip key={tag.id} tag={tag} />)}
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" className="font-normal" aria-label="Edit tags">+ Tag</Button>
+          <Button variant="outline" className="font-normal" aria-label={t('editTags')}>{t('editTags')}</Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-64 p-2">
           <div className="flex flex-col gap-1">
-            {spaceTags.length === 0 && <span className="px-2 py-1 text-xs text-muted-foreground">No tags yet</span>}
-            {spaceTags.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent cursor-pointer">
-                <input type="checkbox" checked={linkedIds.has(t.id)} onChange={() => toggle(t)} />
-                <Chip tag={t} />
+            {spaceTags.length === 0 && <span className="px-2 py-1 text-xs text-muted-foreground">{t('noTagsYet')}</span>}
+            {spaceTags.map((tag) => (
+              <label key={tag.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent cursor-pointer">
+                <input type="checkbox" checked={linkedIds.has(tag.id)} onChange={() => toggle(tag)} />
+                <Chip tag={tag} />
               </label>
             ))}
             <div className="mt-2 flex items-center gap-1">
@@ -96,11 +98,11 @@ export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); create(); } }}
-                placeholder="New tag…"
-                aria-label="New tag name"
+                placeholder={t('newTagPlaceholder')}
+                aria-label={t('newTagAriaLabel')}
                 className="h-8 text-sm"
               />
-              <Button variant="outline" className="h-8" onClick={create}>Add</Button>
+              <Button variant="outline" className="h-8" onClick={create}>{t('addTag')}</Button>
             </div>
           </div>
         </PopoverContent>

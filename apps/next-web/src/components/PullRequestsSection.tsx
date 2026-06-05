@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { getPullRequests, getCommits } from '@/server/actions/git';
 import type { GitPullRequest, GitCommit, GitProvider } from '@projectflow/types';
 import styles from './pull-requests.module.css';
+import { useTranslations } from 'next-intl';
 
 const STATE_COLOR: Record<string, string> = {
   open:   '#27c93f',
@@ -11,6 +12,7 @@ const STATE_COLOR: Record<string, string> = {
   closed: '#888',
 };
 
+// State labels are API-derived enum values — left as dynamic data (skipped per recipe).
 const STATE_LABEL: Record<string, string> = {
   open:   'Open',
   merged: 'Merged',
@@ -30,6 +32,7 @@ interface Props {
 }
 
 export function PullRequestsSection({ taskId }: Props) {
+  const t = useTranslations('PullRequests');
   const [prs, setPrs] = useState<GitPullRequest[]>([]);
   const [commits, setCommits] = useState<GitCommit[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -49,17 +52,17 @@ export function PullRequestsSection({ taskId }: Props) {
   // Hold the empty state until the first load resolves, so a task that has
   // links doesn't flash "No linked pull requests" for the round-trip.
   if (!loaded) {
-    return <p className={styles.empty}>Loading…</p>;
+    return <p className={styles.empty}>{t('loading')}</p>;
   }
   if (prs.length === 0 && commits.length === 0) {
-    return <p className={styles.empty}>No linked pull requests or commits.</p>;
+    return <p className={styles.empty}>{t('noLinkedPrs')}</p>;
   }
 
   return (
     <div className={styles.container}>
       {prs.length > 0 && (
         <div className={styles.group}>
-          <h4 className={styles.groupTitle}>Pull Requests</h4>
+          <h4 className={styles.groupTitle}>{t('pullRequestsHeading')}</h4>
           <ul className={styles.list}>
             {prs.map((pr) => (
               <li key={pr.id} className={styles.item}>
@@ -83,7 +86,7 @@ export function PullRequestsSection({ taskId }: Props) {
 
       {commits.length > 0 && (
         <div className={styles.group}>
-          <h4 className={styles.groupTitle}>Commits</h4>
+          <h4 className={styles.groupTitle}>{t('commitsHeading')}</h4>
           <ul className={styles.list}>
             {commits.map((commit) => (
               <li key={commit.id} className={styles.item}>

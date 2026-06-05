@@ -25,6 +25,7 @@ import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
 import styles from './TaskDrawer.module.css';
+import { useTranslations } from 'next-intl';
 
 interface Task {
   // camelCase (normalized)
@@ -95,6 +96,7 @@ function toDateInput(iso: string | null | undefined): string {
 }
 
 export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onClose, breadcrumb }: Props) {
+  const t = useTranslations('Task');
   const drawerRef   = useRef<HTMLDivElement>(null);
   const pickerRef   = useRef<HTMLDivElement>(null);
   // Workspace comes from the opener as a prop (every render site passes
@@ -173,11 +175,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toDateInput(task?.DueDate   ?? task?.dueDate   ?? null));
     setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
-    const t = task?.Title ?? task?.title ?? '';
-    const d = task?.Description ?? task?.description ?? '';
-    setTitleValue(t);
-    setDescriptionValue(d);
-    setDraftDescription(d);
+    const tTitle = task?.Title ?? task?.title ?? '';
+    const tDesc = task?.Description ?? task?.description ?? '';
+    setTitleValue(tTitle);
+    setDescriptionValue(tDesc);
+    setDraftDescription(tDesc);
     setEditingDescription(false);
   }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Title, task?.title, task?.Description, task?.description]);
 
@@ -335,7 +337,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const type        = task.Type   ?? task.type   ?? '';
   const taskTypeId  = ((task as any).TaskTypeId ?? (task as any).taskTypeId ?? null) as string | null;
   const spaceId     = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
-  const selectedType = taskTypes.find((t) => t.id === taskTypeId) ?? null;
+  const selectedType = taskTypes.find((tt) => tt.id === taskTypeId) ?? null;
   const storyPoints = task.StoryPoints ?? task.storyPoints;
   const startDate   = task.StartDate ?? task.startDate;
   const dueDate     = task.DueDate   ?? task.dueDate;
@@ -346,7 +348,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       <div className={styles.drawer} ref={drawerRef} role="dialog" aria-modal="true">
         <div className={styles.header}>
           <span className={styles.issueKey}>{issueKey ?? taskId.slice(0, 8).toUpperCase()}</span>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Close">
+          <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -357,7 +359,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
         <div className={styles.body}>
           {breadcrumb && (
             <nav
-              aria-label="Hierarchy breadcrumb"
+              aria-label={t('hierarchyBreadcrumb')}
               style={{ display: 'flex', gap: 6, fontSize: 12, color: 'var(--muted-foreground, #6b7280)', marginBottom: 8, flexWrap: 'wrap' }}
             >
               <span>{breadcrumb.space}</span>
@@ -386,8 +388,8 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             }}
             disabled={savingField}
             rows={1}
-            aria-label="Issue title"
-            placeholder="Untitled"
+            aria-label={t('issueTitle')}
+            placeholder={t('untitled')}
             style={{
               background:  'transparent',
               border:      'none',
@@ -404,7 +406,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             <span className={styles.metaBadge}>{type}</span>
             <span className={styles.metaBadge}>{status}</span>
             <select
-              aria-label="Priority"
+              aria-label={t('priorityLabel')}
               value={priorityValue}
               onChange={(e) => {
                 setPriorityValue(e.target.value);
@@ -429,11 +431,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               ))}
             </select>
             {storyPoints != null && (
-              <span className={styles.metaBadge}>{storyPoints} pts</span>
+              <span className={styles.metaBadge}>{t('storyPoints', { points: storyPoints })}</span>
             )}
             {priorityError && (
               <span style={{ color: '#fc8181', fontSize: 11 }}>
-                Failed to update priority.
+                {t('failedUpdatePriority')}
               </span>
             )}
           </div>
@@ -444,14 +446,15 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               hits PATCH /roadmap/tasks/:id/dates so the bar on the Gantt and
               the deadline chip on the board both refresh from one request. */}
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Schedule</p>
+            <p className={styles.sectionTitle}>{t('scheduleSection')}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <ScheduleRow
-                label="Start date"
+                label={t('startDate')}
                 kind="date"
                 value={startInput}
                 onChange={setStartInput}
                 hasValue={!!startDate}
+                clearLabel={t('clearDate')}
                 onClear={() => {
                   setStartInput('');
                   doUpdateSchedule({
@@ -462,11 +465,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 disabled={savingSchedule}
               />
               <ScheduleRow
-                label="Due date"
+                label={t('dueDate')}
                 kind="date"
                 value={dueInput}
                 onChange={setDueInput}
                 hasValue={!!dueDate}
+                clearLabel={t('clearDate')}
                 onClear={() => {
                   setDueInput('');
                   doUpdateSchedule({
@@ -503,19 +507,19 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                                   ? 0.5 : 1,
                   }}
                 >
-                  {savingSchedule ? 'Saving…' : 'Save schedule'}
+                  {savingSchedule ? t('savingSchedule') : t('saveSchedule')}
                 </button>
               </div>
             </div>
             {scheduleError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
-                Failed to update schedule.
+                {t('failedUpdateSchedule')}
               </p>
             )}
           </div>
 
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Assignees</p>
+            <p className={styles.sectionTitle}>{t('assigneesSection')}</p>
             <div
               ref={pickerRef}
               style={{
@@ -564,7 +568,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   <span>{a.Name || a.Email}</span>
                   <button
                     type="button"
-                    aria-label={`Remove ${a.Name || a.Email}`}
+                    aria-label={t('removeAssignee', { name: a.Name || a.Email })}
                     onClick={() => {
                       const next = localAssignees.filter((x) => x.UserId !== a.UserId);
                       setLocalAssignees(next);
@@ -600,13 +604,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   cursor:       (!workspaceId || savingAssignees) ? 'default' : 'pointer',
                 }}
               >
-                + Assign
+                {t('assignBtn')}
               </button>
 
               {pickerOpen && (
                 <div
                   role="dialog"
-                  aria-label="Pick assignee"
+                  aria-label={t('pickAssignee')}
                   style={{
                     position:     'absolute',
                     top:          '100%',
@@ -625,7 +629,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 >
                   <input
                     type="text"
-                    placeholder="Search members…"
+                    placeholder={t('searchMembers')}
                     value={pickerSearch}
                     onChange={(e) => setPickerSearch(e.target.value)}
                     autoFocus
@@ -644,12 +648,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   />
                   {loadingMembers && (
                     <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
-                      Loading members…
+                      {t('loadingMembers')}
                     </p>
                   )}
                   {membersError && (
                     <p style={{ fontSize: 12, color: '#fc8181', margin: '4px 6px' }}>
-                      Failed to load members.
+                      {t('failedLoadMembers')}
                     </p>
                   )}
                   {members && (() => {
@@ -665,7 +669,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                     if (filtered.length === 0) {
                       return (
                         <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
-                          {q ? 'No members match.' : 'Everyone is already assigned.'}
+                          {q ? t('noMembersMatch') : t('everyoneAssigned')}
                         </p>
                       );
                     }
@@ -737,7 +741,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             </div>
             {assigneesError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: '6px 0 0 0' }}>
-                Failed to update assignees.
+                {t('failedUpdateAssignees')}
               </p>
             )}
           </div>
@@ -746,7 +750,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               state shows an "Add description" hint so the section is always
               actionable. Cmd/Ctrl+Enter commits, Escape cancels. */}
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Description</p>
+            <p className={styles.sectionTitle}>{t('descriptionSection')}</p>
             {editingDescription ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <textarea
@@ -766,7 +770,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   }}
                   autoFocus
                   rows={Math.min(20, Math.max(6, draftDescription.split('\n').length + 1))}
-                  placeholder="Write a description… markdown supported (Cmd/Ctrl+Enter to save, Esc to cancel)"
+                  placeholder={t('descriptionPlaceholder')}
                   disabled={savingField}
                   style={{
                     background:   '#2d3748',
@@ -802,7 +806,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       cursor:       savingField ? 'progress' : 'pointer',
                     }}
                   >
-                    {savingField ? 'Saving…' : 'Save'}
+                    {savingField ? t('saving') : t('save')}
                   </button>
                   <button
                     type="button"
@@ -820,7 +824,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                       cursor:       'pointer',
                     }}
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </div>
               </div>
@@ -831,7 +835,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   setDraftDescription(descriptionValue);
                   setEditingDescription(true);
                 }}
-                aria-label="Edit description"
+                aria-label={t('descriptionSection')}
                 style={{
                   background: 'transparent',
                   border:     '1px dashed transparent',
@@ -887,14 +891,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                   </div>
                 ) : (
                   <span style={{ color: '#718096', fontSize: 13, fontStyle: 'italic' }}>
-                    Add a description…
+                    {t('addDescriptionHint')}
                   </span>
                 )}
               </button>
             )}
             {fieldError && (
               <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
-                Failed to save. Please try again.
+                {t('failedUpdateField')}
               </p>
             )}
           </div>
@@ -902,13 +906,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           {workspaceId && taskTypes.length > 0 && (
             <div className={styles.section}>
-              <p className={styles.sectionTitle}>Type</p>
+              <p className={styles.sectionTitle}>{t('typeSection')}</p>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <TaskTypeSelector taskId={taskId} types={taskTypes} value={taskTypeId} />
                 </div>
                 {selectedType?.isMilestone && (
-                  <span aria-label="Milestone" title="Milestone" style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
+                  <span aria-label={t('milestone')} title={t('milestone')} style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
                 )}
               </div>
             </div>
@@ -916,21 +920,21 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           {spaceId && (
             <div className={styles.section}>
-              <p className={styles.sectionTitle}>Tags</p>
+              <p className={styles.sectionTitle}>{t('tagsSection')}</p>
               <TagPicker taskId={taskId} spaceId={spaceId} />
             </div>
           )}
 
           {workspaceId && (
             <div className={styles.section}>
-              <p className={styles.sectionTitle}>Watchers</p>
+              <p className={styles.sectionTitle}>{t('watchersSection')}</p>
               <WatcherControl taskId={taskId} workspaceId={workspaceId} />
             </div>
           )}
 
           {effectiveFields.length > 0 && (
             <div className={styles.section}>
-              <p className={styles.sectionTitle}>Custom fields</p>
+              <p className={styles.sectionTitle}>{t('customFieldsSection')}</p>
               {effectiveFields.map((ef) => (
                 <div
                   key={ef.field.id}
@@ -946,22 +950,22 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
           )}
 
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Attachments</p>
+            <p className={styles.sectionTitle}>{t('attachmentsSection')}</p>
             <AttachmentSection taskId={taskId} />
           </div>
 
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Time Tracking</p>
+            <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
             <WorkLogSection taskId={taskId} currentUserId={currentUserId} />
           </div>
 
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Pull Requests & Commits</p>
+            <p className={styles.sectionTitle}>{t('pullRequestsSection')}</p>
             <PullRequestsSection taskId={taskId} />
           </div>
 
           <div className={styles.section}>
-            <p className={styles.sectionTitle}>Comments</p>
+            <p className={styles.sectionTitle}>{t('commentsSection')}</p>
             <CommentSection taskId={taskId} currentUserId={currentUserId} />
           </div>
         </div>
@@ -973,15 +977,16 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 // Reusable date-input row used inside the Schedule section. Inline-styled to
 // match the dark CSS-module drawer skin without pulling in another stylesheet.
 function ScheduleRow({
-  label, kind, value, onChange, hasValue, onClear, disabled,
+  label, kind, value, onChange, hasValue, clearLabel, onClear, disabled,
 }: {
-  label:    string;
-  kind:     'date' | 'datetime';
-  value:    string;
-  onChange: (v: string) => void;
-  hasValue: boolean;
-  onClear:  () => void;
-  disabled: boolean;
+  label:      string;
+  kind:       'date' | 'datetime';
+  value:      string;
+  onChange:   (v: string) => void;
+  hasValue:   boolean;
+  clearLabel: string;
+  onClear:    () => void;
+  disabled:   boolean;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1016,7 +1021,7 @@ function ScheduleRow({
             cursor:       disabled ? 'default' : 'pointer',
           }}
         >
-          Clear
+          {clearLabel}
         </button>
       )}
     </div>

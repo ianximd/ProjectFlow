@@ -134,3 +134,59 @@ and comment assign/resolve. Backend-first with minimal (non-realtime) UI.
   `MentionInput`, and the pre-existing hardcoded-English `relativeTime()`.
 - **Saved-for-later notification columns** (`Notifications.SavedForLater`/`SavedAt`) + the `IX_Notif_UserSaved`
   index ship in migration 0033 but are unused this slice — they belong to the future 3.5c Inbox.
+
+## 2026-06-06 — Phase 3.5b Realtime Client (Apollo + SSE)
+
+### Decisions
+
+- **Apollo is delta-only.** The SSR + server-action data path remains the single source of truth.
+  A client-only `ApolloProvider` (`ApolloRealtimeProvider`, mounted inside `IntlProvider` in the root
+  layout) is used *solely* for subscriptions. The client uses `fetchPolicy: 'no-cache'` for query +
+  watchQuery so it never becomes a parallel cache/data layer. Live deltas mutate scoped local component
+  state, never trigger a parallel full fetch.
+- **Transport = `graphql-sse`** (Server-Sent Events) bridged into Apollo via a custom `SSELink`
+  (`ApolloLink` wrapping `createClient` from graphql-sse). graphql-yoga's SSE endpoint already exists at
+  `/api/v1/graphql`. CORS already allows the web origin with `Authorization` + credentials.
+- **SSE auth:** the browser obtains the current access token (httpOnly `pf_at` cookie, unreadable by
+  client JS) via a `getRealtimeToken` server action and sends it as a `Bearer` header. graphql-sse's
+  `headers` option is an **async function invoked on each (re)connect**, so the 15-minute token is
+  refreshed on reconnect and long-lived subscriptions survive rotation.
+- **Per-user notification routing:** `createPubSub` topic-with-argument channel
+  `'notification:added': [userId, { notification }]`. `notificationService.notify` publishes the parsed
+  notification to each recipient's topic after a successful `repo.create` (best-effort try/catch; never
+  breaks creation), preserving the existing dedup + actor-exclusion logic.
+- **Security:** the `notificationAdded` subscription binds to the **authenticated** user's id from
+  context (`ctx.user.userId`) and structurally ignores any client-supplied `userId` arg — a user can only
+  ever receive their own notifications. Extracted as `notificationAddedSubscribe` for unit-testability;
+  throws `UNAUTHENTICATED` when `ctx.user` is null.
+- **`commentAdded`** broadcasts all `comment:created`; the client filters by `taskId` and de-dupes by
+  `id` (the author's own comment also arrives via the existing `refetch()` — guarded). Live rows are
+  lightweight (`mapLiveComment` defaults missing fields) and get replaced by enriched rows on the next
+  SSR refetch.
+- **Import direction:** `notification.service` → `graphql/pubsub` (which depends only on `shared/lib`) is
+  acyclic and accepted. (Alternative — move pubsub to `shared/lib` — out of scope.)
+
+### Apollo 4.x notes (the plan assumed 3.x)
+
+- Installed `@apollo/client@4.2.2`. v4 restructured exports: core (`ApolloClient`, `InMemoryCache`,
+  `ApolloLink`, `Observable`, `gql`) come from `@apollo/client`; React hooks/provider (`ApolloProvider`,
+  `useSubscription`) come from **`@apollo/client/react`**. `ApolloClient` is **no longer generic**.
+  `Observable` is now RxJS's. `ApolloLink.request` is typed `(op: ApolloLink.Operation) =>
+  Observable<ApolloLink.Result>` (namespaced types).
+- One localized, commented cast in `SSELink` at the graphql-sse `ExecutionResult` ↔ Apollo
+  `FormattedExecutionResult` seam (differs only in the `errors` element type; the SSE wire payload is the
+  formatted/serialized shape, so Apollo's typing is runtime-accurate). No `any`, no `@ts-ignore`.
+
+### Deferred / known follow-ups (not blockers)
+
+- **Board/list `taskUpdated` subscription deferred** (per spec §9) — only the notification bell + comment
+  appends are wired live this slice.
+- **Live e2e run deferred:** `e2e/realtime-notifications.spec.ts` is authored and Playwright-collectable
+  (`--list`), but its live run is deferred to a coordinated run with explicit **local** DB env
+  (`DB_SERVER=localhost … DB_NAME=ProjectFlow_Test`) — the default Playwright `webServer` boots the API
+  against the prod-pointing `apps/api/.env`, so it must never run with that env. (A shell-exported env var
+  overrides Node's `--env-file`, verified, so explicit local exports are the safe path.)
+- **i18n straggler:** `NotificationBell`'s badge `aria-label` is hardcoded English; 3.5c localizes the
+  notifications UI.
+- **npm audit:** the `@apollo/client` install pulled in a transitive high-severity advisory (not fixed
+  here — `audit fix` could churn unrelated bleeding-edge deps).

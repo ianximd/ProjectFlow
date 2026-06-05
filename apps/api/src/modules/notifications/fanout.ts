@@ -47,15 +47,23 @@ export async function fanOutTaskEvent(
       watcherService.list(taskId),
     ]);
     if (!task) return;
+    // usp_Task_GetById is `SELECT * FROM Tasks`, so the row is raw PascalCase
+    // (ReporterId) and carries NO assignees (those live in a join table). Read
+    // the reporter via PascalCase (camelCase fallback for any mapped caller).
+    // Assignees are covered by the watcher path: assignment auto-watches the
+    // task (task.service.setAssignees), so current assignees appear in
+    // `watcherIds`. `assigneeIds` is therefore best-effort and normally empty.
     const recipientIds = computeRecipients({
-      reporterId: (task as any).reporterId ?? null,
-      assigneeIds: (task as any).assigneeIds ?? [],
+      reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,
+      assigneeIds: (task as any).assigneeIds ?? (task as any).AssigneeIds ?? [],
       watcherIds: watchers.map((w) => w.userId),
       actorId,
       extraExclude,
     });
     if (recipientIds.length === 0) return;
-    await notificationService.notify({ recipientIds, actorId, type, payload });
+    // recipientIds are uppercased by computeRecipients; normalize actorId to the
+    // same case so notify()'s own self-exclusion guard stays effective.
+    await notificationService.notify({ recipientIds, actorId: norm(actorId) ?? actorId, type, payload });
   } catch (err: any) {
     log.error({ err: err?.message, taskId, type }, 'fanOutTaskEvent failed');
   }

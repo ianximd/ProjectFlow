@@ -8,6 +8,7 @@ import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
+import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -30,6 +31,17 @@ const hierarchyRepo = new HierarchyRepository();
 // ─────────────────────────────────────────
 function requireAuth(ctx: { user: unknown }): asserts ctx is { user: NonNullable<typeof ctx.user> } {
   if (!ctx.user) throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED' } });
+}
+
+/** Comment author may always act; otherwise require EDIT on the task's List. */
+async function assertCanEditComment(ctx: any, commentId: string): Promise<void> {
+  requireAuth(ctx);
+  const comment = await commentService.getById(commentId);
+  if (!comment) throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } });
+  if ((ctx.user as any).userId === comment.authorId) return; // author may always act
+  const task = await taskRepo.getById(comment.taskId);
+  const listId = (task as any)?.listId ?? (task as any)?.ListId ?? null;
+  await requireObjectLevel(ctx as any, 'LIST', listId, 'EDIT');
 }
 
 // ─────────────────────────────────────────
@@ -115,6 +127,8 @@ interface CommentShape {
   body: string;
   createdAt: IsoOrDate;
   updatedAt?: IsoOrDate | null;
+  assignedToId?: string | null;
+  resolvedAt?: IsoOrDate | null;
 }
 
 interface NotificationShape {
@@ -254,6 +268,8 @@ CommentType.implement({
     body:      t.exposeString('body'),
     createdAt: t.field({ type: 'Date', resolve: (c) => new Date(c.createdAt) }),
     updatedAt: t.field({ type: 'Date', nullable: true, resolve: (c) => c.updatedAt ? new Date(c.updatedAt) : null }),
+    assignedToId: t.exposeString('assignedToId', { nullable: true }),
+    resolvedAt:   t.field({ type: 'Date', nullable: true, resolve: (c) => (c.resolvedAt ? new Date(c.resolvedAt) : null) }),
   }),
 });
 
@@ -509,6 +525,30 @@ builder.mutationType({
         const comment = await commentService.create({ taskId, body } as any, authorId);
         pubsub.publish('comment:created', { taskId, comment });
         return comment as any;
+      },
+    }),
+
+    /** Assign a comment to a workspace member (creates an action item). */
+    assignComment: t.field({
+      type: CommentType,
+      args: { commentId: t.arg.string({ required: true }), assigneeId: t.arg.string({ required: true }) },
+      resolve: async (_, { commentId, assigneeId }, ctx) => {
+        await assertCanEditComment(ctx, commentId);
+        const updated = await commentService.assign(commentId, assigneeId, (ctx.user as any).userId);
+        if (!updated) throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } });
+        return updated as any;
+      },
+    }),
+
+    /** Mark a comment resolved or unresolved. */
+    resolveComment: t.field({
+      type: CommentType,
+      args: { commentId: t.arg.string({ required: true }), resolved: t.arg.boolean({ required: true }) },
+      resolve: async (_, { commentId, resolved }, ctx) => {
+        await assertCanEditComment(ctx, commentId);
+        const updated = await commentService.resolve(commentId, (ctx.user as any).userId, resolved);
+        if (!updated) throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } });
+        return updated as any;
       },
     }),
 

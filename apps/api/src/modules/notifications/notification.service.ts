@@ -48,7 +48,11 @@ export const notificationService = {
         actorId: params.actorId,
       });
       try {
-        pubsub.publish('notification:added', userId, { notification: parse(row) });
+        // Normalize the GUID case: the pubsub topic key is a case-SENSITIVE
+        // string, but recipient ids reach here in mixed case (the mention parser
+        // lowercases; DB-sourced ids are upper). The subscriber keys off the
+        // JWT's userId, so both sides must agree — lowercase is the canonical form.
+        pubsub.publish('notification:added', userId.toLowerCase(), { notification: parse(row) });
       } catch {
         /* best-effort */
       }

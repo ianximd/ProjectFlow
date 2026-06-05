@@ -11,5 +11,7 @@ export function notificationAddedSubscribe(
   if (!ctx.user) {
     throw new GraphQLError('Unauthorized', { extensions: { code: 'UNAUTHENTICATED' } });
   }
-  return pubsub.subscribe('notification:added', ctx.user.userId);
+  // Lowercase to match the publisher's canonical topic key — GUID case varies by
+  // source (JWT vs mention-parser vs DB) and the pubsub topic is case-sensitive.
+  return pubsub.subscribe('notification:added', ctx.user.userId.toLowerCase());
 }

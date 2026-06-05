@@ -25,7 +25,17 @@ export class SSELink extends ApolloLink {
   request(operation: ApolloLink.Operation): Observable<ApolloLink.Result> {
     return new Observable<ApolloLink.Result>((sink) =>
       this.client.subscribe<Record<string, unknown>>(
-        { ...operation, query: print(operation.query) },
+        // Send ONLY the GraphQL request params. Spreading the whole Apollo
+        // operation leaks v4-only fields (notably `operation.client`) into the
+        // request body, and graphql-yoga rejects unknown params with a 400
+        // ("Unexpected parameter \"client\"") — silently breaking every browser
+        // subscription (the SSE retry-storms). Pick the four wire fields explicitly.
+        {
+          operationName: operation.operationName,
+          query: print(operation.query),
+          variables: operation.variables,
+          extensions: operation.extensions,
+        },
         {
           // graphql-sse types its sink with graphql-js `ExecutionResult` (whose `errors`
           // are `GraphQLError` class instances), while Apollo 4's `ApolloLink.Result`

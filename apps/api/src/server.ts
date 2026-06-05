@@ -226,6 +226,32 @@ app.all('/graphql', async (c) => yoga.handle(c.req.raw, c));
 // `app` for in-process `app.request()` calls without paying for any of
 // this — and without binding port 3001 in vitest workers.
 if (process.env.NODE_ENV !== 'test') {
+  // ── SSE teardown guard ──────────────────────────────────────────────────────
+  // graphql-yoga streams subscription responses as a web ReadableStream; when an
+  // SSE client disconnects, @hono/node-server and Yoga can both close that stream,
+  // and the second close throws `ERR_INVALID_STATE: ReadableStream is already
+  // closed` from a microtask — an UNCAUGHT exception that would otherwise kill the
+  // whole API on a routine client disconnect. Swallow ONLY that benign race; keep
+  // fail-fast semantics for every other uncaught error.
+  const isBenignStreamTeardown = (err: any): boolean =>
+    err?.code === 'ERR_INVALID_STATE' && /ReadableStream is already closed/.test(String(err?.message));
+  process.on('uncaughtException', (err) => {
+    if (isBenignStreamTeardown(err)) {
+      logger.warn({ err: (err as Error).message }, 'ignored benign SSE stream teardown (client disconnect)');
+      return;
+    }
+    logger.fatal({ err }, 'uncaught exception — exiting');
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason) => {
+    if (isBenignStreamTeardown(reason)) {
+      logger.warn({ err: (reason as Error)?.message }, 'ignored benign SSE stream teardown (client disconnect)');
+      return;
+    }
+    logger.fatal({ err: reason }, 'unhandled rejection — exiting');
+    process.exit(1);
+  });
+
   // Ensure MinIO bucket exists
   ensureBucket().catch((err) => logger.warn({ err: err?.message }, 'MinIO bucket init failed (will retry on first request)'));
 

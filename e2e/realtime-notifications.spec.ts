@@ -168,11 +168,11 @@ test('SSE: mention comment triggers live notification badge for mentioned user',
   expect(commentRes.status(), 'post comment mentioning A').toBe(201);
 
   // ── 10. Assert: A's unread-badge appears live (no reload) ─────────────────
-  // NotificationBell renders:
-  //   <span aria-label="{n} unread notifications" …>{n}</span>
-  // only when unread > 0. The SSE `notificationAdded` event increments the
-  // counter. We wait up to 15 s for the live push to arrive.
-  await expect(aPage.getByLabel(/unread notifications/i)).toBeVisible({
+  // NotificationBell renders an ICU-pluralized aria-label only when unread > 0:
+  //   <span aria-label="1 unread notification" / "N unread notifications" …>
+  // The SSE `notificationAdded` event increments the counter. Match the
+  // singular-or-plural stem; wait up to 15 s for the live push to arrive.
+  await expect(aPage.getByLabel(/unread notification/i)).toBeVisible({
     timeout: 15_000,
   });
 

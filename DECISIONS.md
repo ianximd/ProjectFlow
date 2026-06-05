@@ -313,3 +313,33 @@ Cleared the deferred follow-ups from 3.5b/3.5c on `feat/phase3.5-followups`.
   only scope. Per-project channel keying is a backend optimization out of scope here.
 - **Live run:** unit + tsc + build green; an end-to-end live verification rides the same deferred coordinated
   local-DB stack run as the realtime/presence e2e.
+
+### Live e2e run (realtime + presence) — EXECUTED + GREEN; 3 real bugs fixed
+
+Ran `e2e/realtime-notifications.spec.ts` + `e2e/presence.spec.ts` live against local Docker `ProjectFlow_Test`
++ Redis (explicit local DB env per `e2e/README.md`). Both initially FAILED at the SSE-delivery assertion;
+isolating server-vs-client with throwaway graphql-sse probes surfaced **three real (latent-since-3.5b) bugs**,
+now fixed. Final: **2/2 e2e pass**, API survives both SSE teardowns, API 238 unit, web tsc+build green.
+
+1. **GUID-case pubsub topic mismatch (notifications never delivered).** The pubsub topic key is a
+   case-SENSITIVE string; the mention parser lowercases the recipient id (`a665…`) so `notify` published to
+   `notification:added:a665…`, while the subscription keys off the JWT's DB-native UPPERCASE id
+   (`A665…`) → topics never matched. (SQL `uniqueidentifier` compares case-insensitively, so the REST inbox
+   still showed the row — masking it.) Fix: lowercase the topic key on BOTH sides
+   (`notification.service.notify` publish + `notificationAdded` subscribe).
+2. **`SSELink` leaked `operation.client` → Yoga 400 (every browser subscription).** `SSELink.request` sent
+   `{ ...operation, query }`, spreading Apollo-Client-4-only fields (notably `operation.client`) into the
+   graphql-sse request body; graphql-yoga strict param validation rejects unknown params
+   (`Unexpected parameter "client"`) with 400 → the browser SSE retry-stormed and never connected. The node
+   probe passed a clean `{query}` so it couldn't reproduce it. Fix: send only `{ operationName, query,
+   variables, extensions }`.
+3. **SSE disconnect crashed the whole API.** graphql-yoga's SSE response `ReadableStream`, streamed via
+   `@hono/node-server`, double-closes on client abort → uncaught `ERR_INVALID_STATE: ReadableStream is
+   already closed` in a microtask → process exit on every client disconnect. Fix: a TARGETED
+   `uncaughtException`/`unhandledRejection` guard (server boot path) that swallows ONLY that benign teardown
+   race and keeps fail-fast for everything else.
+
+Test-side: relaxed the realtime badge locator to `/unread notification/i` (the localized aria-label is now
+ICU-pluralized — `Inbox.unreadAria`), and fixed the presence `TODO(live-run)` composer selector to
+`getByPlaceholder(/add a comment/i)` (the drawer has multiple textboxes). Presence delivery itself needed no
+change once the API stopped crashing — taskId-keyed topics already agreed.

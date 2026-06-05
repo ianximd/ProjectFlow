@@ -129,9 +129,9 @@ test('a second viewer avatar appears and typing toggles', async ({ browser }) =>
   await expect(a.getByText(/person viewing|people viewing/i)).toBeVisible({ timeout: 15_000 });
 
   // ── 6. B types in the comment composer → A sees the typing indicator ───────
-  // The new-comment composer is a <textarea> (MentionInput). TODO(live-run):
-  // scope to the comment section if multiple textareas are present.
-  await b.locator('textarea').first().fill('typing a message…');
+  // Target the new-comment composer by its placeholder (the drawer has other
+  // textboxes — title/description — so `textarea.first()` is ambiguous).
+  await b.getByPlaceholder(/add a comment/i).fill('typing a message…');
   await expect(a.getByText(/typing/i)).toBeVisible({ timeout: 15_000 });
 
   // ── 7. Cleanup ─────────────────────────────────────────────────────────────

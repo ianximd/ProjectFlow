@@ -25,7 +25,7 @@ import type { NotificationRow } from '@/server/queries/notifications';
 import {
   TONE_BG, typeMeta, timeAgo, summaryFallbackKey, type InboxT,
 } from '@/components/notifications/notification-meta';
-import { INBOX_TAB_ORDER, type InboxTab } from './inbox-tabs';
+import { INBOX_TAB_ORDER, matchesInboxTab, type InboxTab } from './inbox-tabs';
 
 const TAB_LABEL_KEY: Record<InboxTab, string> = {
   all:      'tabAll',
@@ -86,6 +86,9 @@ export function NotificationsView({
     onData: ({ data }) => {
       const n = data.data?.notificationAdded;
       if (!n) return;
+      // Only prepend if the delta belongs in the active tab — otherwise the
+      // filtered view would show a row the server-side filter excluded.
+      if (!matchesInboxTab(activeTab, n)) return;
       setItems((prev) => (prev.some((x) => x.id === n.id) ? prev : [mapLiveNotification(n), ...prev]));
     },
   });

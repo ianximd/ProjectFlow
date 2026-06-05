@@ -1211,6 +1211,7 @@
     "title": "Kotak Masuk",
     "heading": "Notifikasi",
     "unreadBadge": "{count} belum dibaca",
+    "unreadAria": "{count, plural, one {# notifikasi belum dibaca} other {# notifikasi belum dibaca}}",
     "markAllRead": "Tandai semua dibaca",
     "markRead": "Tandai dibaca",
     "save": "Simpan untuk nanti",

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useSubscription } from '@apollo/client/react';
 import { Bell } from 'lucide-react';
 import { NOTIFICATION_ADDED } from '@/lib/realtime/operations';
@@ -14,6 +15,7 @@ export function NotificationBell({
   initialUnread: number;
   children?: React.ReactNode;
 }) {
+  const t = useTranslations('Inbox');
   const [unread, setUnread] = useState(initialUnread);
 
   useSubscription<{ notificationAdded: { id: string } }>(NOTIFICATION_ADDED, {
@@ -25,7 +27,7 @@ export function NotificationBell({
       {children ?? <Bell className="size-4.5" />}
       {unread > 0 && (
         <span
-          aria-label={`${unread} unread notifications`}
+          aria-label={t('unreadAria', { count: unread })}
           className="absolute -right-1 -top-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 text-destructive-foreground"
         >
           {unread > 99 ? '99+' : unread}

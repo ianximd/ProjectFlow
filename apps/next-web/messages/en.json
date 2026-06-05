@@ -1211,6 +1211,7 @@
     "title": "Inbox",
     "heading": "Notifications",
     "unreadBadge": "{count} unread",
+    "unreadAria": "{count, plural, one {# unread notification} other {# unread notifications}}",
     "markAllRead": "Mark all as read",
     "markRead": "Mark as read",
     "save": "Save for later",

@@ -8,6 +8,7 @@ const LOCALE = 'en-US';
 // Module-private: consumers use the format* functions below, not the raw Intl
 // instances — keeps the public surface to functions and avoids name collisions
 // at call sites.
+const monthYear = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' });
 const shortDate = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric' });
 const shortDateYear = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric', year: 'numeric' });
 const shortTime = new Intl.DateTimeFormat(LOCALE, { hour: 'numeric', minute: '2-digit' });
@@ -16,6 +17,8 @@ const dateTime = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric
 
 const toDate = (d: Date | string): Date => (typeof d === 'string' ? new Date(d) : d);
 
+/** "March 2026" — full month + year (calendar header label). */
+export function formatMonthYear(d: Date | string): string { return monthYear.format(toDate(d)); }
 /** "Mar 15" — month + day. */
 export function formatShortDate(d: Date | string): string { return shortDate.format(toDate(d)); }
 /** "Mar 15, 2026" — month + day + year. */

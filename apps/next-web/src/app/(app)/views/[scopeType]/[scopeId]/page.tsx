@@ -33,18 +33,24 @@ export default async function ViewsPage({
   const page = Math.max(1, Number(sp.page) || 1);
   const meMode = Boolean(sp.meMode);
 
+  // EVERYTHING views have no hierarchy node: the route's [scopeId] segment carries
+  // the workspaceId instead. Map it to (null node scope + workspaceId) for the
+  // fail-closed EVERYTHING read path; scoped views keep their node id and no ws.
+  const workspaceId = scopeType === 'EVERYTHING' ? scopeId : undefined;
+  const nodeScopeId = scopeType === 'EVERYTHING' ? null : scopeId;
+
   // Custom fields drive the filter-builder field options + table/list columns.
   // They're only scoped to SPACE/FOLDER/LIST; the EVERYTHING scope has none.
   const customFields: CustomField[] =
     scopeType === 'EVERYTHING' ? [] : await getCustomFields(scopeType, scopeId);
 
-  const views = await getSavedViews(scopeType, scopeId);
+  const views = await getSavedViews(scopeType, nodeScopeId, workspaceId);
 
   // Seed-on-demand: ?view=board requests the engine Board. If the scope has no
   // board-type saved view yet, create one (idempotent — ensureBoardView no-ops
   // when a board view already exists) and redirect onto it so it becomes active.
   if (sp.view === 'board' && !sp.viewId) {
-    const boardViewId = await ensureBoardView(views, scopeType, scopeId);
+    const boardViewId = await ensureBoardView(views, scopeType, scopeId, workspaceId);
     if (boardViewId) {
       const qs = new URLSearchParams();
       qs.set('viewId', boardViewId);
@@ -77,6 +83,7 @@ export default async function ViewsPage({
       activeViewId={activeView?.id ?? null}
       scopeType={scopeType}
       scopeId={scopeId}
+      workspaceId={workspaceId}
       meMode={meMode}
       taskPage={taskPage}
       customFields={customFields}

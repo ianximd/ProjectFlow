@@ -34,6 +34,7 @@ export async function ensureBoardView(
   views: SavedView[],
   scopeType: ViewScopeType,
   scopeId: string,
+  workspaceId?: string,
 ): Promise<string | null> {
   const existing = views.find((v) => v.type === 'board');
   if (existing) return existing.id;
@@ -46,6 +47,8 @@ export async function ensureBoardView(
     isShared: true,
     isDefault: true,
     config: defaultBoardConfig(),
+    // EVERYTHING create fails closed without a workspaceId (no node ACL).
+    workspaceId: scopeType === 'EVERYTHING' ? workspaceId : undefined,
   });
 
   return res.ok ? res.data.id : null;

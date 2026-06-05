@@ -21,6 +21,9 @@ interface Props {
   activeViewId: string | null;
   scopeType: ViewScopeType;
   scopeId: string;
+  /** Workspace id for EVERYTHING-scoped create/preview (those fail closed without
+   *  it). Undefined for node-scoped views, whose authority is the node ACL. */
+  workspaceId?: string;
   meMode: boolean;
   /** Paged tasks for the active view, or null when no view is active. */
   taskPage: ViewTaskPageResult | null;
@@ -37,6 +40,7 @@ export function ViewSurface({
   activeViewId,
   scopeType,
   scopeId,
+  workspaceId,
   meMode,
   taskPage,
   customFields,
@@ -78,7 +82,7 @@ export function ViewSurface({
   if (views.length === 0) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <ViewTabs views={views} activeViewId={null} scopeType={scopeType} scopeId={scopeId} />
+        <ViewTabs views={views} activeViewId={null} scopeType={scopeType} scopeId={scopeId} workspaceId={workspaceId} />
         <EmptyViewsState />
       </div>
     );
@@ -92,6 +96,7 @@ export function ViewSurface({
           activeViewId={activeViewId}
           scopeType={scopeType}
           scopeId={scopeId}
+          workspaceId={workspaceId}
         />
         <div className="flex shrink-0 items-center gap-2">
           {activeView && (activeView.type === 'table' || activeView.type === 'list') && (
@@ -127,6 +132,7 @@ export function ViewSurface({
           activeView={activeView}
           scopeType={scopeType}
           scopeId={scopeId}
+          workspaceId={workspaceId}
           customFields={customFields}
           meMode={meMode}
         />

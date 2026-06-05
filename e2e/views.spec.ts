@@ -331,3 +331,40 @@ test('engine board: an assigned task shows its assignee avatar', async ({ page }
 
   await seed.api.dispose();
 });
+
+// ── (f) EVERYTHING scope: sidebar nav opens the workspace-wide views surface ───
+test('EVERYTHING scope: sidebar nav opens the workspace-wide surface and lists tasks', async ({ page }) => {
+  const seed = await apiSetup();
+  await createTask(seed, `WS task ${seed.s}`);
+
+  // A workspace-wide EVERYTHING view. The backend fails CLOSED without a
+  // workspaceId (no node ACL), so this also exercises the UI threading it.
+  await gql(seed.api, seed.token, /* GraphQL */ `
+    mutation Create($input: CreateSavedViewInput!) { createSavedView(input: $input) { id } }
+  `, {
+    input: {
+      scopeType: 'EVERYTHING', type: 'table', name: `Everything ${seed.s}`,
+      isShared: true, isDefault: true,
+      config: JSON.stringify({
+        filter: { conjunction: 'AND', rules: [] }, sort: [],
+        columns: [{ kind: 'builtin', key: 'title' }, { kind: 'builtin', key: 'status' }],
+      }),
+      workspaceId: seed.wsId,
+    },
+  });
+
+  await uiLogin(page, seed.email, seed.password);
+
+  // The new sidebar "Everything" entry routes to /views/EVERYTHING/{workspaceId}.
+  const navEntry = page.getByTestId('everything-nav');
+  await expect(navEntry).toBeVisible({ timeout: 15000 });
+  await navEntry.click();
+  await page.waitForURL(new RegExp(`/views/EVERYTHING/${seed.wsId}`, 'i'), { timeout: 15000 });
+
+  // The surface loaded (getSavedViews threaded workspaceId — no BAD_REQUEST) and
+  // the EVERYTHING view's task page lists the workspace-wide task.
+  await expect(page.getByTestId('view-tab').filter({ hasText: `Everything ${seed.s}` })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId('table-row').filter({ hasText: `WS task ${seed.s}` })).toBeVisible({ timeout: 15000 });
+
+  await seed.api.dispose();
+});

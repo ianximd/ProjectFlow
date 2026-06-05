@@ -137,6 +137,7 @@ interface NotificationShape {
   userId: string;
   type: string;
   isRead: boolean;
+  savedForLater?: boolean;
   createdAt: IsoOrDate;
 }
 
@@ -277,11 +278,12 @@ CommentType.implement({
 NotificationType.implement({
   description: 'An in-app notification',
   fields: (t) => ({
-    id:        t.exposeString('id'),
-    userId:    t.exposeString('userId'),
-    type:      t.exposeString('type'),
-    isRead:    t.boolean({ resolve: (n) => Boolean(n.isRead) }),
-    createdAt: t.field({ type: 'Date', resolve: (n) => new Date(n.createdAt) }),
+    id:           t.exposeString('id'),
+    userId:       t.exposeString('userId'),
+    type:         t.exposeString('type'),
+    isRead:       t.boolean({ resolve: (n) => Boolean(n.isRead) }),
+    savedForLater: t.boolean({ resolve: (n) => Boolean((n as any).savedForLater) }),
+    createdAt:    t.field({ type: 'Date', resolve: (n) => new Date(n.createdAt) }),
   }),
 });
 
@@ -429,17 +431,21 @@ builder.queryType({
     notifications: t.field({
       type:    [NotificationType],
       args: {
-        page:      t.arg.int({ required: false }),
-        pageSize:  t.arg.int({ required: false }),
+        page:       t.arg.int({ required: false }),
+        pageSize:   t.arg.int({ required: false }),
         unreadOnly: t.arg.boolean({ required: false }),
+        types:      t.arg({ type: ['String'], required: false }),
+        savedOnly:  t.arg.boolean({ required: false }),
       },
       resolve: async (_, args, ctx) => {
         requireAuth(ctx);
         const { notifications } = await notificationService.list(
           (ctx.user as any).userId,
-          args.page     ?? 1,
-          args.pageSize ?? 25,
+          args.page      ?? 1,
+          args.pageSize  ?? 25,
           args.unreadOnly ?? false,
+          args.types     ?? undefined,
+          args.savedOnly ?? false,
         );
         return notifications as any;
       },
@@ -559,6 +565,17 @@ builder.mutationType({
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
         await notificationService.markRead(id, (ctx.user as any).userId);
+        return true;
+      },
+    }),
+
+    /** Save or un-save a notification for later */
+    setNotificationSaved: t.field({
+      type: 'Boolean',
+      args: { id: t.arg.string({ required: true }), saved: t.arg.boolean({ required: true }) },
+      resolve: async (_, { id, saved }, ctx) => {
+        requireAuth(ctx);
+        await notificationService.setSaved(id, (ctx.user as any).userId, saved);
         return true;
       },
     }),

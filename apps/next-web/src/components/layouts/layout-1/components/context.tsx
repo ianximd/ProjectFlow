@@ -25,6 +25,8 @@ interface LayoutState {
   user: LayoutUser | null;
   /** Server-derived Space/Folder/List tree for the active workspace (Phase 1). */
   hierarchy: HierarchyTreeData | null;
+  /** Server-seeded unread notification count for the topbar bell badge (Phase 3.5b). */
+  initialUnread: number;
 }
 
 // Create the context
@@ -36,9 +38,10 @@ interface LayoutProviderProps {
   isAdmin?: boolean;
   user?:    LayoutUser | null;
   hierarchy?: HierarchyTreeData | null;
+  initialUnread?: number;
 }
 
-export function LayoutProvider({ children, isAdmin = false, user = null, hierarchy = null }: LayoutProviderProps) {
+export function LayoutProvider({ children, isAdmin = false, user = null, hierarchy = null, initialUnread = 0 }: LayoutProviderProps) {
   const [sidebarCollapse, setSidebarCollapse] = useState(false);
   const [sidebarTheme, setSidebarTheme] = useState<SidebarTheme>('light');
 
@@ -52,6 +55,7 @@ export function LayoutProvider({ children, isAdmin = false, user = null, hierarc
         isAdmin,
         user,
         hierarchy,
+        initialUnread,
       }}
     >
       {children}

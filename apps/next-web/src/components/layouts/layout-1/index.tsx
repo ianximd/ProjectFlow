@@ -21,14 +21,16 @@ export function Layout1({
   isAdmin = false,
   user = null,
   hierarchy = null,
+  initialUnread = 0,
 }: {
   children: React.ReactNode;
   isAdmin?: boolean;
   user?: LayoutUser | null;
   hierarchy?: HierarchyTreeData | null;
+  initialUnread?: number;
 }) {
   return (
-    <LayoutProvider isAdmin={isAdmin} user={user} hierarchy={hierarchy}>
+    <LayoutProvider initialUnread={initialUnread} isAdmin={isAdmin} user={user} hierarchy={hierarchy}>
       <Main>
         {children}
       </Main>

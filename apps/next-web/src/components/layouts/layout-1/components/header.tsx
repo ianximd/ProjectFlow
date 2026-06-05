@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/sheet';
 import { SearchDialog } from '@/components/layouts/layout-1/shared/dialogs/search/search-dialog';
 import { NotificationsSheet } from '@/components/layouts/layout-1/shared/topbar/notifications-sheet';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { UserDropdownMenu } from '@/components/layouts/layout-1/shared/topbar/user-dropdown-menu';
 import { useLayout } from './context';
 import { SidebarMenu } from './sidebar-menu';
@@ -39,7 +40,7 @@ export function Header() {
   // Avatar/name come from the layout context (server-derived via getMe in the
   // (app) layout). Falls back to initials when the image fails to load
   // (legacy http URL, expired key, MinIO down).
-  const { user }    = useLayout();
+  const { user, initialUnread } = useLayout();
   const avatarUrl   = user?.avatarUrl ?? null;
   const displayName = user?.name ?? '';
   const [avatarBroken, setAvatarBroken] = useState(false);
@@ -120,7 +121,9 @@ export function Header() {
                 shape="circle"
                 className="size-9 hover:bg-primary/10 hover:[&_svg]:text-primary"
               >
-                <Bell className="size-4.5!" />
+                <NotificationBell initialUnread={initialUnread}>
+                  <Bell className="size-4.5!" />
+                </NotificationBell>
               </Button>
             }
           />

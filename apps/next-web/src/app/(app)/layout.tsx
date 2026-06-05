@@ -6,6 +6,7 @@ import { hasAdminAccess } from '@/server/queries/admin';
 import { getMe, type MeProfile } from '@/server/queries/profile';
 import { getWorkspaceProjectContext } from '@/server/context';
 import { getFolders, getLists } from '@/server/queries/hierarchy';
+import { getNotifications } from '@/server/queries/notifications';
 import type { Folder, List } from '@/server/queries/normalize';
 import type { HierarchyTreeData } from '@/components/hierarchy/SidebarTree';
 
@@ -31,6 +32,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     ? { name: me.name, email: me.email, avatarUrl: me.avatarUrl }
     : null;
 
+  // Unread notification count seeds the topbar bell badge (incremented live
+  // client-side via the notificationAdded subscription). Tolerant of API hiccups.
+  const { unreadCount } = await safe(getNotifications({ pageSize: 1 }), {
+    items: [],
+    unreadCount: 0,
+    page: 1,
+  });
+
   // Hierarchy (Phase 1): build the Space/Folder/List tree for the active
   // workspace so the sidebar can render it. Tolerant of per-space access
   // failures (a PRIVATE space the viewer can't see yields []).
@@ -52,5 +61,5 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // No AuthBootstrap gate: the Proxy (proxy.ts) refreshes pf_at from pf_rt on
   // every page request, so the cookie session is always fresh by the time this
   // RSC reads it — no client-side silent-refresh / loader flash needed.
-  return <Layout1 isAdmin={isAdmin} user={user} hierarchy={hierarchy}>{children}</Layout1>;
+  return <Layout1 isAdmin={isAdmin} user={user} hierarchy={hierarchy} initialUnread={unreadCount}>{children}</Layout1>;
 }

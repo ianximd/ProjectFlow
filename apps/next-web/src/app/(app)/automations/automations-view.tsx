@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Zap, Plus, Search, Filter, X, Edit3, Trash2,
   Power, History, Activity, Wand2, CircleDot, Pause, Play,
@@ -43,37 +44,37 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
-// ── Labels ────────────────────────────────────────────────────────────────────
+// ── Label key maps (resolved via t() inside components) ───────────────────────
 
-const TRIGGER_LABELS: Record<AutomationTriggerType, string> = {
-  ISSUE_CREATED:        'Issue created',
-  ISSUE_UPDATED:        'Issue updated',
-  ISSUE_TRANSITIONED:   'Issue transitioned',
-  SPRINT_STARTED:       'Sprint started',
-  SPRINT_COMPLETED:     'Sprint completed',
-  DUE_DATE_APPROACHING: 'Due date approaching',
-  SCHEDULED:            'Scheduled (cron)',
-  MANUAL:               'Manual / API trigger',
-  WEBHOOK:              'Incoming webhook',
+const TRIGGER_KEYS: Record<AutomationTriggerType, string> = {
+  ISSUE_CREATED:        'triggerIssueCreated',
+  ISSUE_UPDATED:        'triggerIssueUpdated',
+  ISSUE_TRANSITIONED:   'triggerIssueTransitioned',
+  SPRINT_STARTED:       'triggerSprintStarted',
+  SPRINT_COMPLETED:     'triggerSprintCompleted',
+  DUE_DATE_APPROACHING: 'triggerDueDateApproaching',
+  SCHEDULED:            'triggerScheduled',
+  MANUAL:               'triggerManual',
+  WEBHOOK:              'triggerWebhook',
 };
 
-const ACTION_LABELS: Record<AutomationActionType, string> = {
-  TRANSITION_ISSUE:  'Transition issue',
-  ASSIGN_ISSUE:      'Assign issue',
-  UNASSIGN_ISSUE:    'Unassign issue',
-  SET_PRIORITY:      'Set priority',
-  ADD_COMMENT:       'Add comment',
-  SEND_NOTIFICATION: 'Send notification',
-  TRIGGER_WEBHOOK:   'Trigger webhook',
+const ACTION_KEYS: Record<AutomationActionType, string> = {
+  TRANSITION_ISSUE:  'actionTransitionIssue',
+  ASSIGN_ISSUE:      'actionAssignIssue',
+  UNASSIGN_ISSUE:    'actionUnassignIssue',
+  SET_PRIORITY:      'actionSetPriority',
+  ADD_COMMENT:       'actionAddComment',
+  SEND_NOTIFICATION: 'actionSendNotification',
+  TRIGGER_WEBHOOK:   'actionTriggerWebhook',
 };
 
-const CONDITION_LABELS: Record<AutomationConditionType, string> = {
-  ISSUE_MATCHES_FILTER: 'Issue matches filter',
-  FIELD_EQUALS:         'Field equals',
-  FIELD_NOT_EQUALS:     'Field not equals',
-  USER_HAS_ROLE:        'User has role',
-  IN_SPRINT:            'In sprint',
-  NOT_IN_SPRINT:        'Not in sprint',
+const CONDITION_KEYS: Record<AutomationConditionType, string> = {
+  ISSUE_MATCHES_FILTER: 'conditionIssueMatchesFilter',
+  FIELD_EQUALS:         'conditionFieldEquals',
+  FIELD_NOT_EQUALS:     'conditionFieldNotEquals',
+  USER_HAS_ROLE:        'conditionUserHasRole',
+  IN_SPRINT:            'conditionInSprint',
+  NOT_IN_SPRINT:        'conditionNotInSprint',
 };
 
 const PRIORITIES = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
@@ -99,6 +100,7 @@ interface Props {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 export function AutomationsView({ ctx, automations }: Props) {
+  const t = useTranslations('Automations');
   const [isPending, startTransition] = useTransition();
 
   const [search,        setSearch]        = useState('');
@@ -146,7 +148,7 @@ export function AutomationsView({ ctx, automations }: Props) {
   }
 
   function handleDelete(id: string, name: string) {
-    if (!window.confirm(`Delete rule "${name}"?`)) return;
+    if (!window.confirm(t('deleteConfirm', { name }))) return;
     startTransition(async () => {
       const res = await deleteAutomation(id);
       if (!res.ok) notifyActionError(res);
@@ -202,7 +204,7 @@ export function AutomationsView({ ctx, automations }: Props) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Automations</span>
+              <span>{t('breadcrumb')}</span>
               {(activeProject as any)?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -211,7 +213,7 @@ export function AutomationsView({ ctx, automations }: Props) {
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProject')}
             </h2>
           </div>
         </div>
@@ -229,7 +231,7 @@ export function AutomationsView({ ctx, automations }: Props) {
             onClick={() => setCreateOpen(true)}
             disabled={!ctx.activeProjectId}
           >
-            <Plus className="size-4" /> New rule
+            <Plus className="size-4" /> {t('newRule')}
           </Button>
         </div>
       </div>
@@ -240,10 +242,10 @@ export function AutomationsView({ ctx, automations }: Props) {
         <>
           {/* ── KPI tiles ──────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiTile icon={Zap}      label="Total rules" value={kpi.total}    tone="default" />
-            <KpiTile icon={Play}     label="Enabled"     value={kpi.enabled}  tone="success" />
-            <KpiTile icon={Pause}    label="Disabled"    value={kpi.disabled} tone="muted" />
-            <KpiTile icon={Activity} label="Total runs"  value={kpi.runs}     tone="info" />
+            <KpiTile icon={Zap}      label={t('kpiTotalRules')} value={kpi.total}    tone="default" />
+            <KpiTile icon={Play}     label={t('kpiEnabled')}    value={kpi.enabled}  tone="success" />
+            <KpiTile icon={Pause}    label={t('kpiDisabled')}   value={kpi.disabled} tone="muted" />
+            <KpiTile icon={Activity} label={t('kpiTotalRuns')}  value={kpi.runs}     tone="info" />
           </div>
 
           {/* ── Filter bar ────────────────────────────────────────────────── */}
@@ -253,9 +255,9 @@ export function AutomationsView({ ctx, automations }: Props) {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search rule name…"
+                placeholder={t('filterSearchPlaceholder')}
                 className="h-8 pl-7 text-xs"
-                aria-label="Filter automations by name"
+                aria-label={t('filterSearchAriaLabel')}
               />
             </div>
             <Select
@@ -266,9 +268,9 @@ export function AutomationsView({ ctx, automations }: Props) {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All rules</SelectItem>
-                <SelectItem value="ENABLED">Enabled only</SelectItem>
-                <SelectItem value="DISABLED">Disabled only</SelectItem>
+                <SelectItem value="ALL">{t('filterAllRules')}</SelectItem>
+                <SelectItem value="ENABLED">{t('filterEnabledOnly')}</SelectItem>
+                <SelectItem value="DISABLED">{t('filterDisabledOnly')}</SelectItem>
               </SelectContent>
             </Select>
             {activeFilterCount > 0 && (
@@ -281,15 +283,12 @@ export function AutomationsView({ ctx, automations }: Props) {
                   onClick={() => { setSearch(''); setEnabledFilter('ALL'); }}
                   className="h-8 px-2 text-xs"
                 >
-                  <X className="size-3.5" /> Clear
+                  <X className="size-3.5" /> {t('filterClear')}
                 </Button>
               </>
             )}
             <div className="ml-auto text-xs text-muted-foreground">
-              Showing{' '}
-              <strong className="text-foreground">{filteredRules.length}</strong>
-              {' '}of{' '}
-              <strong className="text-foreground">{automations.length}</strong>
+              {t('showingOf', { shown: filteredRules.length, total: automations.length })}
             </div>
           </div>
 
@@ -298,7 +297,7 @@ export function AutomationsView({ ctx, automations }: Props) {
             <EmptyRulesState onCreate={() => setCreateOpen(true)} />
           ) : filteredRules.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              No rules match the current filters.
+              {t('noMatchFilters')}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -354,6 +353,7 @@ function RuleRow({
   onEdit:   () => void;
   onDelete: () => void;
 }) {
+  const t = useTranslations('Automations');
   const lastRun = shortDate(rule.lastExecutedAt as string | null);
   const trigger = rule.trigger as AutomationTriggerConfig | null;
   const conditions = rule.conditions as AutomationCondition[];
@@ -367,7 +367,7 @@ function RuleRow({
             checked={rule.isEnabled}
             onCheckedChange={onToggle}
             disabled={busy}
-            aria-label={rule.isEnabled ? 'Disable' : 'Enable'}
+            aria-label={rule.isEnabled ? t('disableAriaLabel') : t('enableAriaLabel')}
           />
         </div>
 
@@ -375,15 +375,15 @@ function RuleRow({
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-foreground truncate">{rule.name}</h3>
             {rule.isEnabled
-              ? <Badge size="xs" variant="outline" appearance="outline" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Enabled</Badge>
-              : <Badge size="xs" variant="outline" appearance="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">Disabled</Badge>}
+              ? <Badge size="xs" variant="outline" appearance="outline" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{t('enabledBadge')}</Badge>
+              : <Badge size="xs" variant="outline" appearance="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">{t('disabledBadge')}</Badge>}
           </div>
 
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {trigger && (
               <Badge size="xs" variant="outline" appearance="outline" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                 <Wand2 className="size-3 mr-1" />
-                {TRIGGER_LABELS[trigger.type as AutomationTriggerType] ?? trigger.type}
+                {t((TRIGGER_KEYS[trigger.type as AutomationTriggerType] ?? trigger.type) as Parameters<typeof t>[0])}
                 {trigger.type === 'ISSUE_TRANSITIONED' && (trigger as any).toStatus && ` → ${(trigger as any).toStatus}`}
                 {trigger.type === 'SCHEDULED' && (trigger as any).cron && ` · ${(trigger as any).cron}`}
               </Badge>
@@ -392,13 +392,13 @@ function RuleRow({
             {conditions.length > 0 && (
               <Badge size="xs" variant="outline" appearance="outline">
                 <CircleDot className="size-3 mr-1" />
-                {conditions.length} {conditions.length === 1 ? 'condition' : 'conditions'}
+                {t('conditionCount', { count: conditions.length })}
               </Badge>
             )}
 
             {actions.map((a, i) => (
               <Badge key={i} size="xs" variant="outline" appearance="outline" className="font-normal">
-                {ACTION_LABELS[a.type as AutomationActionType] ?? a.type}
+                {t((ACTION_KEYS[a.type as AutomationActionType] ?? a.type) as Parameters<typeof t>[0])}
               </Badge>
             ))}
           </div>
@@ -406,25 +406,24 @@ function RuleRow({
           <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Activity className="size-3" />
-              {(rule.executionCount as number).toLocaleString()}{' '}
-              {rule.executionCount === 1 ? 'run' : 'runs'}
+              {t('runsCount', { count: rule.executionCount as number })}
             </span>
             {lastRun && (
               <span className="inline-flex items-center gap-1">
-                <History className="size-3" /> last {lastRun}
+                <History className="size-3" /> {t('lastRun', { date: lastRun })}
               </span>
             )}
           </div>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <Button size="sm" variant="ghost" onClick={onEdit} aria-label="Edit">
+          <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t('editAriaLabel')}>
             <Edit3 className="size-3.5" />
           </Button>
           <Button
             size="sm" variant="ghost"
             onClick={onDelete} disabled={busy}
-            aria-label="Delete"
+            aria-label={t('deleteAriaLabel')}
             className="text-destructive hover:text-destructive"
           >
             <Trash2 className="size-3.5" />
@@ -469,12 +468,13 @@ function RuleDialog({
 
   const canSubmit = name.trim().length > 0 && actions.length > 0 && !isPending;
 
+  const t = useTranslations('Automations');
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent key={initial?.id ?? mode} className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {mode === 'create' ? 'New automation rule' : `Edit ${initial?.name ?? 'rule'}`}
+            {mode === 'create' ? t('dialogCreateTitle') : t('dialogEditTitle', { name: initial?.name ?? '' })}
           </DialogTitle>
         </DialogHeader>
         <form
@@ -487,7 +487,7 @@ function RuleDialog({
             {/* Name */}
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rule-name" className="text-xs font-medium text-muted-foreground">
-                Name
+                {t('nameLabel')}
               </label>
               <Input
                 id="rule-name"
@@ -495,7 +495,7 @@ function RuleDialog({
                 autoFocus
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Auto-assign high priority bugs"
+                placeholder={t('namePlaceholder')}
               />
             </div>
 
@@ -516,10 +516,10 @@ function RuleDialog({
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
-              Cancel
+              {t('cancelButton')}
             </Button>
             <Button type="submit" variant="primary" disabled={!canSubmit}>
-              {isPending ? 'Saving…' : mode === 'create' ? 'Create rule' : 'Save changes'}
+              {isPending ? t('saving') : mode === 'create' ? t('createRule') : t('saveChanges')}
             </Button>
           </DialogFooter>
         </form>
@@ -548,24 +548,25 @@ function TriggerEditor({
   trigger:  AutomationTriggerConfig;
   onChange: (t: AutomationTriggerConfig) => void;
 }) {
+  const t = useTranslations('Automations');
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 p-3">
-      <SectionTitle icon={Wand2} title="When" />
+      <SectionTitle icon={Wand2} title={t('whenTitle')} />
       <Select
         value={trigger.type}
         onValueChange={(v) => onChange({ ...trigger, type: v as AutomationTriggerType })}
       >
         <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
         <SelectContent>
-          {(Object.keys(TRIGGER_LABELS) as AutomationTriggerType[]).map((t) => (
-            <SelectItem key={t} value={t}>{TRIGGER_LABELS[t]}</SelectItem>
+          {(Object.keys(TRIGGER_KEYS) as AutomationTriggerType[]).map((k) => (
+            <SelectItem key={k} value={k}>{t(TRIGGER_KEYS[k] as Parameters<typeof t>[0])}</SelectItem>
           ))}
         </SelectContent>
       </Select>
 
       {trigger.type === 'ISSUE_TRANSITIONED' && (
         <Input
-          placeholder="Only when transitioning to status (optional)"
+          placeholder={t('transitionToStatusPlaceholder')}
           value={(trigger as any).toStatus ?? ''}
           onChange={(e) => onChange({ ...trigger, toStatus: e.target.value || undefined } as any)}
           className="h-9 text-sm"
@@ -574,7 +575,7 @@ function TriggerEditor({
       {trigger.type === 'DUE_DATE_APPROACHING' && (
         <Input
           type="number" min={0}
-          placeholder="Hours before due date"
+          placeholder={t('hoursBeforeDuePlaceholder')}
           value={(trigger as any).hoursBeforeDue ?? ''}
           onChange={(e) => onChange({
             ...trigger,
@@ -586,14 +587,14 @@ function TriggerEditor({
       {trigger.type === 'SCHEDULED' && (
         <div className="flex flex-col gap-1.5">
           <Input
-            placeholder="Cron expression, e.g. 0 9 * * 1"
+            placeholder={t('cronPlaceholder')}
             value={(trigger as any).cron ?? ''}
             onChange={(e) => onChange({ ...trigger, cron: e.target.value || undefined } as any)}
             className="h-9 text-sm font-mono"
           />
           <span className="text-xs text-muted-foreground">
-            Standard 5-field crontab.{' '}
-            <span className="font-mono">0 9 * * 1</span> means every Monday at 09:00.
+            {t('cronHint')}{' '}
+            <span className="font-mono">{t('cronExample')}</span>{' '}{t('cronExampleMeaning')}
           </span>
         </div>
       )}
@@ -607,6 +608,7 @@ function ConditionList({
   conditions: AutomationCondition[];
   onChange:   (c: AutomationCondition[]) => void;
 }) {
+  const t = useTranslations('Automations');
   const add    = () => onChange([...conditions, { type: 'FIELD_EQUALS', field: 'priority', value: 'HIGH' } as any]);
   const remove = (i: number) => onChange(conditions.filter((_, idx) => idx !== i));
   const update = (i: number, patch: Partial<AutomationCondition>) =>
@@ -617,17 +619,17 @@ function ConditionList({
       <div className="flex items-center justify-between">
         <SectionTitle
           icon={CircleDot}
-          title="If"
-          hint="(all conditions must match — leave empty to fire on every event)"
+          title={t('ifTitle')}
+          hint={t('ifHint')}
         />
         <Button type="button" size="sm" variant="ghost" onClick={add} className="h-7 px-2 text-xs">
-          <Plus className="size-3.5" /> Add condition
+          <Plus className="size-3.5" /> {t('addCondition')}
         </Button>
       </div>
 
       {conditions.length === 0 ? (
         <p className="text-xs text-muted-foreground italic">
-          No conditions — rule fires for all events.
+          {t('noConditions')}
         </p>
       ) : (
         <div className="flex flex-col gap-2">
@@ -639,21 +641,21 @@ function ConditionList({
               >
                 <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(CONDITION_LABELS) as AutomationConditionType[]).map((t) => (
-                    <SelectItem key={t} value={t}>{CONDITION_LABELS[t]}</SelectItem>
+                  {(Object.keys(CONDITION_KEYS) as AutomationConditionType[]).map((k) => (
+                    <SelectItem key={k} value={k}>{t(CONDITION_KEYS[k] as Parameters<typeof t>[0])}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {((cond as any).type === 'FIELD_EQUALS' || (cond as any).type === 'FIELD_NOT_EQUALS') && (
                 <>
                   <Input
-                    placeholder="field"
+                    placeholder={t('fieldPlaceholder')}
                     value={(cond as any).field ?? ''}
                     onChange={(e) => update(i, { field: e.target.value } as any)}
                     className="h-8 w-[140px] text-xs"
                   />
                   <Input
-                    placeholder="value"
+                    placeholder={t('valuePlaceholder')}
                     value={(cond as any).value ?? ''}
                     onChange={(e) => update(i, { value: e.target.value } as any)}
                     className="h-8 flex-1 min-w-[120px] text-xs"
@@ -662,7 +664,7 @@ function ConditionList({
               )}
               {((cond as any).type === 'IN_SPRINT' || (cond as any).type === 'NOT_IN_SPRINT') && (
                 <Input
-                  placeholder="Sprint name or ID (optional)"
+                  placeholder={t('sprintPlaceholder')}
                   value={(cond as any).value ?? ''}
                   onChange={(e) => update(i, { value: e.target.value } as any)}
                   className="h-8 flex-1 min-w-[120px] text-xs"
@@ -672,7 +674,7 @@ function ConditionList({
                 type="button" size="sm" variant="ghost"
                 className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                 onClick={() => remove(i)}
-                aria-label="Remove condition"
+                aria-label={t('removeConditionAriaLabel')}
               >
                 <X className="size-3.5" />
               </Button>
@@ -690,6 +692,7 @@ function ActionList({
   actions:  AutomationAction[];
   onChange: (a: AutomationAction[]) => void;
 }) {
+  const t = useTranslations('Automations');
   const add    = () => onChange([...actions, { type: 'SEND_NOTIFICATION', message: '' } as any]);
   const remove = (i: number) => onChange(actions.filter((_, idx) => idx !== i));
   const update = (i: number, patch: Partial<AutomationAction>) =>
@@ -698,14 +701,14 @@ function ActionList({
   return (
     <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 p-3">
       <div className="flex items-center justify-between">
-        <SectionTitle icon={Power} title="Then" hint="(at least one action required)" />
+        <SectionTitle icon={Power} title={t('thenTitle')} hint={t('thenHint')} />
         <Button type="button" size="sm" variant="ghost" onClick={add} className="h-7 px-2 text-xs">
-          <Plus className="size-3.5" /> Add action
+          <Plus className="size-3.5" /> {t('addAction')}
         </Button>
       </div>
 
       {actions.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">Add at least one action.</p>
+        <p className="text-xs text-muted-foreground italic">{t('noActions')}</p>
       ) : (
         <div className="flex flex-col gap-2">
           {actions.map((action, i) => (
@@ -720,8 +723,8 @@ function ActionList({
                 >
                   <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(ACTION_LABELS) as AutomationActionType[]).map((t) => (
-                      <SelectItem key={t} value={t}>{ACTION_LABELS[t]}</SelectItem>
+                    {(Object.keys(ACTION_KEYS) as AutomationActionType[]).map((k) => (
+                      <SelectItem key={k} value={k}>{t(ACTION_KEYS[k] as Parameters<typeof t>[0])}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -729,7 +732,7 @@ function ActionList({
                   type="button" size="sm" variant="ghost"
                   className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                   onClick={() => remove(i)}
-                  aria-label="Remove action"
+                  aria-label={t('removeActionAriaLabel')}
                 >
                   <X className="size-3.5" />
                 </Button>
@@ -737,7 +740,7 @@ function ActionList({
 
               {(action as any).type === 'TRANSITION_ISSUE' && (
                 <Input
-                  placeholder="Target status name"
+                  placeholder={t('targetStatusPlaceholder')}
                   value={(action as any).toStatus ?? ''}
                   onChange={(e) => update(i, { toStatus: e.target.value } as any)}
                   className="h-8 text-xs"
@@ -745,7 +748,7 @@ function ActionList({
               )}
               {(action as any).type === 'ASSIGN_ISSUE' && (
                 <Input
-                  placeholder='User ID or "REPORTER"'
+                  placeholder={t('assigneePlaceholder')}
                   value={(action as any).assigneeId ?? ''}
                   onChange={(e) => update(i, { assigneeId: e.target.value } as any)}
                   className="h-8 text-xs font-mono"
@@ -764,7 +767,7 @@ function ActionList({
               )}
               {((action as any).type === 'ADD_COMMENT' || (action as any).type === 'SEND_NOTIFICATION') && (
                 <textarea
-                  placeholder="Message"
+                  placeholder={t('messagePlaceholder')}
                   value={(action as any).message ?? ''}
                   onChange={(e) => update(i, { message: e.target.value } as any)}
                   rows={2}
@@ -774,7 +777,7 @@ function ActionList({
               {(action as any).type === 'TRIGGER_WEBHOOK' && (
                 <Input
                   type="url"
-                  placeholder="https://hooks.example.com/…"
+                  placeholder={t('webhookUrlPlaceholder')}
                   value={(action as any).webhookUrl ?? ''}
                   onChange={(e) => update(i, { webhookUrl: e.target.value } as any)}
                   className="h-8 text-xs font-mono"
@@ -825,13 +828,14 @@ function KpiTile({
 }
 
 function EmptyProjectState() {
+  const t = useTranslations('Automations');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Zap className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to automate</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace, then come back to build rules that move issues for you.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>
@@ -839,18 +843,18 @@ function EmptyProjectState() {
 }
 
 function EmptyRulesState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Automations');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Zap className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No rules yet</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyRulesTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Automate repetitive work — auto-assign issues, transition them when criteria are met,
-          send notifications, or call webhooks.
+          {t('emptyRulesBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Create your first rule
+        <Plus className="size-4" /> {t('createFirstRule')}
       </Button>
     </div>
   );

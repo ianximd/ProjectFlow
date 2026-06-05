@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import { createTaskInList } from '@/server/actions/hierarchy';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 
@@ -18,6 +19,7 @@ export function ListView({
   workspaceId: string;
   tasks: any[];
 }) {
+  const t = useTranslations('Lists');
   const [, startTransition] = useTransition();
   const [title, setTitle] = useState('');
 
@@ -35,7 +37,7 @@ export function ListView({
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-2 text-lg font-semibold">
         <ListIcon className="size-5 text-muted-foreground" />
-        <span>List</span>
+        <span>{t('heading')}</span>
       </div>
 
       <input
@@ -43,23 +45,23 @@ export function ListView({
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') add(); }}
-        placeholder="Add a task and press Enter…"
+        placeholder={t('addTaskPlaceholder')}
         className="w-full max-w-xl h-9 rounded border border-input bg-background px-3 text-sm outline-none focus:border-primary"
       />
 
       <ul className="space-y-1 max-w-xl">
-        {tasks.map((t: any) => (
+        {tasks.map((task: any) => (
           <li
-            key={t.Id ?? t.id}
+            key={task.Id ?? task.id}
             data-testid="list-task"
             className="flex items-center gap-2 h-9 px-3 rounded border border-border text-sm"
           >
-            <span className="text-xs text-muted-foreground">{t.IssueKey ?? t.issueKey ?? ''}</span>
-            <span className="grow truncate">{t.Title ?? t.title}</span>
+            <span className="text-xs text-muted-foreground">{task.IssueKey ?? task.issueKey ?? ''}</span>
+            <span className="grow truncate">{task.Title ?? task.title}</span>
           </li>
         ))}
         {tasks.length === 0 && (
-          <li className="text-sm text-muted-foreground px-3 py-2">No tasks yet.</li>
+          <li className="text-sm text-muted-foreground px-3 py-2">{t('noTasks')}</li>
         )}
       </ul>
     </div>

@@ -7,6 +7,7 @@ import {
   Folder, Plus, Search, Filter, X, LayoutGrid, Settings, Archive,
   Trash2, Briefcase, ArchiveX, Workflow, Kanban,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyApiError } from '@/lib/apiErrorToast';
 import { formatShortDateYear } from '@/lib/date';
@@ -26,16 +27,16 @@ import {
 import { cn } from '@/lib/utils';
 
 // ── Lookup tables (moved verbatim from the old page.tsx) ──────────────────────
-const TYPE_META: Record<ProjectType, { label: string; icon: typeof Kanban; cls: string }> = {
-  KANBAN:   { label: 'Kanban',   icon: Kanban,   cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
-  SCRUM:    { label: 'Scrum',    icon: Workflow, cls: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
-  BUSINESS: { label: 'Business', icon: Briefcase,cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+const TYPE_META: Record<ProjectType, { icon: typeof Kanban; cls: string }> = {
+  KANBAN:   { icon: Kanban,   cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
+  SCRUM:    { icon: Workflow, cls: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
+  BUSINESS: { icon: Briefcase,cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
 };
 
-const STATUS_META: Record<ProjectStatus, { label: string; cls: string }> = {
-  ACTIVE:   { label: 'Active',   cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
-  ARCHIVED: { label: 'Archived', cls: 'bg-slate-100 text-slate-600  dark:bg-slate-800  dark:text-slate-400' },
-  DELETED:  { label: 'Deleted',  cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
+const STATUS_META: Record<ProjectStatus, { cls: string }> = {
+  ACTIVE:   { cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
+  ARCHIVED: { cls: 'bg-slate-100 text-slate-600  dark:bg-slate-800  dark:text-slate-400' },
+  DELETED:  { cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
 };
 
 // Suggest a project key from a name: take initials, uppercase, max 4 chars.
@@ -56,6 +57,7 @@ export function ProjectsView({
   activeWorkspaceId: string;
   cookieWorkspaceId: string | null;
 }) {
+  const t = useTranslations('Projects');
   const [isPending, startTransition] = useTransition();
 
   const [search,       setSearch]       = useState('');
@@ -80,7 +82,7 @@ export function ProjectsView({
 
   function handleArchive(p: Project) {
     if (p.status === 'ARCHIVED') return;
-    if (!window.confirm(`Archive ${p.name}?\n\nArchived projects stay readable but won't appear in switchers by default.`)) return;
+    if (!window.confirm(t('archiveConfirm', { name: p.name }))) return;
     startTransition(async () => {
       const res = await archiveProject(p.id);
       if (!res.ok) notifyApiError({ error: { message: res.error } }, 0);
@@ -88,7 +90,7 @@ export function ProjectsView({
   }
 
   function handleDelete(p: Project) {
-    if (!window.confirm(`Delete ${p.name}?\n\nThis soft-deletes the project. All its issues, sprints, and workflow stay in the database but become invisible.`)) return;
+    if (!window.confirm(t('deleteConfirm', { name: p.name }))) return;
     startTransition(async () => {
       const res = await deleteProject(p.id);
       if (!res.ok) notifyApiError({ error: { message: res.error } }, 0);
@@ -132,7 +134,7 @@ export function ProjectsView({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Projects</span>
+              <span>{t('breadcrumb')}</span>
               {activeWorkspace?.name && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -140,7 +142,7 @@ export function ProjectsView({
                 </>
               )}
             </div>
-            <h2 className="text-base font-semibold text-foreground truncate">Manage projects</h2>
+            <h2 className="text-base font-semibold text-foreground truncate">{t('heading')}</h2>
           </div>
         </div>
 
@@ -148,7 +150,7 @@ export function ProjectsView({
           {workspaces.length > 1 && (
             <Select value={activeWorkspaceId} onValueChange={switchWorkspace}>
               <SelectTrigger className="h-8 w-[200px] text-xs" disabled={isPending}>
-                <SelectValue placeholder="Workspace" />
+                <SelectValue placeholder={t('workspacePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {workspaces.map((ws) => (
@@ -158,17 +160,17 @@ export function ProjectsView({
             </Select>
           )}
           <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)} disabled={!activeWorkspaceId}>
-            <Plus className="size-4" /> New project
+            <Plus className="size-4" /> {t('newProject')}
           </Button>
         </div>
       </div>
 
       {/* ── KPI tiles ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiTile icon={Folder}   label="Total projects" value={kpi.total}    tone="default" />
-        <KpiTile icon={Workflow} label="Active"         value={kpi.active}   tone="success" />
-        <KpiTile icon={ArchiveX} label="Archived"       value={kpi.archived} tone="muted" />
-        <KpiTile icon={Kanban}   label="Kanban boards"  value={kpi.kanban}   tone="info" />
+        <KpiTile icon={Folder}   label={t('kpiTotal')}    value={kpi.total}    tone="default" />
+        <KpiTile icon={Workflow} label={t('kpiActive')}   value={kpi.active}   tone="success" />
+        <KpiTile icon={ArchiveX} label={t('kpiArchived')} value={kpi.archived} tone="muted" />
+        <KpiTile icon={Kanban}   label={t('kpiKanban')}   value={kpi.kanban}   tone="info" />
       </div>
 
       {/* ── Filter bar ─────────────────────────────────────────────────────── */}
@@ -178,28 +180,28 @@ export function ProjectsView({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, key, or description…"
+            placeholder={t('filterSearchPlaceholder')}
             className="h-8 pl-7 text-xs"
-            aria-label="Filter projects"
+            aria-label={t('filterSearchAriaLabel')}
           />
         </div>
 
         <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as 'ALL' | ProjectType)}>
-          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder={t('filterTypePlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All types</SelectItem>
-            {(Object.keys(TYPE_META) as ProjectType[]).map((t) => (
-              <SelectItem key={t} value={t}>{TYPE_META[t].label}</SelectItem>
-            ))}
+            <SelectItem value="ALL">{t('filterAllTypes')}</SelectItem>
+            <SelectItem value="KANBAN">{t('typeKanban')}</SelectItem>
+            <SelectItem value="SCRUM">{t('typeScrum')}</SelectItem>
+            <SelectItem value="BUSINESS">{t('typeBusiness')}</SelectItem>
           </SelectContent>
         </Select>
 
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'ALL' | ProjectStatus)}>
-          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder={t('filterStatusPlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All statuses</SelectItem>
-            <SelectItem value="ACTIVE">Active</SelectItem>
-            <SelectItem value="ARCHIVED">Archived</SelectItem>
+            <SelectItem value="ALL">{t('filterAllStatuses')}</SelectItem>
+            <SelectItem value="ACTIVE">{t('filterStatusActive')}</SelectItem>
+            <SelectItem value="ARCHIVED">{t('filterStatusArchived')}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -213,7 +215,7 @@ export function ProjectsView({
               onClick={() => { setSearch(''); setTypeFilter('ALL'); setStatusFilter('ALL'); }}
               className="h-8 px-2 text-xs"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t('filterClear')}
             </Button>
           </>
         )}
@@ -228,7 +230,7 @@ export function ProjectsView({
         <EmptyState onCreate={() => setCreateOpen(true)} />
       ) : filtered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-          No projects match the current filters.
+          {t('noMatchFilters')}
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -267,10 +269,14 @@ function ProjectCard({
   onDelete: () => void;
   busy: boolean;
 }) {
+  const t = useTranslations('Projects');
   const { id, name, key, description: desc, type, status, createdAt } = project;
   const tm = TYPE_META[type] ?? TYPE_META.KANBAN;
   const sm = STATUS_META[status] ?? STATUS_META.ACTIVE;
   const TypeIcon = tm.icon;
+
+  const typeLabel = type === 'KANBAN' ? t('typeKanban') : type === 'SCRUM' ? t('typeScrum') : t('typeBusiness');
+  const statusLabel = status === 'ACTIVE' ? t('statusActive') : status === 'ARCHIVED' ? t('statusArchived') : t('statusDeleted');
 
   return (
     <Card className={cn('p-4 flex flex-col gap-3', status !== 'ACTIVE' && 'opacity-70')}>
@@ -285,8 +291,8 @@ function ProjectCard({
           <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
             <span className="font-mono">{key}</span>
             <span aria-hidden="true">·</span>
-            <Badge size="xs" variant="outline" appearance="outline" className="font-normal">{tm.label}</Badge>
-            <Badge size="xs" variant="outline" appearance="outline" className={cn('font-normal', sm.cls)}>{sm.label}</Badge>
+            <Badge size="xs" variant="outline" appearance="outline" className="font-normal">{typeLabel}</Badge>
+            <Badge size="xs" variant="outline" appearance="outline" className={cn('font-normal', sm.cls)}>{statusLabel}</Badge>
           </div>
         </div>
       </div>
@@ -297,20 +303,20 @@ function ProjectCard({
 
       <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1 border-t border-border/40">
         <Link href="/board" className="contents">
-          <Button size="sm" variant="outline"><LayoutGrid className="size-3.5" /> Open board</Button>
+          <Button size="sm" variant="outline"><LayoutGrid className="size-3.5" /> {t('openBoard')}</Button>
         </Link>
         <Link href={`/projects/${id}/settings`} className="contents">
-          <Button size="sm" variant="ghost"><Settings className="size-3.5" /> Settings</Button>
+          <Button size="sm" variant="ghost"><Settings className="size-3.5" /> {t('settings')}</Button>
         </Link>
         {status === 'ACTIVE' && (
-          <Button size="sm" variant="ghost" onClick={onArchive} disabled={busy} aria-label={`Archive ${name}`}>
+          <Button size="sm" variant="ghost" onClick={onArchive} disabled={busy} aria-label={`${t('statusArchived')} ${name}`}>
             <Archive className="size-3.5" />
           </Button>
         )}
         <Button
           size="sm" variant="ghost"
           className="text-destructive hover:text-destructive ml-auto"
-          onClick={onDelete} disabled={busy} aria-label={`Delete ${name}`}
+          onClick={onDelete} disabled={busy} aria-label={`${t('statusDeleted')} ${name}`}
         >
           <Trash2 className="size-3.5" />
         </Button>
@@ -318,7 +324,7 @@ function ProjectCard({
 
       {createdAt && (
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 font-mono">
-          Created {formatShortDateYear(createdAt)}
+          {t('created', { date: formatShortDateYear(createdAt) })}
         </span>
       )}
     </Card>
@@ -338,11 +344,18 @@ function CreateProjectDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Projects');
   const [name,        setName]        = useState('');
   const [key,         setKey]         = useState('');
   const [type,        setType]        = useState<ProjectType>('KANBAN');
   const [description, setDescription] = useState('');
   const [keyTouched,  setKeyTouched]  = useState(false);
+
+  const typeLabels: Record<ProjectType, string> = {
+    KANBAN:   t('typeKanban'),
+    SCRUM:    t('typeScrum'),
+    BUSINESS: t('typeBusiness'),
+  };
 
   return (
     <Dialog
@@ -356,7 +369,7 @@ function CreateProjectDialog({
     >
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
+          <DialogTitle>{t('dialogTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -371,7 +384,7 @@ function CreateProjectDialog({
         >
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="proj-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="proj-name" className="text-xs font-medium text-muted-foreground">{t('dialogNameLabel')}</label>
               <Input
                 id="proj-name" required autoFocus value={name}
                 onChange={(e) => {
@@ -380,38 +393,38 @@ function CreateProjectDialog({
                   // Auto-derive the key while the user hasn't manually touched it.
                   if (!keyTouched) setKey(suggestKey(v));
                 }}
-                placeholder="e.g. Website Redesign"
+                placeholder={t('dialogNamePlaceholder')}
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="proj-key" className="text-xs font-medium text-muted-foreground">Key</label>
+              <label htmlFor="proj-key" className="text-xs font-medium text-muted-foreground">{t('dialogKeyLabel')}</label>
               <Input
                 id="proj-key" required value={key}
                 onChange={(e) => { setKey(e.target.value.toUpperCase()); setKeyTouched(true); }}
                 maxLength={10}
                 pattern="[A-Z][A-Z0-9]*"
-                title="Uppercase letters and digits only; must start with a letter."
-                placeholder="e.g. WEB"
+                title={t('dialogKeyTitle')}
+                placeholder={t('dialogKeyPlaceholder')}
                 className="font-mono text-sm uppercase"
               />
               <span className="text-xs text-muted-foreground">
-                Prefixes issue keys (<code className="font-mono">{key || 'WEB'}-123</code>). Uppercase letters and digits only.
+                {t('dialogKeyHintPrefix')}<code className="font-mono">{key || 'WEB'}-123</code>{t('dialogKeyHintSuffix')}
               </span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Type</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('dialogTypeLabel')}</label>
               <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(TYPE_META) as ProjectType[]).map((t) => {
-                  const meta = TYPE_META[t];
+                {(Object.keys(TYPE_META) as ProjectType[]).map((tp) => {
+                  const meta = TYPE_META[tp];
                   const Icon = meta.icon;
-                  const active = type === t;
+                  const active = type === tp;
                   return (
                     <button
-                      key={t}
+                      key={tp}
                       type="button"
-                      onClick={() => setType(t)}
+                      onClick={() => setType(tp)}
                       className={cn(
                         'flex flex-col items-center gap-1 rounded-md border px-2 py-3 transition-colors text-xs font-medium',
                         active
@@ -421,7 +434,7 @@ function CreateProjectDialog({
                       aria-pressed={active}
                     >
                       <Icon className="size-4" />
-                      {meta.label}
+                      {typeLabels[tp]}
                     </button>
                   );
                 })}
@@ -429,13 +442,13 @@ function CreateProjectDialog({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="proj-desc" className="text-xs font-medium text-muted-foreground">Description (optional)</label>
+              <label htmlFor="proj-desc" className="text-xs font-medium text-muted-foreground">{t('dialogDescLabel')}</label>
               <textarea
                 id="proj-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                placeholder="What is this project for?"
+                placeholder={t('dialogDescPlaceholder')}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring resize-none"
               />
             </div>
@@ -447,9 +460,9 @@ function CreateProjectDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('dialogCancel')}</Button>
             <Button type="submit" variant="primary" disabled={isPending || !name.trim() || !key.trim()}>
-              {isPending ? 'Creating…' : 'Create project'}
+              {isPending ? t('dialogCreating') : t('dialogCreate')}
             </Button>
           </DialogFooter>
         </form>
@@ -495,18 +508,18 @@ function KpiTile({
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Projects');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Folder className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No projects yet</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-md">
-          Projects organise issues, sprints, workflows, and reports under a single key.
-          Create one to start planning work.
+          {t('emptyBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Create your first project
+        <Plus className="size-4" /> {t('emptyCreate')}
       </Button>
     </div>
   );

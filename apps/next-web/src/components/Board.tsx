@@ -15,6 +15,7 @@ import type {
   DragOverEvent,
 } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { useTranslations } from 'next-intl';
 import { Column, type BoardColumn } from './Column';
 import { TaskCard, type AssigneeRow } from './TaskCard';
 
@@ -71,6 +72,7 @@ export function Board({
   onDeleteTask,
   onOpenTask,
 }: BoardProps) {
+  const t = useTranslations('Board');
   const [tasks,      setTasks]      = useState<ApiTask[]>([]);
   const [activeTask, setActiveTask] = useState<ApiTask | null>(null);
   // Track the dragged card's original status so we can detect cross-column
@@ -94,9 +96,9 @@ export function Board({
 
   const onDragStart = (event: DragStartEvent) => {
     if (event.active.data.current?.type === 'Task') {
-      const t = event.active.data.current.task as ApiTask;
-      setActiveTask(t);
-      setDragOriginStatus(getStatus(t));
+      const task = event.active.data.current.task as ApiTask;
+      setActiveTask(task);
+      setDragOriginStatus(getStatus(task));
     }
   };
 
@@ -114,24 +116,24 @@ export function Board({
     const isOverColumn = over.data.current?.type === 'Column';
 
     if (isOverTask) {
-      const activeIndex = tasks.findIndex((t) => getId(t) === active.id);
-      const overIndex   = tasks.findIndex((t) => getId(t) === over.id);
+      const activeIndex = tasks.findIndex((task) => getId(task) === active.id);
+      const overIndex   = tasks.findIndex((task) => getId(task) === over.id);
       if (activeIndex === -1 || overIndex === -1) return;
 
       const overStatus = getStatus(tasks[overIndex]);
-      const updated = tasks.map((t, i) =>
-        i === activeIndex ? { ...t, Status: overStatus, status: overStatus } : t,
+      const updated = tasks.map((task, i) =>
+        i === activeIndex ? { ...task, Status: overStatus, status: overStatus } : task,
       );
       setTasks(arrayMove(updated, activeIndex, overIndex));
     }
 
     if (isOverColumn) {
-      const activeIndex = tasks.findIndex((t) => getId(t) === active.id);
+      const activeIndex = tasks.findIndex((task) => getId(task) === active.id);
       if (activeIndex === -1) return;
       const newStatus = String(over.id);
       if (getStatus(tasks[activeIndex]) === newStatus) return;
-      const updated = tasks.map((t, i) =>
-        i === activeIndex ? { ...t, Status: newStatus, status: newStatus } : t,
+      const updated = tasks.map((task, i) =>
+        i === activeIndex ? { ...task, Status: newStatus, status: newStatus } : task,
       );
       setTasks(updated);
     }
@@ -143,7 +145,7 @@ export function Board({
     if (!dragged) { setDragOriginStatus(null); return; }
 
     const taskId  = getId(dragged);
-    const idx     = tasks.findIndex((t) => getId(t) === taskId);
+    const idx     = tasks.findIndex((task) => getId(task) === taskId);
     if (idx === -1) { setDragOriginStatus(null); return; }
 
     const finalStatus = getStatus(tasks[idx]);
@@ -152,8 +154,8 @@ export function Board({
     // Compute fractional position between same-column neighbours in the
     // post-drag local order. arrayMove already rearranged `tasks` so the
     // visual neighbours are also the source of truth here.
-    const colTasks = tasks.filter((t) => getStatus(t) === finalStatus);
-    const myIdx    = colTasks.findIndex((t) => getId(t) === taskId);
+    const colTasks = tasks.filter((task) => getStatus(task) === finalStatus);
+    const myIdx    = colTasks.findIndex((task) => getId(task) === taskId);
     const prevPos  = myIdx > 0 ? getPosition(colTasks[myIdx - 1]!) : null;
     const nextPos  = myIdx < colTasks.length - 1 ? getPosition(colTasks[myIdx + 1]!) : null;
 
@@ -175,7 +177,7 @@ export function Board({
     <div
       className="flex h-full w-full flex-col"
       role="region"
-      aria-label="Kanban board"
+      aria-label={t('kanbanBoardAriaLabel')}
     >
       <DndContext
         sensors={sensors}
@@ -187,13 +189,13 @@ export function Board({
         <div
           className="flex flex-1 gap-3 overflow-x-auto overflow-y-hidden pb-2 snap-x md:snap-none"
           role="list"
-          aria-label="Board columns"
+          aria-label={t('boardColumnsAriaLabel')}
         >
           {columns.map((col) => (
             <div key={col.id} className="snap-start">
               <Column
                 column={col}
-                tasks={tasks.filter((t) => getStatus(t) === col.id || getStatus(t) === col.title)}
+                tasks={tasks.filter((task) => getStatus(task) === col.id || getStatus(task) === col.title)}
                 assigneesByTaskId={assigneesByTaskId}
                 addTask={onAddTask}
                 deleteTask={onDeleteTask}

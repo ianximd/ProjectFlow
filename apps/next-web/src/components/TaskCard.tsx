@@ -15,6 +15,7 @@ import {
   X,
   Clock,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -85,75 +86,84 @@ function AssigneeStack({ assignees }: { assignees: AssigneeRow[] }) {
 }
 
 // ── Type → icon + color (matches the IssueType union in @projectflow/types)
-const TYPE_META: Record<string, { Icon: typeof Bug; classes: string; label: string }> = {
-  BUG:         { Icon: Bug,          classes: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',                label: 'Bug' },
-  STORY:       { Icon: Bookmark,     classes: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',        label: 'Story' },
-  TASK:        { Icon: CheckSquare,  classes: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',            label: 'Task' },
-  EPIC:        { Icon: Award,        classes: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',    label: 'Epic' },
-  SUBTASK:     { Icon: GitBranch,    classes: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300',            label: 'Subtask' },
-  IMPROVEMENT: { Icon: Sparkles,     classes: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',        label: 'Improvement' },
-  FEATURE:     { Icon: Zap,          classes: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',    label: 'Feature' },
-  TEST:        { Icon: FlaskConical, classes: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',    label: 'Test' },
+const TYPE_META: Record<string, { Icon: typeof Bug; classes: string; labelKey: string }> = {
+  BUG:         { Icon: Bug,          classes: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',                labelKey: 'typeBug' },
+  STORY:       { Icon: Bookmark,     classes: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',        labelKey: 'typeStory' },
+  TASK:        { Icon: CheckSquare,  classes: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',            labelKey: 'typeTask' },
+  EPIC:        { Icon: Award,        classes: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',    labelKey: 'typeEpic' },
+  SUBTASK:     { Icon: GitBranch,    classes: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300',            labelKey: 'typeSubtask' },
+  IMPROVEMENT: { Icon: Sparkles,     classes: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',        labelKey: 'typeImprovement' },
+  FEATURE:     { Icon: Zap,          classes: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',    labelKey: 'typeFeature' },
+  TEST:        { Icon: FlaskConical, classes: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',    labelKey: 'typeTest' },
 };
 
-const PRIORITY_META: Record<string, { dot: string; label: string }> = {
-  HIGHEST: { dot: 'bg-red-500',    label: 'Highest' },
-  HIGH:    { dot: 'bg-orange-500', label: 'High' },
-  MEDIUM:  { dot: 'bg-amber-500',  label: 'Medium' },
-  LOW:     { dot: 'bg-sky-500',    label: 'Low' },
-  LOWEST:  { dot: 'bg-slate-400',  label: 'Lowest' },
+const PRIORITY_META: Record<string, { dot: string; labelKey: string }> = {
+  HIGHEST: { dot: 'bg-red-500',    labelKey: 'priorityHighest' },
+  HIGH:    { dot: 'bg-orange-500', labelKey: 'priorityHigh' },
+  MEDIUM:  { dot: 'bg-amber-500',  labelKey: 'priorityMedium' },
+  LOW:     { dot: 'bg-sky-500',    labelKey: 'priorityLow' },
+  LOWEST:  { dot: 'bg-slate-400',  labelKey: 'priorityLowest' },
 };
 
-function getTypeMeta(t: string | undefined) {
-  return TYPE_META[(t ?? '').toUpperCase()] ?? TYPE_META.TASK!;
+function getTypeMeta(tp: string | undefined) {
+  return TYPE_META[(tp ?? '').toUpperCase()] ?? TYPE_META.TASK!;
 }
 
 function getPriorityMeta(p: string | undefined) {
   return PRIORITY_META[(p ?? '').toUpperCase()] ?? PRIORITY_META.MEDIUM!;
 }
 
-// Smart deadline chip. Returns null when the task has no DueDate, otherwise
-// classifies into: overdue (past) / due soon (≤24h) / due today / due-this-week
-// / scheduled. The label includes time-of-day only when the deadline isn't at
-// midnight UTC — most users will want to see "Tue, 5:00 PM" but a card with
-// just a date should stay tidy.
-function formatDeadline(dueIso: string): { label: string; cls: string; title: string } | null {
-  const t = new Date(dueIso).getTime();
-  if (!Number.isFinite(t)) return null;
+// Smart deadline chip. Returns null when dueIso is falsy or unparseable,
+// otherwise classifies into: overdue / due soon (≤24h) / due-this-week / scheduled.
+function formatDeadlineI18n(
+  dueIso: string | null | undefined,
+  t: ReturnType<typeof useTranslations<'Board'>>,
+): { label: string; cls: string; title: string } | null {
+  if (!dueIso) return null;
+  const ts = new Date(dueIso).getTime();
+  if (!Number.isFinite(ts)) return null;
   const now = Date.now();
-  const diffMin = Math.round((t - now) / 60_000);
-  const due = new Date(t);
+  const diffMin = Math.round((ts - now) / 60_000);
+  const due = new Date(ts);
 
   const hasTime = due.getHours() !== 0 || due.getMinutes() !== 0;
   const dateLabel = formatShortDate(due);
   const timeLabel = formatShortTime(due);
   const fullLabel = hasTime ? `${dateLabel}, ${timeLabel}` : dateLabel;
-  const tooltip = `Due ${formatDateTime(due)}`;
+  const tooltip = t('deadlineTooltip', { datetime: formatDateTime(due) });
 
-  // Buckets in order of severity:
   if (diffMin < 0) {
     const overdueMin = -diffMin;
-    const short = overdueMin < 60   ? `${overdueMin}m overdue`
-                : overdueMin < 1440 ? `${Math.round(overdueMin / 60)}h overdue`
-                                    : `${Math.round(overdueMin / 1440)}d overdue`;
+    const short = overdueMin < 60
+      ? t('deadlineOverdueMinutes', { count: overdueMin })
+      : overdueMin < 1440
+        ? t('deadlineOverdueHours', { count: Math.round(overdueMin / 60) })
+        : t('deadlineOverdueDays', { count: Math.round(overdueMin / 1440) });
     return { label: short, cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300', title: tooltip };
   }
   if (diffMin <= 24 * 60) {
-    return { label: hasTime ? `Due ${timeLabel}` : 'Due today',
-             cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-             title: tooltip };
+    return {
+      label: hasTime ? t('deadlineDueAt', { time: timeLabel }) : t('deadlineDueToday'),
+      cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+      title: tooltip,
+    };
   }
   if (diffMin <= 7 * 24 * 60) {
-    return { label: `Due ${fullLabel}`,
-             cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
-             title: tooltip };
+    return {
+      label: t('deadlineDueOn', { date: fullLabel }),
+      cls: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+      title: tooltip,
+    };
   }
-  return { label: fullLabel,
-           cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-           title: tooltip };
+  return {
+    label: fullLabel,
+    cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+    title: tooltip,
+  };
 }
 
 export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
+  const t = useTranslations('Board');
   const taskId   = String(task.Id ?? task.id ?? '');
   const title    = task.Title ?? task.title ?? task.content ?? '';
   const issueKey = task.IssueKey ?? task.issueKey ?? null;
@@ -161,11 +171,25 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
   const priority = (task.Priority ?? task.priority ?? 'MEDIUM').toString();
   const points   = task.StoryPoints ?? task.storyPoints ?? null;
   const dueDate  = (task.DueDate ?? task.dueDate) as string | null | undefined;
-  const deadline = dueDate ? formatDeadline(dueDate) : null;
 
   const typeMeta     = getTypeMeta(type);
   const priorityMeta = getPriorityMeta(priority);
   const TypeIcon     = typeMeta.Icon;
+
+  // Resolve display labels via i18n — map from meta key to typed t() call
+  const TYPE_LABEL_MAP: Record<string, string> = {
+    typeBug: t('typeBug'), typeStory: t('typeStory'), typeTask: t('typeTask'),
+    typeEpic: t('typeEpic'), typeSubtask: t('typeSubtask'), typeImprovement: t('typeImprovement'),
+    typeFeature: t('typeFeature'), typeTest: t('typeTest'),
+  };
+  const PRIORITY_LABEL_MAP: Record<string, string> = {
+    priorityHighest: t('priorityHighest'), priorityHigh: t('priorityHigh'),
+    priorityMedium: t('priorityMedium'), priorityLow: t('priorityLow'), priorityLowest: t('priorityLowest'),
+  };
+  const typeLabel     = TYPE_LABEL_MAP[typeMeta.labelKey] ?? typeMeta.labelKey;
+  const priorityLabel = PRIORITY_LABEL_MAP[priorityMeta.labelKey] ?? priorityMeta.labelKey;
+
+  const deadline = formatDeadlineI18n(dueDate, t);
 
   const {
     setNodeRef,
@@ -217,10 +241,10 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
             'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
             typeMeta.classes,
           )}
-          aria-label={`Issue type: ${typeMeta.label}`}
+          aria-label={t('issueTypeAriaLabel', { type: typeLabel })}
         >
           <TypeIcon className="size-3" />
-          {typeMeta.label}
+          {typeLabel}
         </span>
 
         <button
@@ -228,7 +252,7 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
           data-card-action
           onClick={(e) => { e.stopPropagation(); deleteTask(taskId); }}
           className="opacity-0 group-hover:opacity-100 rounded-sm p-1 text-muted-foreground transition-opacity hover:bg-destructive/10 hover:text-destructive focus:opacity-100"
-          aria-label={`Delete ${title}`}
+          aria-label={t('taskDeleteAriaLabel', { title: title || t('taskUntitled') })}
         >
           <X className="size-3.5" />
         </button>
@@ -236,7 +260,7 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
 
       {/* Title */}
       <div className="text-sm font-medium leading-snug text-foreground line-clamp-2">
-        {title || <span className="italic text-muted-foreground">(untitled)</span>}
+        {title || <span className="italic text-muted-foreground">{t('taskUntitled')}</span>}
       </div>
 
       {/* Deadline chip — only rendered when a due date is set. Colours mean:
@@ -273,8 +297,8 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
           )}
           <span
             className={cn('inline-block size-2 rounded-full', priorityMeta.dot)}
-            aria-label={`Priority: ${priorityMeta.label}`}
-            title={`Priority: ${priorityMeta.label}`}
+            aria-label={t('taskPriorityAriaLabel', { priority: priorityLabel })}
+            title={t('taskPriorityAriaLabel', { priority: priorityLabel })}
           />
           <button
             type="button"
@@ -283,7 +307,7 @@ export function TaskCard({ task, assignees = [], deleteTask, onOpen }: Props) {
             {...listeners}
             onClick={(e) => e.stopPropagation()}
             className="ml-0.5 cursor-grab text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
-            aria-label={`Drag ${title}`}
+            aria-label={t('taskDragAriaLabel', { title: title || t('taskUntitled') })}
           >
             <GripVertical className="size-3.5" />
           </button>

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { TaskCard, type AssigneeRow } from './TaskCard';
@@ -44,6 +45,7 @@ const CATEGORY_ACCENT: Record<string, string> = {
 };
 
 export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, onOpenTask }: Props) {
+  const t = useTranslations('Board');
   const [isAdding,        setIsAdding]        = useState(false);
   const [newTaskContent,  setNewTaskContent]  = useState('');
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -58,7 +60,7 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
   });
 
   const sumStoryPoints = tasks.reduce(
-    (acc, t) => acc + (Number(t.StoryPoints ?? t.storyPoints) || 0),
+    (acc, task) => acc + (Number(task.StoryPoints ?? task.storyPoints) || 0),
     0,
   );
   const sumStoryPointsLabel = sumStoryPoints > 0
@@ -80,7 +82,7 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
     else if (e.key === 'Escape')           { setIsAdding(false); setNewTaskContent(''); }
   };
 
-  const taskIds = tasks.map((t) => String(t.Id ?? t.id ?? ''));
+  const taskIds = tasks.map((task) => String(task.Id ?? task.id ?? ''));
 
   return (
     <div
@@ -104,15 +106,15 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
         </h2>
         <span
           className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
-          aria-label={`${tasks.length} ${tasks.length === 1 ? 'issue' : 'issues'}`}
+          aria-label={t('columnIssueCount', { count: tasks.length })}
         >
           {tasks.length}
         </span>
         {sumStoryPointsLabel && (
           <span
             className="ml-auto rounded-md bg-background px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground border border-border"
-            title={`${sumStoryPointsLabel} story points`}
-            aria-label={`${sumStoryPointsLabel} story points`}
+            title={t('columnStoryPoints', { points: sumStoryPointsLabel })}
+            aria-label={t('columnStoryPoints', { points: sumStoryPointsLabel })}
           >
             {sumStoryPointsLabel} pt
           </span>
@@ -143,7 +145,7 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
 
         {tasks.length === 0 && !isAdding && (
           <div className="flex flex-1 items-center justify-center rounded-md border border-dashed border-border/60 px-2 py-6 text-center text-xs text-muted-foreground/70">
-            Drop or create an issue here
+            {t('columnDropEmpty')}
           </div>
         )}
       </div>
@@ -153,7 +155,7 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
         {isAdding ? (
           <div className="flex flex-col gap-2 rounded-md border border-primary/40 bg-card p-2 shadow-sm">
             <label htmlFor={`new-task-${column.id}`} className="sr-only">
-              New issue title for {column.title}
+              {t('columnNewIssueLabelFor', { column: column.title })}
             </label>
             <textarea
               ref={inputRef}
@@ -161,21 +163,21 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
               value={newTaskContent}
               onChange={(e) => setNewTaskContent(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="What needs to be done?"
+              placeholder={t('columnNewIssuePlaceholder')}
               rows={2}
               className="w-full resize-none rounded-sm bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-              aria-label={`New issue title for ${column.title}`}
+              aria-label={t('columnNewIssueLabelFor', { column: column.title })}
             />
             <div className="flex items-center gap-2">
               <Button size="sm" variant="primary" onClick={submit} disabled={!newTaskContent.trim()}>
-                Add
+                {t('columnAddAriaLabel')}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => { setIsAdding(false); setNewTaskContent(''); }}
               >
-                Cancel
+                {t('columnCancelAdd')}
               </Button>
             </div>
           </div>
@@ -187,10 +189,10 @@ export function Column({ column, tasks, assigneesByTaskId, addTask, deleteTask, 
               'flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground',
               'transition-colors hover:bg-muted hover:text-foreground',
             )}
-            aria-label={`Create issue in ${column.title}`}
+            aria-label={t('columnCreateAriaLabel', { column: column.title })}
           >
             <Plus className="size-4" />
-            Create issue
+            {t('columnCreateLabel')}
           </button>
         )}
       </div>

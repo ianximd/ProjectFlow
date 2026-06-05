@@ -5,6 +5,7 @@ import {
 } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { LayoutGrid, Search, Filter, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Board } from '@/components/Board';
 import type { BoardColumn } from '@/components/Column';
@@ -56,6 +57,7 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }: Props) {
+  const t = useTranslations('Board');
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -111,18 +113,13 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
   }, []);
 
   // ── Optimistic reorder ─────────────────────────────────────────────────────
-  // Drag visual feedback is owned by Board.tsx's internal arrayMove state. This
-  // parent useOptimistic update changes the dragged card's position/status so the
-  // move survives the action's round-trip; revalidatePath('/board') in reorderTask
-  // then delivers the canonical ordering, which Board.tsx re-syncs via its
-  // initialTasks useEffect. (Same double-buffering the prior react-query board used.)
   const [optimisticTasks, applyMove] = useOptimistic(
     tasks,
     (state: Task[], m: OptimisticMove) =>
-      state.map((t) =>
-        t.id === m.taskId
-          ? { ...t, position: m.position, ...(m.status !== undefined ? { status: m.status } : {}) }
-          : t,
+      state.map((task) =>
+        task.id === m.taskId
+          ? { ...task, position: m.position, ...(m.status !== undefined ? { status: m.status } : {}) }
+          : task,
       ),
   );
 
@@ -140,11 +137,11 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
   // Apply local filters before handing tasks to the board.
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return optimisticTasks.filter((t) => {
-      if (typeFilter     !== 'ALL' && (t.type     ?? '') !== typeFilter)     return false;
-      if (priorityFilter !== 'ALL' && (t.priority ?? '') !== priorityFilter) return false;
+    return optimisticTasks.filter((task) => {
+      if (typeFilter     !== 'ALL' && (task.type     ?? '') !== typeFilter)     return false;
+      if (priorityFilter !== 'ALL' && (task.priority ?? '') !== priorityFilter) return false;
       if (q) {
-        const hay = `${t.title ?? ''} ${t.issueKey ?? ''}`.toLowerCase();
+        const hay = `${task.title ?? ''} ${task.issueKey ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -161,9 +158,6 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
     });
   }
 
-  // The POST /tasks Zod schema strips `status`, so all new cards land in the
-  // default column ("To Do"). For non-default columns we follow the create
-  // with a position PATCH that sets the correct status in one round-trip.
   const DEFAULT_STATUS = boardColumns[0]?.id ?? 'To Do';
 
   function handleAdd(columnId: string, content: string) {
@@ -178,10 +172,6 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
         notifyActionError(res);
         return;
       }
-      // If the target column is not the default, move the new card into it.
-      // If this follow-up reorderTask fails after createTask already succeeded,
-      // the card lands in the default column and a toast fires — acceptable
-      // degradation; the canonical position is reconciled on the next full load.
       if (columnId !== DEFAULT_STATUS && res.data?.id) {
         const moveRes = await reorderTask(res.data.id, 0, columnId);
         if (!moveRes.ok) notifyActionError(moveRes);
@@ -216,7 +206,7 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Board</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -225,7 +215,7 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProjectFallback')}
             </h2>
           </div>
         </div>
@@ -249,9 +239,9 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
             ref={searchInputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title or key…  (Ctrl/⌘+K)"
+            placeholder={t('filterSearchPlaceholder')}
             className="h-8 pl-7 pr-12 text-xs"
-            aria-label="Filter tasks by title or issue key"
+            aria-label={t('filterSearchAriaLabel')}
           />
           <kbd
             aria-hidden="true"
@@ -265,11 +255,11 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
           value={typeFilter}
           onValueChange={(v) => { setTypeFilter(v); writeFiltersToUrl({ type: v }); }}
         >
-          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder={t('filterTypePlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All types</SelectItem>
-            {TYPE_OPTIONS.map((t) => (
-              <SelectItem key={t} value={t}>{t.charAt(0) + t.slice(1).toLowerCase()}</SelectItem>
+            <SelectItem value="ALL">{t('filterAllTypes')}</SelectItem>
+            {TYPE_OPTIONS.map((tp) => (
+              <SelectItem key={tp} value={tp}>{tp.charAt(0) + tp.slice(1).toLowerCase()}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -278,9 +268,9 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
           value={priorityFilter}
           onValueChange={(v) => { setPriorityFilter(v); writeFiltersToUrl({ priority: v }); }}
         >
-          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder={t('filterPriorityPlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All priorities</SelectItem>
+            <SelectItem value="ALL">{t('filterAllPriorities')}</SelectItem>
             {PRIORITY_OPTIONS.map((p) => (
               <SelectItem key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</SelectItem>
             ))}
@@ -304,7 +294,7 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
               }}
               className="h-8 px-2 text-xs"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t('filterClear')}
             </Button>
           </>
         )}
@@ -350,13 +340,14 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function EmptyProjectState() {
+  const t = useTranslations('Board');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <LayoutGrid className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to show</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to start tracking issues on the board.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>

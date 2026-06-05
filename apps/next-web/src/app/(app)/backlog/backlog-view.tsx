@@ -9,6 +9,7 @@ import {
   Bug, Bookmark, CheckSquare, Award, GitBranch, Sparkles, Zap, FlaskConical,
   Calendar, ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { createTask, deleteTask, updateTaskPriority } from '@/server/actions/tasks';
@@ -88,6 +89,7 @@ interface Props {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
+  const t = useTranslations('Backlog');
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -110,8 +112,8 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
     tasks,
     (state: Task[], action: OptimisticAction): Task[] =>
       action.type === 'delete'
-        ? state.filter((t) => t.id !== action.id)
-        : state.map((t) => (t.id === action.id ? { ...t, priority: action.priority } : t)),
+        ? state.filter((tk) => tk.id !== action.id)
+        : state.map((tk) => (tk.id === action.id ? { ...tk, priority: action.priority } : tk)),
   );
 
   const writeFiltersToUrl = useCallback(
@@ -133,8 +135,8 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
 
   useEffect(() => {
     if (search === initialQ) return; // initial mount sync — skip URL write
-    const t = setTimeout(() => writeFiltersToUrl({ q: search }), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => writeFiltersToUrl({ q: search }), 250);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
@@ -156,11 +158,11 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
   // ── Local filter pipeline ──────────────────────────────────────────────────
   const filteredTasks = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return optimisticTasks.filter((t) => {
-      if (typeFilter     !== 'ALL' && t.type     !== typeFilter)     return false;
-      if (priorityFilter !== 'ALL' && t.priority !== priorityFilter) return false;
+    return optimisticTasks.filter((tk) => {
+      if (typeFilter     !== 'ALL' && tk.type     !== typeFilter)     return false;
+      if (priorityFilter !== 'ALL' && tk.priority !== priorityFilter) return false;
       if (q) {
-        const hay = `${t.title ?? ''} ${t.issueKey ?? ''}`.toLowerCase();
+        const hay = `${tk.title ?? ''} ${tk.issueKey ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -181,9 +183,9 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
 
     const bySprint: Record<string, Task[]> = {};
     const backlog: Task[] = [];
-    for (const t of filteredTasks) {
-      if (t.sprintId) (bySprint[t.sprintId] ?? (bySprint[t.sprintId] = [])).push(t);
-      else            backlog.push(t);
+    for (const tk of filteredTasks) {
+      if (tk.sprintId) (bySprint[tk.sprintId] ?? (bySprint[tk.sprintId] = [])).push(tk);
+      else             backlog.push(tk);
     }
 
     const sprintSections = visibleSprints.map((s) => ({
@@ -196,9 +198,9 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
 
     return [
       ...sprintSections,
-      { key: 'BACKLOG', kind: 'BACKLOG' as const, sprint: null, title: 'Backlog', tasks: backlog },
+      { key: 'BACKLOG', kind: 'BACKLOG' as const, sprint: null, title: t('breadcrumb'), tasks: backlog },
     ];
-  }, [filteredTasks, sprints]);
+  }, [filteredTasks, sprints, t]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   function handleCreate(title: string, sprintId: string | null) {
@@ -218,7 +220,7 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
   }
 
   function handleDelete(id: string) {
-    if (!window.confirm('Delete this issue?')) return;
+    if (!window.confirm(t('deleteConfirm'))) return;
     startTransition(async () => {
       applyOptimistic({ type: 'delete', id });
       const res = await deleteTask(id);
@@ -252,7 +254,7 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Backlog</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -261,7 +263,7 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProjectFallback')}
             </h2>
           </div>
         </div>
@@ -284,9 +286,9 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
             ref={searchInputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title or key…  (Ctrl/⌘+K)"
+            placeholder={t('filterSearchPlaceholder')}
             className="h-8 pl-7 pr-12 text-xs"
-            aria-label="Filter backlog by title or issue key"
+            aria-label={t('filterSearchAriaLabel')}
           />
           <kbd
             aria-hidden="true"
@@ -300,10 +302,10 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
           value={typeFilter}
           onValueChange={(v) => { setTypeFilter(v); writeFiltersToUrl({ type: v }); }}
         >
-          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder={t('filterTypePlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All types</SelectItem>
-            {TYPE_OPTIONS.map((t) => <SelectItem key={t} value={t}>{TYPE_META[t]?.label ?? t}</SelectItem>)}
+            <SelectItem value="ALL">{t('filterAllTypes')}</SelectItem>
+            {TYPE_OPTIONS.map((tp) => <SelectItem key={tp} value={tp}>{TYPE_META[tp]?.label ?? tp}</SelectItem>)}
           </SelectContent>
         </Select>
 
@@ -311,9 +313,9 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
           value={priorityFilter}
           onValueChange={(v) => { setPriorityFilter(v); writeFiltersToUrl({ priority: v }); }}
         >
-          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder={t('filterPriorityPlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All priorities</SelectItem>
+            <SelectItem value="ALL">{t('filterAllPriorities')}</SelectItem>
             {PRIORITY_OPTIONS.map((p) => <SelectItem key={p} value={p}>{PRIORITY_META[p]?.label ?? p}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -335,7 +337,7 @@ export function BacklogView({ ctx, tasks, assigneesByTaskId, sprints }: Props) {
               }}
               className="h-8 px-2 text-xs"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t('filterClear')}
             </Button>
           </>
         )}
@@ -404,11 +406,12 @@ function Section({
   onCancelCreate: () => void;
   onSubmitCreate: (title: string) => void;
   isCreating: boolean;
-  onOpenTask: (t: Task) => void;
+  onOpenTask: (tk: Task) => void;
   onDeleteTask: (id: string) => void;
   onPriorityChange: (id: string, priority: string) => void;
 }) {
-  const totalPoints = section.tasks.reduce((acc, t) => acc + (t.storyPoints ?? 0), 0);
+  const t = useTranslations('Backlog');
+  const totalPoints = section.tasks.reduce((acc, tk) => acc + (tk.storyPoints ?? 0), 0);
   const isCreatingHere = creatingFor === section.key
     || (section.kind === 'SPRINT' && creatingFor === section.sprint!.id)
     || (section.kind === 'BACKLOG' && creatingFor === 'BACKLOG');
@@ -434,7 +437,7 @@ function Section({
           {section.kind === 'SPRINT' && <SprintMeta sprint={section.sprint} />}
 
           <Badge variant="outline" size="xs" appearance="outline" className="ml-1 font-normal">
-            {section.tasks.length} {section.tasks.length === 1 ? 'issue' : 'issues'}
+            {t('sectionIssueCount', { count: section.tasks.length })}
           </Badge>
           {totalPoints > 0 && (
             <Badge variant="outline" size="xs" appearance="outline" className="font-mono">
@@ -448,9 +451,9 @@ function Section({
           variant="ghost"
           onClick={onStartCreate}
           className="h-7 px-2 text-xs shrink-0"
-          aria-label={`Add issue to ${section.title}`}
+          aria-label={t('sectionAddIssueAriaLabel', { section: section.title })}
         >
-          <Plus className="size-3.5" /> Add issue
+          <Plus className="size-3.5" /> {t('sectionAddIssue')}
         </Button>
       </div>
 
@@ -459,19 +462,19 @@ function Section({
           {section.tasks.length === 0 && !isCreatingHere && (
             <div className="px-4 py-6 text-center text-xs text-muted-foreground">
               {section.kind === 'BACKLOG'
-                ? 'No issues in the backlog. Add one to get started.'
-                : 'No issues in this sprint yet.'}
+                ? t('sectionNoIssuesBacklog')
+                : t('sectionNoIssuesSprint')}
             </div>
           )}
 
-          {section.tasks.map((t) => (
+          {section.tasks.map((tk) => (
             <Row
-              key={t.id}
-              task={t}
-              assignees={assigneesByTaskId[t.id] ?? []}
-              onOpen={() => onOpenTask(t)}
-              onDelete={() => onDeleteTask(t.id)}
-              onPriorityChange={(p) => onPriorityChange(t.id, p)}
+              key={tk.id}
+              task={tk}
+              assignees={assigneesByTaskId[tk.id] ?? []}
+              onOpen={() => onOpenTask(tk)}
+              onDelete={() => onDeleteTask(tk.id)}
+              onPriorityChange={(p) => onPriorityChange(tk.id, p)}
             />
           ))}
 
@@ -485,13 +488,14 @@ function Section({
 }
 
 function SprintMeta({ sprint }: { sprint: Sprint }) {
+  const t = useTranslations('Backlog');
   const cls = sprint.status === 'ACTIVE'
     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
     : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
   return (
     <>
       <span className={cn('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide', cls)}>
-        {sprint.status === 'ACTIVE' ? 'Active' : 'Planned'}
+        {sprint.status === 'ACTIVE' ? t('sprintActive') : t('sprintPlanned')}
       </span>
       {(sprint.startDate || sprint.endDate) && (
         <span className="hidden md:inline-flex items-center gap-1 text-xs text-muted-foreground">
@@ -516,6 +520,7 @@ function Row({
   onDelete: () => void;
   onPriorityChange: (priority: string) => void;
 }) {
+  const t = useTranslations('Backlog');
   const type     = String(task.type ?? 'TASK').toUpperCase();
   const priority = String(task.priority ?? 'MEDIUM').toUpperCase();
   const status   = String(task.status ?? 'To Do');
@@ -564,7 +569,7 @@ function Row({
           {visible.map((a, i) => {
             const label = a.Name || a.Email || '?';
             return (
-              <Avatar key={a.UserId ?? a.Id ?? i} className="size-5 ring-2 ring-card" title={label}>
+              <Avatar key={a.UserId ?? (a as any).Id ?? i} className="size-5 ring-2 ring-card" title={label}>
                 {a.AvatarUrl ? <AvatarImage src={a.AvatarUrl} alt={label} className="size-5" /> : null}
                 <AvatarFallback className="text-[9px] font-medium">{initials(label)}</AvatarFallback>
               </Avatar>
@@ -643,6 +648,7 @@ function InlineCreate({
   onCancel: () => void;
   onSubmit: (title: string) => void;
 }) {
+  const t = useTranslations('Backlog');
   const [title, setTitle] = useState('');
   return (
     <div className="px-4 py-2 border-t border-border/40 bg-muted/20">
@@ -659,14 +665,14 @@ function InlineCreate({
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); }}
-          placeholder="What needs to be done?"
+          placeholder={t('inlineCreatePlaceholder')}
           className="h-8 text-sm"
         />
         <Button type="submit" size="sm" variant="primary" disabled={!title.trim() || isPending}>
-          {isPending ? 'Adding…' : 'Add'}
+          {isPending ? t('inlineCreateAdding') : t('inlineCreateAdd')}
         </Button>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-          Cancel
+          {t('inlineCreateCancel')}
         </Button>
       </form>
     </div>
@@ -678,13 +684,14 @@ function InlineCreate({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function EmptyProjectState() {
+  const t = useTranslations('Backlog');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <List className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to show</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to start grooming a backlog.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>

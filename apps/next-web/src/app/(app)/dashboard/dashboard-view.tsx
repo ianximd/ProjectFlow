@@ -6,6 +6,7 @@ import {
   BarChart3, TrendingDown, Activity, Users, GitCompare,
   AlertTriangle, CheckCircle2, CircleDashed, Loader2,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { BurndownChart }           from '@/components/charts/BurndownChart';
 import { VelocityChart }           from '@/components/charts/VelocityChart';
@@ -44,6 +45,7 @@ export function DashboardView({
   ctx, sprints, activeSprintId, tasks,
   burndown, velocity, sprintSummary, workload, createdVsResolved,
 }: Props) {
+  const t = useTranslations('Dashboard');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -53,20 +55,20 @@ export function DashboardView({
     const now     = Date.now();
     const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-    const isDone = (t: Task) => {
-      const s = t.status ?? '';
-      return s === 'Done' || s === 'DONE' || !!t.resolvedAt;
+    const isDone = (tk: Task) => {
+      const s = tk.status ?? '';
+      return s === 'Done' || s === 'DONE' || !!tk.resolvedAt;
     };
 
-    const open       = all.filter((t) => !isDone(t));
-    const inProgress = all.filter((t) => t.status === 'In Progress');
-    const doneThisWeek = all.filter((t) => {
-      if (!t.resolvedAt) return false;
-      const ts = new Date(t.resolvedAt).getTime();
+    const open       = all.filter((tk) => !isDone(tk));
+    const inProgress = all.filter((tk) => tk.status === 'In Progress');
+    const doneThisWeek = all.filter((tk) => {
+      if (!tk.resolvedAt) return false;
+      const ts = new Date(tk.resolvedAt).getTime();
       return Number.isFinite(ts) && ts >= weekAgo;
     });
-    const overdue = open.filter((t) => {
-      const d = t.dueDate;
+    const overdue = open.filter((tk) => {
+      const d = tk.dueDate;
       if (!d) return false;
       return new Date(d).getTime() < now;
     });
@@ -103,7 +105,7 @@ export function DashboardView({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Dashboard</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -112,7 +114,7 @@ export function DashboardView({
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProjectFallback')}
             </h2>
           </div>
         </div>
@@ -131,12 +133,12 @@ export function DashboardView({
               disabled={isPending}
             >
               <SelectTrigger className="h-8 w-[180px] text-xs">
-                <SelectValue placeholder="Sprint" />
+                <SelectValue placeholder={t('sprintPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {sprints.map((s) => (
                   <SelectItem key={s.id} value={s.id}>
-                    {s.name}{(s.status ?? '').toUpperCase() === 'ACTIVE' ? ' · Active' : ''}
+                    {s.name}{(s.status ?? '').toUpperCase() === 'ACTIVE' ? t('sprintActiveSuffix') : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -153,26 +155,26 @@ export function DashboardView({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KpiTile
               icon={CircleDashed}
-              label="Open"
+              label={t('kpiOpen')}
               value={kpi.open}
               tone="default"
-              hint={`${kpi.total} total in project`}
+              hint={t('kpiTotalHint', { total: kpi.total })}
             />
             <KpiTile
               icon={Loader2}
-              label="In progress"
+              label={t('kpiInProgress')}
               value={kpi.inProgress}
               tone="info"
             />
             <KpiTile
               icon={CheckCircle2}
-              label="Resolved this week"
+              label={t('kpiResolvedThisWeek')}
               value={kpi.doneThisWeek}
               tone="success"
             />
             <KpiTile
               icon={AlertTriangle}
-              label="Overdue"
+              label={t('kpiOverdue')}
               value={kpi.overdue}
               tone={kpi.overdue > 0 ? 'danger' : 'muted'}
             />
@@ -182,50 +184,50 @@ export function DashboardView({
           <div className={cn('grid grid-cols-1 lg:grid-cols-2 gap-3', isPending && 'opacity-60 transition-opacity')}>
             <Gadget
               icon={TrendingDown}
-              title="Burndown"
+              title={t('gadgetBurndown')}
               subtitle={selectedSprint?.name}
               isEmpty={!activeSprintId}
-              emptyMsg="No sprint selected"
+              emptyMsg={t('emptyNoSprint')}
             >
               {burndown ? <BurndownChart data={burndown} /> : <NoData />}
             </Gadget>
 
             <Gadget
               icon={Activity}
-              title="Sprint summary"
+              title={t('gadgetSprintSummary')}
               subtitle={selectedSprint?.name}
               isEmpty={!activeSprintId}
-              emptyMsg="No sprint selected"
+              emptyMsg={t('emptyNoSprint')}
             >
               {sprintSummary ? <SprintSummaryWidget data={sprintSummary} /> : <NoData />}
             </Gadget>
 
             <Gadget
               icon={BarChart3}
-              title="Velocity"
-              subtitle="Last 6 sprints"
+              title={t('gadgetVelocity')}
+              subtitle={t('gadgetVelocitySubtitle')}
               wide
               isEmpty={velocity.length === 0}
-              emptyMsg="No completed sprints yet"
+              emptyMsg={t('emptyNoCompletedSprints')}
             >
               <VelocityChart data={velocity} />
             </Gadget>
 
             <Gadget
               icon={Users}
-              title="Team workload"
+              title={t('gadgetWorkload')}
               isEmpty={workload.length === 0}
-              emptyMsg="No assigned issues"
+              emptyMsg={t('emptyNoAssignedIssues')}
             >
               <WorkloadChart data={workload} />
             </Gadget>
 
             <Gadget
               icon={GitCompare}
-              title="Created vs resolved"
-              subtitle="Last 8 weeks"
+              title={t('gadgetCreatedVsResolved')}
+              subtitle={t('gadgetCreatedVsResolvedSubtitle')}
               isEmpty={createdVsResolved.length === 0}
-              emptyMsg="No data for this period"
+              emptyMsg={t('emptyNoPeriodData')}
             >
               <CreatedVsResolvedChart data={createdVsResolved} />
             </Gadget>
@@ -287,6 +289,7 @@ function Gadget({
   isEmpty?: boolean;
   emptyMsg?: string;
 }) {
+  const t = useTranslations('Dashboard');
   return (
     <Card className={cn('p-0 overflow-hidden flex flex-col', wide && 'lg:col-span-2')}>
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/60">
@@ -300,7 +303,7 @@ function Gadget({
       </div>
       <div className="p-4 flex-1 min-h-[260px] flex items-center justify-center">
         {isEmpty ? (
-          <div className="text-xs text-muted-foreground text-center">{emptyMsg ?? 'No data'}</div>
+          <div className="text-xs text-muted-foreground text-center">{emptyMsg ?? t('noData')}</div>
         ) : (
           <div className="w-full">{children}</div>
         )}
@@ -310,17 +313,19 @@ function Gadget({
 }
 
 function NoData() {
-  return <div className="text-xs text-muted-foreground text-center">No data</div>;
+  const t = useTranslations('Dashboard');
+  return <div className="text-xs text-muted-foreground text-center">{t('noData')}</div>;
 }
 
 function EmptyProjectState() {
+  const t = useTranslations('Dashboard');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <BarChart3 className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to report on</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace, then come back to see velocity, burndown, and workload insights.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>

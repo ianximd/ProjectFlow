@@ -8,11 +8,11 @@
  *
  * Important operational notes
  * ───────────────────────────
- * 1. SSE subscriptions use Apollo Client's `WebSocketLink` (or `GraphQL-WS`
- *    transport) which ultimately relies on server-side pub/sub. In a
- *    **multi-process** deployment (e.g. multiple API pods) you **must** have
- *    Redis configured as the pubsub backend; the in-process EventEmitter
- *    pubsub only delivers events within the same Node process.
+ * 1. The client subscribes over `graphql-sse` (Server-Sent Events) via the
+ *    `SSELink` Apollo link, which ultimately relies on server-side pub/sub.
+ *    In a **multi-process** deployment (e.g. multiple API pods) you **must**
+ *    have Redis configured as the pubsub backend; the in-process pubsub only
+ *    delivers events within the same Node process.
  *
  * 2. This test makes real HTTP calls and drives a real browser. It is
  *    intentionally **not** run against the production database. The

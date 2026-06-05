@@ -32,10 +32,11 @@ beforeEach(() => {
 });
 
 describe('notificationService.notify publishes per recipient', () => {
-  it('publishes notification:added to each unique recipient (minus actor)', async () => {
+  it('publishes notification:added once per unique recipient (deduped, minus actor)', async () => {
     const { notificationService } = await import('../notification.service.js');
     await notificationService.notify({
-      recipientIds: ['u1', 'u2', 'actor'],
+      // 'u1' duplicated + actor included → dedup must collapse to one u1, drop actor.
+      recipientIds: ['u1', 'u1', 'u2', 'actor'],
       actorId: 'actor',
       type: 'MENTION',
       payload: { taskId: 't1' },
@@ -43,6 +44,7 @@ describe('notificationService.notify publishes per recipient', () => {
 
     const targets = publish.mock.calls.map((c) => c[1]).sort();
     expect(targets).toEqual(['u1', 'u2']);
+    expect(publish.mock.calls).toHaveLength(2); // no duplicate publish for the repeated u1
     expect(publish.mock.calls[0][0]).toBe('notification:added');
     expect(publish.mock.calls[0][2]).toHaveProperty('notification');
   });

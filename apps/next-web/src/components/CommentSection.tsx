@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import { useSubscription } from '@apollo/client/react';
+import { COMMENT_ADDED } from '@/lib/realtime/operations';
 import {
   addComment,
   editComment,
@@ -52,6 +54,29 @@ function relativeTime(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+// Map the lightweight commentAdded subscription payload onto the full Comment
+// shape, filling defaults for fields the live event doesn't carry. authorName
+// is resolved on the next refetch (or stays null until then).
+function mapLiveComment(c: {
+  id: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+}): Comment {
+  return {
+    id: c.id,
+    authorId: c.authorId,
+    authorName: null,
+    authorAvatarUrl: null,
+    body: c.body,
+    isEdited: false,
+    createdAt: c.createdAt,
+    reactions: [],
+    assignedToId: null,
+    resolvedAt: null,
+  };
+}
+
 export function CommentSection({ taskId, currentUserId, workspaceId, initialComments }: Props) {
   const t = useTranslations('Comments');
   const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
@@ -84,6 +109,20 @@ export function CommentSection({ taskId, currentUserId, workspaceId, initialComm
       .catch(() => { /* leave empty */ });
     return () => { cancelled = true; };
   }, [workspaceId]);
+
+  // Live appends: the backend broadcasts all comment:created events, so filter
+  // to this task and de-dupe by id (the author's own comment also arrives via
+  // refetch in onAdd).
+  useSubscription<{
+    commentAdded: { id: string; taskId: string; authorId: string; body: string; createdAt: string };
+  }>(COMMENT_ADDED, {
+    variables: { taskId },
+    onData: ({ data }) => {
+      const c = data.data?.commentAdded;
+      if (!c || c.taskId !== taskId) return;
+      setComments((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, mapLiveComment(c)]));
+    },
+  });
 
   const memberName = (userId: string | null | undefined) =>
     members.find((m) => m.userId.toUpperCase() === (userId ?? '').toUpperCase())?.name ?? null;

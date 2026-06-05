@@ -5,6 +5,7 @@ export const COOKIE = {
   access: 'pf_at',
   refresh: 'pf_rt',
   selection: 'pf_sel',
+  locale: 'pf_locale', // UI language preference; not httpOnly so client JS can read/write it
 } as const;
 
 const isProd = process.env.NODE_ENV === 'production';

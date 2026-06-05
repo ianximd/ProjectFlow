@@ -20,6 +20,7 @@ export const COOKIE_BASE = {
 export const ACCESS_MAX_AGE = 15 * 60;            // ~JWT_EXPIRES_IN default (15m)
 export const REFRESH_MAX_AGE = 7 * 24 * 60 * 60;  // 7 days
 export const SELECTION_MAX_AGE = 180 * 24 * 60 * 60;
+export const LOCALE_MAX_AGE = 365 * 24 * 60 * 60;  // 1 year
 
 export async function setSessionCookies(accessToken: string, refreshToken: string): Promise<void> {
   const jar = await cookies();

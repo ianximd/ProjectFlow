@@ -14,8 +14,11 @@ import {
   Users,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { logout } from '@/server/actions/auth';
+import { setLocale } from '@/server/actions/locale';
+import type { AppLocale } from '@/i18n/locale';
 import { useLayout } from '@/components/layouts/layout-1/components/context';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Badge } from '@/components/ui/badge';
@@ -38,38 +41,29 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 
-const I18N_LANGUAGES = [
-  {
-    label: 'English',
-    code: 'en',
-    direction: 'ltr',
-    flag: toAbsoluteUrl('/media/flags/united-states.svg'),
-  },
-  {
-    label: 'Arabic (Saudi)',
-    code: 'ar',
-    direction: 'rtl',
-    flag: toAbsoluteUrl('/media/flags/saudi-arabia.svg'),
-  },
-  {
-    label: 'French',
-    code: 'fr',
-    direction: 'ltr',
-    flag: toAbsoluteUrl('/media/flags/france.svg'),
-  },
-  {
-    label: 'Chinese',
-    code: 'zh',
-    direction: 'ltr',
-    flag: toAbsoluteUrl('/media/flags/china.svg'),
-  },
+const I18N_LANGUAGES: { code: AppLocale; flag: string }[] = [
+  { code: 'en', flag: toAbsoluteUrl('/media/flags/united-states.svg') },
+  { code: 'id', flag: toAbsoluteUrl('/media/flags/indonesia.svg') },
 ];
 
+const LOCALE_LABEL_KEY: Record<AppLocale, string> = { en: 'english', id: 'indonesian' };
+
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
-  const currenLanguage = I18N_LANGUAGES[0];
+  const t = useTranslations('Common');
+  const locale = useLocale();
+  const activeLanguage =
+    I18N_LANGUAGES.find((l) => l.code === locale) ?? I18N_LANGUAGES[0];
   const { theme, setTheme } = useTheme();
   const { user } = useLayout();
   const [, startLogout] = useTransition();
+  const [, startLocale] = useTransition();
+
+  // Persist the UI language choice via Server Action; revalidatePath('/', 'layout')
+  // re-renders server components with the new catalog.
+  const changeLocale = (nextLocale: AppLocale) =>
+    startLocale(async () => {
+      await setLocale(nextLocale);
+    });
 
   const displayName = user?.name ?? 'Account';
   const email       = user?.email ?? '';
@@ -230,22 +224,25 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
           <DropdownMenuSubTrigger className="flex items-center gap-2 [&_[data-slot=dropdown-menu-sub-trigger-indicator]]:hidden hover:[&_[data-slot=badge]]:border-input data-[state=open]:[&_[data-slot=badge]]:border-input">
             <Globe />
             <span className="flex items-center justify-between gap-2 grow relative">
-              Language
+              {t('language')}
               <Badge
                 variant="outline"
                 className="absolute end-0 top-1/2 -translate-y-1/2"
               >
-                {currenLanguage.label}
+                {t(LOCALE_LABEL_KEY[activeLanguage.code])}
                 <img
-                  src={currenLanguage.flag}
+                  src={activeLanguage.flag}
                   className="w-3.5 h-3.5 rounded-full"
-                  alt={currenLanguage.label}
+                  alt={t(LOCALE_LABEL_KEY[activeLanguage.code])}
                 />
               </Badge>
             </span>
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-48">
-            <DropdownMenuRadioGroup value={currenLanguage.code}>
+            <DropdownMenuRadioGroup
+              value={locale}
+              onValueChange={(next) => changeLocale(next as AppLocale)}
+            >
               {I18N_LANGUAGES.map((item) => (
                 <DropdownMenuRadioItem
                   key={item.code}
@@ -255,9 +252,9 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                   <img
                     src={item.flag}
                     className="w-4 h-4 rounded-full"
-                    alt={item.label}
+                    alt={t(LOCALE_LABEL_KEY[item.code])}
                   />
-                  <span>{item.label}</span>
+                  <span>{t(LOCALE_LABEL_KEY[item.code])}</span>
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>

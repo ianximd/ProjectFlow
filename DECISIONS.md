@@ -190,3 +190,79 @@ and comment assign/resolve. Backend-first with minimal (non-realtime) UI.
   notifications UI.
 - **npm audit:** the `@apollo/client` install pulled in a transitive high-severity advisory (not fixed
   here — `audit fix` could churn unrelated bleeding-edge deps).
+
+## 2026-06-06 — Phase 3.5c Inbox + Presence
+
+### Inbox
+
+- **By-type filter** via `usp_Notification_List` `@Types` (CSV + `STRING_SPLIT` + `LTRIM/RTRIM`) + `@SavedOnly`;
+  the six tabs (All/Unread/Assigned/Mentions/Comments/Saved) map to filter sets client-side (`INBOX_TABS`),
+  applied SERVER-side via `getNotifications({ ...filter })` on a `?tab=` URL param. The unread-count second
+  recordset stays unfiltered (the badge reflects ALL unread, not the filtered view).
+- **Save-for-later** = `Notifications.SavedForLater`/`SavedAt` (migration 0033, 3.5a) + `usp_Notification_SetSaved`
+  (ownership-guarded `WHERE Id=@Id AND UserId=@UserId`; zero-rows `RAISERROR`) + REST `PATCH /:id/saved`
+  (mirrors `markRead`'s try/catch → 404) + GraphQL `setNotificationSaved`. The cross-user → 404 tenant guard
+  is integration-tested.
+- **Live prepend** on the Inbox page via the 3.5b `notificationAdded` subscription — SSR remains the base
+  (items re-seeded from props via `useEffect([initialItems])`), the subscription only prepends a de-duped
+  lightweight delta (`mapLiveNotification`), no parallel fetch.
+- **Notifications UI i18n closed:** the previously-deferred notifications view + dropdown are now fully
+  localized (`Inbox` + `Presence` namespaces, en/id parity enforced by `messages.unit`), using `t.rich` for
+  the per-type summary sentences.
+- **Dropdown mock removed:** the topbar `NotificationsSheet` now renders REAL recent notifications threaded
+  from ONE SSR fetch (`getNotifications({ pageSize: 8 })` in `(app)/layout.tsx`) → `Layout1` → context →
+  header → sheet (same path as the bell's `initialUnread`; no client-side Apollo query). The 16
+  `topbar/notifications/item-*.tsx` mock components are deleted; shared type→icon/tone metadata extracted to
+  `components/notifications/notification-meta.ts` (consumed by both the Inbox page and the dropdown).
+- `usp_User_GetDisplay` (Id/Name/AvatarUrl) intentionally does NOT filter `DeletedAt IS NULL` — display
+  continuity for since-deleted commenters in presence/inbox surfaces.
+
+### Presence (no table — ephemeral Redis)
+
+- **No DB table.** Per-task Redis hash `presence:task:{taskId}` (field=userId → JSON `{name, avatarUrl,
+  typing, lastSeen}`). `PRESENCE_TTL_MS`=30s is the activity window (`computeActiveViewers`, pure + unit-
+  tested); `KEY_TTL_SEC`=60s is a whole-key expiry so abandoned tasks self-clean. Stale fields are evicted
+  opportunistically on read. User display (name/avatar) cached 5 min (`withCache`/`TTL.LONG`) to avoid a DB
+  read per heartbeat.
+- **GraphQL:** `presenceHeartbeat`/`presenceLeave` mutations (publish the snapshot on `presence:updated`,
+  keyed per-task) + `presenceUpdated` subscription. Registered via `builder.subscriptionFields` (extends the
+  Subscription root defined in schema.ts; registration runs after it). **All three are VIEW-gated**
+  (`requireObjectLevel(ctx, 'LIST', taskListId, 'VIEW')`) — stronger than the older `requireAuth`-only,
+  un-keyed `taskUpdated`/`commentAdded` subs. Identity is server-side (`ctx.user.userId`); the only client
+  arg is `taskId` (authz-checked).
+- **Snapshot-on-subscribe** is delivered via the frontend mount-heartbeat (the hook beats on mount), so no
+  custom initial-value wrapper is needed server-side.
+- **Frontend:** `usePresence(taskId)` heartbeats on mount + every 20s (< 30s TTL, safe margin), re-beats on
+  typing change, and LEAVES on tab-hidden + unmount (cleanup clears interval + listener + leave — no leaks).
+  `PresenceBar` shows ≤5 initials avatars + ICU-pluralized "viewing"/"typing", filtering out the current
+  user. Typing is wired only on the NEW-comment composer.
+- **Multi-instance** presence relies on the existing Redis-backed pubsub (3.5b). Verified by the presence
+  integration test (heartbeat → snapshot → stale-drop after TTL); the VIEW-authz path is covered by the
+  (deferred) two-context e2e.
+
+### Testing / verification
+
+- API: 238 unit + 141 integration (the 141 includes 5 new: 3 inbox-filter/save/cross-user-404 + 2
+  presence-redis) — **run ONLY against local Docker `ProjectFlow_Test` via explicit local DB env**, never
+  the prod-pointing npm scripts. C1 SPs were deployed to local via explicit env (`241 deployed, 0 failed`).
+- Web: 87 unit + `messages.unit` en/id parity; `npm run build` green.
+- e2e `presence.spec.ts` authored + Playwright-collectable (`--list`); live run DEFERRED to a coordinated
+  local-DB run alongside `realtime-notifications.spec.ts` (default webServer boots the API against prod
+  `.env`). The presence e2e's drawer-open (board card click) + composer selectors are marked
+  `TODO(live-run)`.
+
+### Known follow-ups (not blockers)
+
+- **Per-keystroke heartbeat:** `setTyping` (= `sendBeat`) fires a `presenceHeartbeat` on each composer
+  change; backend `hset` is cheap/idempotent, but an edge-guard/debounce (beat only on typing-state
+  transition) would cut mutation volume. Within the spec's "setTyping re-beats" intent.
+- **Empty-taskId heartbeat:** `usePresence` is called unconditionally (rules of hooks) so a null-task drawer
+  would beat with `taskId:''` (swallowed by `.catch`; backend authz rejects). A `skip: !taskId` guard would
+  avoid the no-op round-trip.
+- **`userDisplay` resilience:** the cache-read path isn't Redis-degrade-wrapped, but `cacheGet` already
+  swallows Redis errors internally (returns null → falls through to DB), so heartbeat only fails on a DB
+  outage — acceptable.
+- **`taskListId` per-heartbeat DB read:** the presence resolvers call `taskRepo.getById` per heartbeat
+  (high-frequency); a list-id-by-task cache could optimize. Out of scope.
+- **`computeActiveViewers` test:** add an explicit `lastSeen` missing/0 → stale assertion (currently covered
+  via the TTL-window + malformed cases).

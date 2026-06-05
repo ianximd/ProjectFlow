@@ -92,6 +92,8 @@ commentRoutes.post(
   async (c) => {
     const user = (c as any).get('user') as any;
     const body = await c.req.json();
+    if (!body?.assigneeId || typeof body.assigneeId !== 'string')
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'assigneeId is required' } }, 400);
     try {
       const comment = await commentService.assign(c.req.param('id')!, body.assigneeId, user.userId);
       if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
@@ -116,9 +118,15 @@ commentRoutes.post(
   async (c) => {
     const user = (c as any).get('user') as any;
     const body = await c.req.json();
-    const comment = await commentService.resolve(c.req.param('id')!, user.userId, Boolean(body.resolved));
-    if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
-    return c.json({ data: comment });
+    try {
+      const comment = await commentService.resolve(c.req.param('id')!, user.userId, Boolean(body.resolved));
+      if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
+      return c.json({ data: comment });
+    } catch (err: any) {
+      if (String(err?.message).includes('51402') || err?.number === 51402)
+        return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
+      throw err;
+    }
   },
 );
 

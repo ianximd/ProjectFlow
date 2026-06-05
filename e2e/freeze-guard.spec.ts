@@ -33,7 +33,7 @@ async function grantSuperAdmin(email: string) {
     port:     1433,
     user:     'sa',
     password: 'YourStrong@Passw0rd',
-    database: 'ProjectFlow',
+    database: process.env.DB_NAME ?? 'ProjectFlow',
     options:  { trustServerCertificate: true, encrypt: false },
   });
   try {

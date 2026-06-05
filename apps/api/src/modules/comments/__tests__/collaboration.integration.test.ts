@@ -92,7 +92,10 @@ async function seedTaskWithMember() {
   await json(await request(`/workspaces/${ws.Id}/members`, {
     method: 'POST', token: owner.accessToken, json: { userId: member.user.Id, role: 'MEMBER' },
   }), 201);
-  const project = await createTestProject(ws.Id, owner.accessToken, { name: 'P', key: `CB${Date.now() % 100000}` });
+  // Derive a collision-proof project key from this call's unique stamp (not a
+  // bare Date.now() — two tests in the same millisecond would otherwise clash).
+  const keySuffix = stamp.replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase();
+  const project = await createTestProject(ws.Id, owner.accessToken, { name: 'P', key: `CB${keySuffix}` });
   const list = (await json<{ data: any }>(await request('/lists', {
     method: 'POST', token: owner.accessToken,
     json: { workspaceId: ws.Id, spaceId: project.Id, folderId: null, name: 'Default', position: 0 },
@@ -118,24 +121,51 @@ describe('collaboration — mentions', () => {
     const comment = await postComment(owner.accessToken, taskId, `Hi @[Member](${member.user.Id})`);
     expect(await waitNotif(member.accessToken, 'MENTION', 1)).toBe(1);
 
+    // The first comment auto-watched the member (mention → auto-watch), so a
+    // later plain comment will fan out COMMENT_ADDED to them. Capture the
+    // baseline now to anchor on afterwards.
+    const beforeCommentAdded = await notifCount(member.accessToken, 'COMMENT_ADDED');
+
     // Edit, still mentioning the same member — must NOT produce a second MENTION.
     await json(await request(`/comments/${comment.id}`, {
       method: 'PATCH', token: owner.accessToken,
       json: { body: `Hi again @[Member](${member.user.Id})` },
     }), 200);
 
-    // Give any (erroneous) second notification time to land, then assert exactly one.
-    await new Promise((r) => setTimeout(r, 600));
+    // The edit emits no COMMENT_ADDED, so anchor on a fresh signal instead of a
+    // fixed sleep: a SEPARATE plain (no-mention) comment fans out COMMENT_ADDED
+    // to the (watching) member. Once that lands, every prior enqueued
+    // side-effect — including the edit's mention processing — has settled.
+    await postComment(owner.accessToken, taskId, 'A plain follow-up, no mentions');
+    await waitNotif(member.accessToken, 'COMMENT_ADDED', beforeCommentAdded + 1);
+
+    // Still exactly one MENTION — the edit must not have re-notified.
     expect(await notifCount(member.accessToken, 'MENTION')).toBe(1);
   });
 
   it('silently skips mentioning a non-workspace-member (no notification)', async () => {
-    const { owner, taskId } = await seedTaskWithMember();
+    const { owner, member, taskId } = await seedTaskWithMember();
     const stranger = await createTestUser({ email: `c-stranger-${Date.now()}@projectflow.test` });
-    await postComment(owner.accessToken, taskId, `Hey @[Stranger](${stranger.user.Id})`);
 
-    // Let the side-effect pipeline run, then confirm the stranger got nothing.
-    await new Promise((r) => setTimeout(r, 600));
+    // Make a real workspace member a watcher so the comment's COMMENT_ADDED
+    // fan-out reaches them — that landing is our anchor that the ENTIRE create
+    // side-effect chain (incl. the mention loop) has run.
+    await json(await request(`/tasks/${taskId}/watchers/${member.user.Id}`, {
+      method: 'POST', token: owner.accessToken,
+    }), 200);
+
+    // Capture the POST result and assert it actually succeeded, so the negative
+    // assertion below can't pass merely because the comment never landed.
+    const res = await request('/comments', {
+      method: 'POST', token: owner.accessToken,
+      json: { taskId, body: `Hey @[Stranger](${stranger.user.Id})` },
+    });
+    const created = (await json<{ data: any }>(res, 201)).data;
+    expect(res.status).toBe(201);
+    expect(created.id ?? created.Id).toBeTruthy();
+
+    // Anchor: once the watcher receives COMMENT_ADDED, the mention loop is done.
+    await waitNotif(member.accessToken, 'COMMENT_ADDED', 1);
     expect(await notifCount(stranger.accessToken, 'MENTION')).toBe(0);
   });
 });
@@ -159,6 +189,11 @@ describe('collaboration — fan-out', () => {
     // owner is the reporter (created the task); member — neither reporter nor a
     // pre-existing watcher — posts a plain comment. The reporter must be reached.
     const { owner, member, taskId } = await seedTaskWithMember();
+    // Guard: the reporter must NOT already be a watcher, otherwise this test
+    // would silently degrade into an ordinary watcher-path test (e.g. if
+    // task-creation ever starts auto-watching the creator).
+    expect(await isWatching(taskId, owner.accessToken, owner.user.Id)).toBe(false);
+
     await postComment(member.accessToken, taskId, 'Comment from a non-reporter member');
 
     expect(await waitNotif(owner.accessToken, 'COMMENT_ADDED', 1)).toBeGreaterThanOrEqual(1);

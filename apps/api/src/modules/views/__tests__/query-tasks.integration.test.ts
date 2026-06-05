@@ -6,6 +6,7 @@ import { createTestUser, createTestWorkspace, createTestProject, createTestTask 
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { closePool, getPool } from '../../../shared/lib/db.js';
 import { CustomFieldRepository } from '../../customfields/customfield.repository.js';
+import { TaskRepository } from '../../tasks/task.repository.js';
 import { randomUUID } from 'node:crypto';
 
 const repo = new ViewRepository();
@@ -92,6 +93,25 @@ describe('ViewRepository.queryTasks', () => {
     expect(byTitle['has-cf'].CustomFieldValues[field.id.toLowerCase()]).toBe(JSON.stringify(8));
     // A task with no value for the field gets an empty map, not null/undefined.
     expect(byTitle['no-cf'].CustomFieldValues).toEqual({});
+  });
+
+  it('projects assignees onto the returned task rows (engine Board avatars)', async () => {
+    const u = await createTestUser(); const ws = await createTestWorkspace(u.accessToken); const p = await createTestProject(ws.Id, u.accessToken);
+    const t1 = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'assigned' });
+    const t2 = await createTestTask(p.Id, ws.Id, u.accessToken, { title: 'unassigned' });
+    await setTaskListPath(t1.Id, `/${p.Id}/`); await setTaskListPath(t2.Id, `/${p.Id}/`);
+    await new TaskRepository().setAssignees(t1.Id, [u.user.Id]);
+
+    const cat = buildCatalog([]);
+    const compiled = compile({ workspaceId: ws.Id, scope: { scopeType: 'SPACE', scopePath: `/${p.Id}/` }, catalog: cat,
+      filter: { conjunction: 'AND', rules: [] }, sort: [{ field: { kind: 'builtin', key: 'title' }, dir: 'ASC' }] });
+    const page = await repo.queryTasks(compiled, { page: 1, pageSize: 25 });
+    const byTitle = Object.fromEntries(page.tasks.map((t: any) => [t.Title, t]));
+    expect(byTitle['assigned'].Assignees).toHaveLength(1);
+    expect(String(byTitle['assigned'].Assignees[0].UserId).toLowerCase()).toBe(u.user.Id.toLowerCase());
+    expect(byTitle['assigned'].Assignees[0]).toHaveProperty('Name');
+    // A task with no assignees gets an empty array, not null/undefined.
+    expect(byTitle['unassigned'].Assignees).toEqual([]);
   });
 
   it('rejects an invalid page number', async () => {

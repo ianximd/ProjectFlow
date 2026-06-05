@@ -300,3 +300,34 @@ test('table: a custom-field column renders the stored value', async ({ page }) =
 
   await seed.api.dispose();
 });
+
+// ── (e) Engine Board: an assigned task renders its assignee avatar ─────────────
+test('engine board: an assigned task shows its assignee avatar', async ({ page }) => {
+  const seed = await apiSetup();
+  await createTask(seed, `Board task ${seed.s}`, { assignToMe: true });
+
+  // A SPACE-scoped BOARD view (the UI's "New view" only makes list views).
+  const { createSavedView } = await gql<{ createSavedView: { id: string } }>(seed.api, seed.token, /* GraphQL */ `
+    mutation Create($input: CreateSavedViewInput!) { createSavedView(input: $input) { id } }
+  `, {
+    input: {
+      scopeType: 'SPACE', scopeId: seed.spaceId, type: 'board', name: `Board ${seed.s}`,
+      isShared: true, isDefault: false,
+      config: JSON.stringify({ filter: { conjunction: 'AND', rules: [] }, sort: [] }),
+    },
+  });
+
+  await uiLogin(page, seed.email, seed.password);
+  await page.goto(`/views/SPACE/${seed.spaceId}?viewId=${createSavedView.id}`);
+
+  // The engine board renders, with the task card and its assignee avatar stack.
+  // Avatars come from the views projection's per-task assignees (the gap this
+  // closes — assigneesByTaskId used to be empty). The stack's aria-label carries
+  // the assignee name seeded in apiSetup ("Views <s>").
+  await expect(page.getByTestId('view-body-board')).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(`Board task ${seed.s}`, { exact: false })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('list', { name: new RegExp(`Assignees:.*Views ${seed.s}`) }).first())
+    .toBeVisible({ timeout: 15000 });
+
+  await seed.api.dispose();
+});

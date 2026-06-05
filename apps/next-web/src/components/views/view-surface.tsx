@@ -8,7 +8,7 @@ import { ViewTabs } from '@/components/views/view-tabs';
 import { TableView } from '@/components/views/table-view';
 import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
-import { BoardViewEngine } from '@/components/views/board-view-engine';
+import { BoardViewEngine, type BoardWorkflowStatus } from '@/components/views/board-view-engine';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
@@ -27,6 +27,9 @@ interface Props {
   /** The scope's custom fields, fetched SSR in page.tsx and threaded down for the
    *  table/list columns + the filter-builder's field options. */
   customFields: CustomField[];
+  /** The scope's effective workflow statuses (board views only), resolved SSR.
+   *  Null when not a board view, EVERYTHING scope, or the project has no workflow. */
+  boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
 }
 
 export function ViewSurface({
@@ -37,6 +40,7 @@ export function ViewSurface({
   meMode,
   taskPage,
   customFields,
+  boardWorkflowStatuses,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -146,6 +150,7 @@ export function ViewSurface({
             customFields={customFields}
             scopeType={scopeType}
             scopeId={scopeId}
+            boardWorkflowStatuses={boardWorkflowStatuses}
             onSelectionChange={onSelectionChange}
           />
         ) : (
@@ -175,6 +180,7 @@ function ViewBody({
   customFields,
   scopeType,
   scopeId,
+  boardWorkflowStatuses,
   onSelectionChange,
 }: {
   type: ViewType;
@@ -183,6 +189,7 @@ function ViewBody({
   customFields: CustomField[];
   scopeType: ViewScopeType;
   scopeId: string;
+  boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
   onSelectionChange?: (ids: string[]) => void;
 }) {
   switch (type) {
@@ -215,6 +222,7 @@ function ViewBody({
           activeView={activeView}
           scopeType={scopeType}
           scopeId={scopeId}
+          workflowStatuses={boardWorkflowStatuses}
         />
       );
     default:

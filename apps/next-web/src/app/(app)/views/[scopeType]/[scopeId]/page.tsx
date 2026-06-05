@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { requireSession } from '@/server/session';
-import { getSavedViews, getViewTasks, type ViewTaskPageResult } from '@/server/queries/views';
+import { getSavedViews, getViewTasks, getViewWorkflowStatuses, type ViewTaskPageResult } from '@/server/queries/views';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface } from '@/components/views/view-surface';
@@ -61,6 +61,16 @@ export default async function ViewsPage({
     ? await getViewTasks(activeView.id, page, meMode)
     : null;
 
+  // For a board view, resolve the scope's effective workflow so the engine Board
+  // sources its columns from the workflow (parity with the legacy board). Skip for
+  // EVERYTHING — it spans projects (no single workflow) and its read path needs a
+  // workspaceId the surface doesn't thread yet; the Board falls back to task-derived
+  // columns there.
+  const boardWorkflowStatuses =
+    activeView?.type === 'board' && scopeType !== 'EVERYTHING'
+      ? await getViewWorkflowStatuses(scopeType, scopeId)
+      : null;
+
   return (
     <ViewSurface
       views={views}
@@ -70,6 +80,7 @@ export default async function ViewsPage({
       meMode={meMode}
       taskPage={taskPage}
       customFields={customFields}
+      boardWorkflowStatuses={boardWorkflowStatuses}
     />
   );
 }

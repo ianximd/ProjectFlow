@@ -109,6 +109,7 @@ export class ViewRepository {
 
     const rows = pageRes.recordset as any[];
     await this.attachCustomFieldValues(pool, rows);
+    await this.attachAssignees(pool, rows);
 
     const countReq = bindAll(pool.request());
     const countRes = await countReq.query(`SELECT COUNT(*) AS Total FROM Tasks t WHERE ${compiled.whereSql}`);
@@ -151,6 +152,44 @@ export class ViewRepository {
     }
     for (const r of rows) {
       r.CustomFieldValues = byTask.get(String(r.Id).toLowerCase()) ?? {};
+    }
+  }
+
+  /**
+   * Widen the page rows with their assignees so the engine Board can render
+   * avatar stacks (the legacy getTasks board returns these; the views projection
+   * did not, leaving assigneesByTaskId empty). Mirrors the assignee result-set
+   * `usp_Task_List` produces — one batched join keyed on the page's task ids.
+   *
+   * Each row gets `Assignees: AssigneeRow[]` in the SAME PascalCase shape the
+   * board's TaskCard reads ({ TaskId, UserId, Name, Email, AvatarUrl }).
+   */
+  private async attachAssignees(pool: sql.ConnectionPool, rows: any[]): Promise<void> {
+    for (const r of rows) r.Assignees = [];
+    if (rows.length === 0) return;
+
+    const req = pool.request();
+    const idParams = rows.map((r, i) => {
+      const k = `aid${i}`;
+      req.input(k, sql.UniqueIdentifier, r.Id);
+      return `@${k}`;
+    });
+    const res = await req.query(
+      `SELECT ta.TaskId, u.Id AS UserId, u.Email, u.Name, u.AvatarUrl ` +
+      `FROM TaskAssignees ta JOIN dbo.Users u ON u.Id = ta.UserId ` +
+      `WHERE u.DeletedAt IS NULL AND ta.TaskId IN (${idParams.join(', ')}) ` +
+      `ORDER BY ta.TaskId, u.Name`,
+    );
+
+    const byTask = new Map<string, any[]>();
+    for (const a of res.recordset as any[]) {
+      const tid = String(a.TaskId).toLowerCase();
+      const list = byTask.get(tid) ?? [];
+      list.push(a);
+      byTask.set(tid, list);
+    }
+    for (const r of rows) {
+      r.Assignees = byTask.get(String(r.Id).toLowerCase()) ?? [];
     }
   }
 

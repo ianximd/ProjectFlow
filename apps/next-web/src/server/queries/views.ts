@@ -107,6 +107,7 @@ const VIEW_TASKS_QUERY = /* GraphQL */ `
         dueDate
         sprintId
         customFieldValues
+        assignees { userId name email avatarUrl }
       }
     }
   }
@@ -138,6 +139,41 @@ export const getViewTasks = cache(async (
   };
 });
 
+const VIEW_WORKFLOW_STATUSES_QUERY = /* GraphQL */ `
+  query ViewWorkflowStatuses($scopeType: String!, $scopeId: String, $workspaceId: String) {
+    viewWorkflowStatuses(scopeType: $scopeType, scopeId: $scopeId, workspaceId: $workspaceId) {
+      id
+      name
+      category
+      color
+      position
+    }
+  }
+`;
+
+export interface ViewWorkflowStatus {
+  id: string;
+  name: string;
+  category: string;
+  color: string;
+  position: number;
+}
+
+/** The scope's effective workflow statuses (the engine Board sources its columns
+ *  from these). Null for EVERYTHING or a scope whose project has no workflow —
+ *  the Board then falls back to deriving columns from the task set. */
+export const getViewWorkflowStatuses = cache(async (
+  scopeType: SavedView['scopeType'],
+  scopeId: string | null,
+  workspaceId?: string,
+): Promise<ViewWorkflowStatus[] | null> => {
+  const { viewWorkflowStatuses } = await gqlData<{ viewWorkflowStatuses: ViewWorkflowStatus[] | null }>(
+    VIEW_WORKFLOW_STATUSES_QUERY,
+    { scopeType, scopeId: scopeId ?? null, workspaceId: workspaceId ?? null },
+  );
+  return viewWorkflowStatuses ?? null;
+});
+
 const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
   query PreviewViewTasks(
     $scopeType: String!, $scopeId: String, $config: String!,
@@ -161,6 +197,7 @@ const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
         dueDate
         sprintId
         customFieldValues
+        assignees { userId name email avatarUrl }
       }
     }
   }

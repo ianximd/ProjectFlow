@@ -28,3 +28,18 @@ export async function markAllNotificationsRead(): Promise<ActionResult> {
   revalidatePath('/notifications');
   return { ok: true };
 }
+
+/** Toggle a notification's save-for-later flag. PATCH /notifications/:id/saved → 204 */
+export async function setNotificationSaved(id: string, saved: boolean): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch(`/notifications/${encodeURIComponent(id)}/saved`, {
+      method: 'PATCH',
+      body: JSON.stringify({ saved }),
+    });
+  } catch (e) {
+    return toActionError(e);
+  }
+  revalidatePath('/notifications');
+  return { ok: true };
+}

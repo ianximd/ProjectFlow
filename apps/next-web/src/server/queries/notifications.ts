@@ -9,16 +9,17 @@ import { serverFetchEnvelope } from '../api';
 export const NOTIFICATIONS_PAGE_SIZE = 20;
 
 export interface NotificationRow {
-  id:        string;
-  userId:    string;
-  type:      string;
-  payload:   Record<string, any>;
-  isRead:    boolean;
-  createdAt: string; // ISO string on the wire (Date serialised by JSON.stringify)
+  id:            string;
+  userId:        string;
+  type:          string;
+  payload:       Record<string, any>;
+  isRead:        boolean;
+  savedForLater?: boolean;
+  createdAt:     string; // ISO string on the wire (Date serialised by JSON.stringify)
 }
 
 export const getNotifications = cache(async (
-  opts: { page?: number; pageSize?: number; unreadOnly?: boolean } = {},
+  opts: { page?: number; pageSize?: number; unreadOnly?: boolean; types?: readonly string[]; savedOnly?: boolean } = {},
 ): Promise<{ items: NotificationRow[]; unreadCount: number; page: number }> => {
   const page     = opts.page     ?? 1;
   const pageSize = opts.pageSize ?? 20;
@@ -27,7 +28,9 @@ export const getNotifications = cache(async (
     page:     String(page),
     pageSize: String(pageSize),
   });
-  if (opts.unreadOnly) qs.set('unreadOnly', 'true');
+  if (opts.unreadOnly)     qs.set('unreadOnly', 'true');
+  if (opts.types?.length)  qs.set('types', opts.types.join(','));
+  if (opts.savedOnly)      qs.set('savedOnly', 'true');
 
   const { data, meta } = await serverFetchEnvelope<NotificationRow[], { unreadCount?: number }>(
     `/notifications?${qs}`,

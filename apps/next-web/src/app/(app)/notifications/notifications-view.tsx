@@ -1,15 +1,20 @@
 'use client';
 
-import { useMemo, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useSubscription } from '@apollo/client/react';
 import {
   Bell, BellOff, Check, CheckCheck, MessageSquare, UserPlus, AtSign,
-  FileText, AlertCircle, ChevronLeft, ChevronRight,
+  FileText, AlertCircle, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck,
 } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { formatShortDate, formatDateTime } from '@/lib/date';
-import { markNotificationRead, markAllNotificationsRead } from '@/server/actions/notifications';
+import {
+  markNotificationRead, markAllNotificationsRead, setNotificationSaved,
+} from '@/server/actions/notifications';
+import { NOTIFICATION_ADDED } from '@/lib/realtime/operations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,20 +23,24 @@ import {
 } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { NotificationRow } from '@/server/queries/notifications';
+import { INBOX_TAB_ORDER, type InboxTab } from './inbox-tabs';
 
-// ── Type → icon + summary mapping ────────────────────────────────────────────
+type InboxT = ReturnType<typeof useTranslations<'Inbox'>>;
+
+// ── Type → icon + tone + i18n label/summary key mapping ──────────────────────
 
 const TYPE_META: Record<string, {
   icon: typeof Bell;
-  label: string;
+  labelKey: string;
+  summaryKey: string;
   tone: 'blue' | 'amber' | 'emerald' | 'violet' | 'slate';
 }> = {
-  TASK_ASSIGNED: { icon: UserPlus,      label: 'Task assigned',      tone: 'blue'    },
-  COMMENT_ASSIGNED: { icon: MessageSquare, label: 'Comment assigned',  tone: 'blue'    },
-  COMMENT_ADDED: { icon: MessageSquare, label: 'New comment',         tone: 'emerald' },
-  MENTION:       { icon: AtSign,        label: 'You were mentioned',  tone: 'amber'   },
-  TASK_UPDATED:  { icon: FileText,      label: 'Task updated',        tone: 'violet'  },
-  TASK_DUE_SOON: { icon: AlertCircle,   label: 'Task due soon',       tone: 'amber'   },
+  TASK_ASSIGNED:    { icon: UserPlus,      labelKey: 'labelTaskAssigned',    summaryKey: 'summaryTaskAssigned',    tone: 'blue'    },
+  COMMENT_ASSIGNED: { icon: MessageSquare, labelKey: 'labelCommentAssigned', summaryKey: 'summaryCommentAssigned', tone: 'blue'    },
+  COMMENT_ADDED:    { icon: MessageSquare, labelKey: 'labelCommentAdded',    summaryKey: 'summaryCommentAdded',    tone: 'emerald' },
+  MENTION:          { icon: AtSign,        labelKey: 'labelMention',         summaryKey: 'summaryMention',         tone: 'amber'   },
+  TASK_UPDATED:     { icon: FileText,      labelKey: 'labelTaskUpdated',     summaryKey: 'summaryTaskUpdated',     tone: 'violet'  },
+  TASK_DUE_SOON:    { icon: AlertCircle,   labelKey: 'labelTaskDueSoon',     summaryKey: 'summaryTaskDueSoon',     tone: 'amber'   },
 };
 
 const TONE_BG: Record<'blue' | 'amber' | 'emerald' | 'violet' | 'slate', string> = {
@@ -43,24 +52,47 @@ const TONE_BG: Record<'blue' | 'amber' | 'emerald' | 'violet' | 'slate', string>
 };
 
 function typeMeta(type: string) {
-  return TYPE_META[type] ?? { icon: Bell, label: humanize(type), tone: 'slate' as const };
+  return TYPE_META[type] ?? { icon: Bell, labelKey: '', summaryKey: '', tone: 'slate' as const };
 }
 
-function humanize(s: string) {
-  return s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
+const TAB_LABEL_KEY: Record<InboxTab, string> = {
+  all:      'tabAll',
+  unread:   'tabUnread',
+  assigned: 'tabAssigned',
+  mentions: 'tabMentions',
+  comments: 'tabComments',
+  saved:    'tabSaved',
+};
 
 // ── Relative time ─────────────────────────────────────────────────────────────
 
-function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return '';
-  const diff = Math.round((Date.now() - t) / 1000);
-  if (diff < 60)        return `${diff}s ago`;
-  if (diff < 3600)      return `${Math.round(diff / 60)}m ago`;
-  if (diff < 86400)     return `${Math.round(diff / 3600)}h ago`;
-  if (diff < 86400 * 30) return `${Math.round(diff / 86400)}d ago`;
+function timeAgo(iso: string, t: InboxT): string {
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return '';
+  const diff = Math.round((Date.now() - ts) / 1000);
+  if (diff < 60)         return t('timeSeconds', { value: diff });
+  if (diff < 3600)       return t('timeMinutes', { value: Math.round(diff / 60) });
+  if (diff < 86400)      return t('timeHours',   { value: Math.round(diff / 3600) });
+  if (diff < 86400 * 30) return t('timeDays',    { value: Math.round(diff / 86400) });
   return formatShortDate(iso);
+}
+
+// ── Live subscription mapping ────────────────────────────────────────────────
+// The NOTIFICATION_ADDED payload carries only { id, type, isRead, createdAt }.
+// Map it to a minimal NotificationRow; the enriched row (payload, savedForLater)
+// replaces it on the next SSR refresh.
+function mapLiveNotification(n: {
+  id: string; type: string; isRead: boolean; createdAt: string;
+}): NotificationRow {
+  return {
+    id: n.id,
+    userId: '',
+    type: n.type,
+    payload: {},
+    isRead: n.isRead,
+    savedForLater: false,
+    createdAt: n.createdAt,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -68,29 +100,45 @@ function timeAgo(iso: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function NotificationsView({
-  items,
+  items: initialItems,
   unreadCount,
   page,
-  unreadOnly,
+  activeTab,
   pageSize,
 }: {
   items: NotificationRow[];
   unreadCount: number;
   page: number;
-  unreadOnly: boolean;
+  activeTab: InboxTab;
   pageSize: number;
 }) {
+  const t = useTranslations('Inbox');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  // SSR remains the base. Live deltas prepend client-side; re-seed when the
+  // server data changes (tab/page navigation or revalidation).
+  const [items, setItems] = useState<NotificationRow[]>(initialItems);
+  useEffect(() => { setItems(initialItems); }, [initialItems]);
+
+  useSubscription<{
+    notificationAdded: { id: string; type: string; isRead: boolean; createdAt: string };
+  }>(NOTIFICATION_ADDED, {
+    onData: ({ data }) => {
+      const n = data.data?.notificationAdded;
+      if (!n) return;
+      setItems((prev) => (prev.some((x) => x.id === n.id) ? prev : [mapLiveNotification(n), ...prev]));
+    },
+  });
 
   // hasNextPage heuristic: if we filled the page, assume there is a next one.
   const hasNextPage = items.length === pageSize;
 
   // ── URL navigation helpers ────────────────────────────────────────────────
-  function buildHref(opts: { tab?: string; page?: number }) {
+  function buildHref(opts: { tab?: InboxTab; page?: number }) {
     const params = new URLSearchParams();
-    const tab  = opts.tab  ?? (unreadOnly ? 'unread' : 'all');
-    const pg   = opts.page ?? page;
+    const tab = opts.tab  ?? activeTab;
+    const pg  = opts.page ?? page;
     if (tab !== 'all') params.set('tab', tab);
     if (pg  !== 1)     params.set('page', String(pg));
     const qs = params.toString();
@@ -98,7 +146,7 @@ export function NotificationsView({
   }
 
   function handleTabChange(value: string) {
-    router.push(buildHref({ tab: value, page: 1 }));
+    router.push(buildHref({ tab: value as InboxTab, page: 1 }));
   }
 
   // ── Server action handlers ────────────────────────────────────────────────
@@ -116,7 +164,17 @@ export function NotificationsView({
     });
   }
 
-  const activeTab = unreadOnly ? 'unread' : 'all';
+  function handleToggleSaved(id: string, next: boolean) {
+    // Optimistic flip; revert on failure.
+    setItems((prev) => prev.map((x) => (x.id === id ? { ...x, savedForLater: next } : x)));
+    startTransition(async () => {
+      const res = await setNotificationSaved(id, next);
+      if (!res.ok) {
+        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, savedForLater: !next } : x)));
+        notifyActionError(res);
+      }
+    });
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -127,12 +185,12 @@ export function NotificationsView({
           <Bell className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-muted-foreground">Inbox</div>
+          <div className="text-xs text-muted-foreground">{t('title')}</div>
           <h2 className="text-base font-semibold text-foreground truncate inline-flex items-center gap-2">
-            Notifications
+            {t('heading')}
             {unreadCount > 0 && (
               <Badge variant="outline" size="xs" appearance="outline" className="bg-primary/10 text-primary border-primary/30">
-                {unreadCount} unread
+                {t('unreadBadge', { count: unreadCount })}
               </Badge>
             )}
           </h2>
@@ -142,40 +200,33 @@ export function NotificationsView({
           onClick={handleMarkAllRead}
           disabled={isPending || unreadCount === 0}
         >
-          <CheckCheck className="size-4" /> Mark all read
+          <CheckCheck className="size-4" /> {t('markAllRead')}
         </Button>
       </div>
 
       {/* ── Tabs ───────────────────────────────────────────────────────────── */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="all" className="gap-1.5">All</TabsTrigger>
-          <TabsTrigger value="unread" className="gap-1.5">
-            Unread
-            {unreadCount > 0 && (
-              <span className="inline-flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </TabsTrigger>
+          {INBOX_TAB_ORDER.map((tab) => (
+            <TabsTrigger key={tab} value={tab} className="gap-1.5">
+              {t(TAB_LABEL_KEY[tab])}
+              {tab === 'unread' && unreadCount > 0 && (
+                <span className="inline-flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="all" className="mt-3">
+        <TabsContent value={activeTab} className="mt-3">
           <NotificationList
             rows={items}
             onMarkRead={handleMarkRead}
+            onToggleSaved={handleToggleSaved}
             markBusy={isPending}
-            emptyTitle="You're all caught up"
-            emptyBody="When teammates assign you tasks, comment on issues you reported, or mention you, those updates land here."
-          />
-        </TabsContent>
-        <TabsContent value="unread" className="mt-3">
-          <NotificationList
-            rows={items}
-            onMarkRead={handleMarkRead}
-            markBusy={isPending}
-            emptyTitle="Inbox zero"
-            emptyBody="No unread notifications. Switch to All to see your history."
+            activeTab={activeTab}
+            t={t}
           />
         </TabsContent>
       </Tabs>
@@ -183,20 +234,20 @@ export function NotificationsView({
       {/* ── Pagination ─────────────────────────────────────────────────────── */}
       {(items.length > 0 || page > 1) && (
         <div className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-          <span>Page {page}</span>
+          <span>{t('page', { page })}</span>
           <Button
             size="sm" variant="outline"
             disabled={page <= 1 || isPending}
             onClick={() => router.push(buildHref({ page: page - 1 }))}
           >
-            <ChevronLeft className="size-3.5" /> Prev
+            <ChevronLeft className="size-3.5" /> {t('prev')}
           </Button>
           <Button
             size="sm" variant="outline"
             disabled={!hasNextPage || isPending}
             onClick={() => router.push(buildHref({ page: page + 1 }))}
           >
-            Next <ChevronRight className="size-3.5" />
+            {t('next')} <ChevronRight className="size-3.5" />
           </Button>
         </div>
       )}
@@ -205,19 +256,24 @@ export function NotificationsView({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Notification list (shared between tabs)
+// Notification list
 // ─────────────────────────────────────────────────────────────────────────────
 
 function NotificationList({
-  rows, onMarkRead, markBusy, emptyTitle, emptyBody,
+  rows, onMarkRead, onToggleSaved, markBusy, activeTab, t,
 }: {
   rows: NotificationRow[];
   onMarkRead: (id: string) => void;
+  onToggleSaved: (id: string, next: boolean) => void;
   markBusy: boolean;
-  emptyTitle: string;
-  emptyBody: string;
+  activeTab: InboxTab;
+  t: InboxT;
 }) {
-  if (rows.length === 0) return <EmptyState title={emptyTitle} body={emptyBody} />;
+  if (rows.length === 0) {
+    const titleKey = `empty_${activeTab}_title` as const;
+    const bodyKey  = `empty_${activeTab}_body` as const;
+    return <EmptyState title={t(titleKey)} body={t(bodyKey)} />;
+  }
   return (
     <Card className="p-0 overflow-hidden">
       <ul role="list" className="divide-y divide-border/60">
@@ -226,7 +282,9 @@ function NotificationList({
             key={n.id}
             row={n}
             onMarkRead={() => onMarkRead(n.id)}
+            onToggleSaved={() => onToggleSaved(n.id, !n.savedForLater)}
             markBusy={markBusy}
+            t={t}
           />
         ))}
       </ul>
@@ -235,39 +293,34 @@ function NotificationList({
 }
 
 function NotificationItem({
-  row, onMarkRead, markBusy,
+  row, onMarkRead, onToggleSaved, markBusy, t,
 }: {
   row: NotificationRow;
   onMarkRead: () => void;
+  onToggleSaved: () => void;
   markBusy: boolean;
+  t: InboxT;
 }) {
   const meta = useMemo(() => typeMeta(row.type), [row.type]);
   const Icon = meta.icon;
 
-  const taskTitle = row.payload?.taskTitle ?? null;
-  const taskId    = row.payload?.taskId    ?? null;
+  const taskTitle: string | null = row.payload?.taskTitle ?? null;
+  const taskId: string | null    = row.payload?.taskId    ?? null;
 
-  const summary = (() => {
-    switch (row.type) {
-      case 'TASK_ASSIGNED':
-        return <>You were assigned to{' '}<strong className="text-foreground">{taskTitle ?? 'a task'}</strong>.</>;
-      case 'COMMENT_ASSIGNED':
-        return <>A comment was assigned to you on{' '}<strong className="text-foreground">{taskTitle ?? 'a task'}</strong>.</>;
-      case 'COMMENT_ADDED':
-        return <>A new comment was added on{' '}<strong className="text-foreground">{taskTitle ?? 'a task you follow'}</strong>.</>;
-      case 'MENTION':
-        return <>You were mentioned in{' '}<strong className="text-foreground">{taskTitle ?? 'a discussion'}</strong>.</>;
-      case 'TASK_UPDATED':
-        return <>An update was made to{' '}<strong className="text-foreground">{taskTitle ?? 'a task you follow'}</strong>.</>;
-      case 'TASK_DUE_SOON':
-        return <><strong className="text-foreground">{taskTitle ?? 'A task'}</strong> is due soon.</>;
-      default:
-        return <span className="text-muted-foreground">{meta.label}</span>;
-    }
-  })();
+  // Localized type label (fall back to a humanized enum for unknown types).
+  const label = meta.labelKey ? t(meta.labelKey) : humanize(row.type);
+
+  // Localized summary via t.rich — bolds the (possibly fallback) task title.
+  const summary: ReactNode = meta.summaryKey
+    ? t.rich(meta.summaryKey, {
+        title: taskTitle ?? t(summaryFallbackKey(row.type)),
+        b: (chunks) => <strong className="text-foreground">{chunks}</strong>,
+      })
+    : <span className="text-muted-foreground">{label}</span>;
 
   // Link to the board with the task hash so a future handler can open the drawer.
   const taskHref = taskId ? `/board#task-${taskId}` : null;
+  const saved = row.savedForLater === true;
 
   return (
     <li
@@ -280,7 +333,7 @@ function NotificationItem({
       <div className="pt-1 shrink-0" aria-hidden="true">
         {row.isRead
           ? <span className="block size-2 rounded-full opacity-0" />
-          : <span className="block size-2 rounded-full bg-primary" title="Unread" />}
+          : <span className="block size-2 rounded-full bg-primary" title={t('unreadDot')} />}
       </div>
 
       {/* Type icon */}
@@ -292,39 +345,74 @@ function NotificationItem({
       <div className="min-w-0 flex-1">
         <div className="text-sm text-foreground leading-snug">{summary}</div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{meta.label}</span>
+          <span>{label}</span>
           <span aria-hidden="true">·</span>
           <span title={formatDateTime(row.createdAt)}>
-            {timeAgo(row.createdAt)}
+            {timeAgo(row.createdAt, t)}
           </span>
           {taskHref && (
             <>
               <span aria-hidden="true">·</span>
-              <a href={taskHref} className="text-primary hover:underline">Open task</a>
+              <a href={taskHref} className="text-primary hover:underline">{t('openTask')}</a>
             </>
           )}
         </div>
       </div>
 
-      {/* Mark-read affordance (only for unread rows) */}
-      {!row.isRead && (
+      {/* Actions */}
+      <div className="flex items-center gap-1 shrink-0">
         <Button
           size="sm" variant="ghost"
-          className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity h-7 px-2 text-xs shrink-0"
-          onClick={onMarkRead}
+          className={cn(
+            'h-7 px-2 text-xs transition-opacity',
+            saved ? 'text-primary' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100',
+          )}
+          onClick={onToggleSaved}
           disabled={markBusy}
-          aria-label="Mark as read"
+          aria-label={saved ? t('unsave') : t('save')}
+          title={saved ? t('unsave') : t('save')}
         >
-          <Check className="size-3.5" /> Mark read
+          {saved ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
+          {saved ? t('unsave') : t('save')}
         </Button>
-      )}
+
+        {/* Mark-read affordance (only for unread rows) */}
+        {!row.isRead && (
+          <Button
+            size="sm" variant="ghost"
+            className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity h-7 px-2 text-xs"
+            onClick={onMarkRead}
+            disabled={markBusy}
+            aria-label={t('markRead')}
+          >
+            <Check className="size-3.5" /> {t('markRead')}
+          </Button>
+        )}
+      </div>
     </li>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Empty state
+// Helpers + empty state
 // ─────────────────────────────────────────────────────────────────────────────
+
+function humanize(s: string) {
+  return s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+/** Fallback noun for the {title} arg when a notification has no taskTitle. */
+function summaryFallbackKey(type: string): string {
+  switch (type) {
+    case 'COMMENT_ADDED':
+    case 'TASK_UPDATED':
+      return 'fallbackFollowedTask';
+    case 'MENTION':
+      return 'fallbackDiscussion';
+    default:
+      return 'fallbackTask';
+  }
+}
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (

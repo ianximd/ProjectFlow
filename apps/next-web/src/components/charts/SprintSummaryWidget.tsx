@@ -1,6 +1,7 @@
 'use client';
 
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useTranslations } from 'next-intl';
 import type { SprintSummaryReport } from '@projectflow/types';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 const COLORS = ['#6c63ff', '#89b4fa', '#a6e3a1', '#f9e2af', '#f38ba8', '#cba6f7'];
 
 export function SprintSummaryWidget({ data }: Props) {
+  const t = useTranslations('Charts');
+
   const pieData = data.statusBreakdown.map(s => ({
     name:  s.status,
     value: s.issueCount,
@@ -24,12 +27,12 @@ export function SprintSummaryWidget({ data }: Props) {
       {/* stat row */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {[
-          { label: 'Total Issues',     value: data.totalIssues },
-          { label: 'Completed',        value: data.completedIssues },
-          { label: 'Incomplete',       value: data.incompleteIssues },
-          { label: 'Total Points',     value: data.totalPoints },
-          { label: 'Completed Points', value: data.completedPoints },
-          { label: 'Completion %',     value: `${pct}%` },
+          { label: t('totalIssues'),     value: data.totalIssues },
+          { label: t('completed'),       value: data.completedIssues },
+          { label: t('incomplete'),      value: data.incompleteIssues },
+          { label: t('totalPoints'),     value: data.totalPoints },
+          { label: t('completedPoints'), value: data.completedPoints },
+          { label: t('completionPct'),   value: `${pct}%` },
         ].map(s => (
           <div key={s.label} style={{
             background: 'var(--color-surface,#12131a)',

@@ -3,6 +3,7 @@
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { useTranslations } from 'next-intl';
 import type { CreatedVsResolvedEntry } from '@projectflow/types';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function CreatedVsResolvedChart({ data }: Props) {
+  const t = useTranslations('Charts');
+
   const chartData = data.map(d => ({
     week:     d.weekStart?.slice(5) ?? '',   // MM-DD
     created:  d.created,
@@ -41,7 +44,7 @@ export function CreatedVsResolvedChart({ data }: Props) {
         <Area
           type="monotone"
           dataKey="created"
-          name="Created"
+          name={t('created')}
           stroke="#f38ba8"
           fill="url(#gradCreated)"
           strokeWidth={2}
@@ -49,7 +52,7 @@ export function CreatedVsResolvedChart({ data }: Props) {
         <Area
           type="monotone"
           dataKey="resolved"
-          name="Resolved"
+          name={t('resolved')}
           stroke="#a6e3a1"
           fill="url(#gradResolved)"
           strokeWidth={2}

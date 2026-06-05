@@ -1161,6 +1161,21 @@
     "webhookEventMemberInvited": "Anggota diundang",
     "webhookEventMemberInvitedDesc": "Pengguna ditambahkan ke ruang kerja ini"
   },
+  "Charts": {
+    "remaining": "Tersisa",
+    "ideal": "Ideal",
+    "created": "Dibuat",
+    "resolved": "Diselesaikan",
+    "committed": "Direncanakan",
+    "completed": "Selesai",
+    "open": "Terbuka",
+    "done": "Selesai",
+    "totalIssues": "Total Isu",
+    "incomplete": "Belum Selesai",
+    "totalPoints": "Total Poin",
+    "completedPoints": "Poin Selesai",
+    "completionPct": "% Penyelesaian"
+  },
   "Dashboard": {
     "breadcrumb": "Dasbor",
     "noProjectFallback": "Tidak ada proyek",

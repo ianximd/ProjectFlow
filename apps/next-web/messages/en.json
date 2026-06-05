@@ -1161,6 +1161,21 @@
     "webhookEventMemberInvited": "Member invited",
     "webhookEventMemberInvitedDesc": "A user is added to this workspace"
   },
+  "Charts": {
+    "remaining": "Remaining",
+    "ideal": "Ideal",
+    "created": "Created",
+    "resolved": "Resolved",
+    "committed": "Committed",
+    "completed": "Completed",
+    "open": "Open",
+    "done": "Done",
+    "totalIssues": "Total Issues",
+    "incomplete": "Incomplete",
+    "totalPoints": "Total Points",
+    "completedPoints": "Completed Points",
+    "completionPct": "Completion %"
+  },
   "Dashboard": {
     "breadcrumb": "Dashboard",
     "noProjectFallback": "No project",

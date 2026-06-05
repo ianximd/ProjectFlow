@@ -3,6 +3,7 @@
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { useTranslations } from 'next-intl';
 import type { BurndownReport } from '@projectflow/types';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function BurndownChart({ data }: Props) {
+  const t = useTranslations('Charts');
+
   const chartData = data.points.map(p => ({
     date:      p.date ?? '',
     remaining: p.remainingPoints,
@@ -35,7 +38,7 @@ export function BurndownChart({ data }: Props) {
         <Line
           type="monotone"
           dataKey="remaining"
-          name="Remaining"
+          name={t('remaining')}
           stroke="#6c63ff"
           strokeWidth={2}
           dot={false}
@@ -43,7 +46,7 @@ export function BurndownChart({ data }: Props) {
         <Line
           type="monotone"
           dataKey="ideal"
-          name="Ideal"
+          name={t('ideal')}
           stroke="#f38ba8"
           strokeWidth={1.5}
           strokeDasharray="5 4"

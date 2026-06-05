@@ -3,6 +3,7 @@
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { useTranslations } from 'next-intl';
 import type { WorkloadEntry } from '@projectflow/types';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function WorkloadChart({ data }: Props) {
+  const t = useTranslations('Charts');
+
   const chartData = data.map(w => ({
     name: w.assigneeName,
     open: w.openIssues,
@@ -33,8 +36,8 @@ export function WorkloadChart({ data }: Props) {
           cursor={{ fill: 'rgba(255,255,255,0.04)' }}
         />
         <Legend wrapperStyle={{ fontSize: 12, color: '#8892b0' }} />
-        <Bar dataKey="open" name="Open"  fill="#6c63ff" stackId="a" radius={[0, 0, 0, 0]} />
-        <Bar dataKey="done" name="Done"  fill="#a6e3a1" stackId="a" radius={[0, 3, 3, 0]} />
+        <Bar dataKey="open" name={t('open')} fill="#6c63ff" stackId="a" radius={[0, 0, 0, 0]} />
+        <Bar dataKey="done" name={t('done')} fill="#a6e3a1" stackId="a" radius={[0, 3, 3, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

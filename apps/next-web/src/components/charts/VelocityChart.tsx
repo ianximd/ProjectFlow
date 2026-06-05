@@ -3,6 +3,7 @@
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
+import { useTranslations } from 'next-intl';
 import type { VelocityEntry } from '@projectflow/types';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function VelocityChart({ data }: Props) {
+  const t = useTranslations('Charts');
+
   const chartData = data.map(v => ({
     sprint:    v.sprintName,
     committed: v.committedPoints,
@@ -29,8 +32,8 @@ export function VelocityChart({ data }: Props) {
           cursor={{ fill: 'rgba(255,255,255,0.04)' }}
         />
         <Legend wrapperStyle={{ fontSize: 12, color: '#8892b0' }} />
-        <Bar dataKey="committed" name="Committed" fill="#3b4261" radius={[3, 3, 0, 0]} />
-        <Bar dataKey="completed" name="Completed"  fill="#6c63ff" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="committed" name={t('committed')} fill="#3b4261" radius={[3, 3, 0, 0]} />
+        <Bar dataKey="completed" name={t('completed')} fill="#6c63ff" radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

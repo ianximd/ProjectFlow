@@ -966,7 +966,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>{t('commentsSection')}</p>
-            <CommentSection taskId={taskId} currentUserId={currentUserId} />
+            <CommentSection taskId={taskId} currentUserId={currentUserId} workspaceId={workspaceId} />
           </div>
         </div>
       </div>

@@ -11,6 +11,8 @@ export interface Comment {
   isEdited: boolean;
   createdAt: string;
   reactions?: { emoji: string; count: number }[];
+  assignedToId?: string | null;
+  resolvedAt?: string | null;
 }
 
 // GET /comments?taskId= returns the standard { data: Comment[] } envelope

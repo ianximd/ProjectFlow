@@ -563,7 +563,13 @@
     "cancel": "Batal",
     "edit": "Ubah",
     "delete": "Hapus",
-    "unknown": "Tidak Dikenal"
+    "unknown": "Tidak Dikenal",
+    "assign": "Tugaskan",
+    "assignedTo": "Ditugaskan ke {name}",
+    "resolve": "Selesaikan",
+    "resolved": "Selesai",
+    "reopen": "Buka kembali",
+    "noMembers": "Tidak ada anggota"
   },
   "Attachments": {
     "dropzoneText": "Letakkan berkas di sini atau <browse>telusuri</browse> — maks 25 MB",

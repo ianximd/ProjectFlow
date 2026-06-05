@@ -62,6 +62,28 @@ export async function reactToComment(commentId: string, emoji: string): Promise<
   return { ok: true };
 }
 
+/** POST /comments/:id/assign { assigneeId } */
+export async function assignComment(commentId: string, assigneeId: string): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch(`/comments/${encodeURIComponent(commentId)}/assign`, {
+      method: 'POST', body: JSON.stringify({ assigneeId }),
+    });
+  } catch (e) { return toActionError(e); }
+  return { ok: true };
+}
+
+/** POST /comments/:id/resolve { resolved } */
+export async function resolveComment(commentId: string, resolved: boolean): Promise<ActionResult> {
+  await requireSession();
+  try {
+    await serverFetch(`/comments/${encodeURIComponent(commentId)}/resolve`, {
+      method: 'POST', body: JSON.stringify({ resolved }),
+    });
+  } catch (e) { return toActionError(e); }
+  return { ok: true };
+}
+
 /** Server-action refetch wrapper — a client component cannot import the
  *  `server-only` query module directly, so it calls this instead. */
 export async function loadComments(taskId: string): Promise<Comment[]> {

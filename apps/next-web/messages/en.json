@@ -563,7 +563,13 @@
     "cancel": "Cancel",
     "edit": "Edit",
     "delete": "Delete",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "assign": "Assign",
+    "assignedTo": "Assigned to {name}",
+    "resolve": "Resolve",
+    "resolved": "Resolved",
+    "reopen": "Reopen",
+    "noMembers": "No members"
   },
   "Attachments": {
     "dropzoneText": "Drop files here or <browse>browse</browse> — max 25 MB",

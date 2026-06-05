@@ -6,10 +6,17 @@ import {
   editComment,
   deleteComment,
   reactToComment,
+  assignComment,
+  resolveComment,
   loadComments,
 } from '@/server/actions/comments';
+import { loadWorkspaceMembers } from '@/server/actions/members';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { Comment } from '@/server/queries/comments';
+import { parseMentionSegments } from '@/lib/mentions';
+import { MentionInput, type MentionMember } from './MentionInput';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Button } from '@/components/ui/button';
 import styles from './CommentSection.module.css';
 import { useTranslations } from 'next-intl';
 
@@ -17,6 +24,10 @@ interface Props {
   taskId: string;
   /** Current viewer's user id — controls edit/delete affordances. */
   currentUserId: string | null;
+  /** Workspace id — used to load members for @-mentions and assignment.
+   *  May be null when the drawer has no active workspace; mention/assign
+   *  affordances simply have no members in that case. */
+  workspaceId: string | null;
   initialComments?: Comment[];
 }
 
@@ -41,10 +52,11 @@ function relativeTime(iso: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function CommentSection({ taskId, currentUserId, initialComments }: Props) {
+export function CommentSection({ taskId, currentUserId, workspaceId, initialComments }: Props) {
   const t = useTranslations('Comments');
   const [comments, setComments] = useState<Comment[]>(initialComments ?? []);
   const [loaded, setLoaded] = useState<boolean>(initialComments != null);
+  const [members, setMembers] = useState<MentionMember[]>([]);
   const [pending, start] = useTransition();
   const [newBody, setNewBody] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -59,6 +71,22 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
   useEffect(() => {
     if (taskId) refetch();
   }, [taskId]);
+
+  // Load workspace members for @-mentions and the assign picker (mirror WatcherControl).
+  useEffect(() => {
+    if (!workspaceId) { setMembers([]); return; }
+    let cancelled = false;
+    loadWorkspaceMembers(workspaceId)
+      .then((ms) => {
+        if (cancelled) return;
+        setMembers(ms.map((m) => ({ userId: m.id, name: m.name ?? m.email })));
+      })
+      .catch(() => { /* leave empty */ });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const memberName = (userId: string | null | undefined) =>
+    members.find((m) => m.userId.toUpperCase() === (userId ?? '').toUpperCase())?.name ?? null;
 
   const onAdd = (body: string) => start(async () => {
     const r = await addComment(taskId, body);
@@ -86,6 +114,28 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
     await refetch();
   });
 
+  const onAssign = (commentId: string, assigneeId: string) => start(async () => {
+    const r = await assignComment(commentId, assigneeId);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
+  });
+
+  const onResolve = (commentId: string, resolved: boolean) => start(async () => {
+    const r = await resolveComment(commentId, resolved);
+    if (!r.ok) return notifyActionError(r);
+    await refetch();
+  });
+
+  function renderBody(body: string) {
+    return parseMentionSegments(body).map((seg, i) =>
+      seg.kind === 'mention' ? (
+        <span key={i} className="rounded bg-primary/10 px-1 text-primary">@{seg.name}</span>
+      ) : (
+        <span key={i}>{seg.value}</span>
+      ),
+    );
+  }
+
   return (
     <div className={styles.comments}>
       {!loaded ? (
@@ -94,7 +144,11 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
         <p className={styles.empty}>{t('noCommentsYet')}</p>
       ) : (
         comments.map((c) => (
-          <div key={c.id} className={styles.comment}>
+          <div
+            key={c.id}
+            className={styles.comment}
+            style={c.resolvedAt ? { opacity: 0.5 } : undefined}
+          >
             <div className={styles.avatar}>{initials(c.authorName)}</div>
             <div className={styles.commentBody}>
               <div className={styles.commentHeader}>
@@ -102,6 +156,9 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
                 <span className={styles.commentDate}>
                   {c.createdAt ? relativeTime(c.createdAt) : ''}
                 </span>
+                {c.resolvedAt && (
+                  <span className={styles.commentDate}>{t('resolved')}</span>
+                )}
               </div>
 
               {editingId === c.id ? (
@@ -128,8 +185,13 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
               ) : (
                 <>
                   <p className={`${styles.commentText}${c.isEdited ? ` ${styles.edited}` : ''}`}>
-                    {c.body}
+                    {renderBody(c.body)}
                   </p>
+                  {c.assignedToId && (
+                    <p className={styles.commentDate}>
+                      {t('assignedTo', { name: memberName(c.assignedToId) ?? t('unknown') })}
+                    </p>
+                  )}
                   {c.reactions && c.reactions.length > 0 && (
                     <div className={styles.reactions}>
                       {c.reactions.map((r) => (
@@ -149,6 +211,37 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
                       onClick={() => onReact(c.id, '👍')}
                     >
                       👍
+                    </button>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className={styles.actionBtn}>{t('assign')}</button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-64 p-2">
+                        <div className="flex flex-col gap-1">
+                          {members.length === 0 && (
+                            <span className="px-2 py-1 text-xs text-muted-foreground">
+                              {t('noMembers')}
+                            </span>
+                          )}
+                          {members.map((m) => (
+                            <Button
+                              key={m.userId}
+                              variant="ghost"
+                              className="justify-start font-normal hover:bg-accent"
+                              onClick={() => onAssign(c.id, m.userId)}
+                            >
+                              {m.name}
+                            </Button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                    <button
+                      className={styles.actionBtn}
+                      onClick={() => onResolve(c.id, !c.resolvedAt)}
+                      disabled={pending}
+                    >
+                      {c.resolvedAt ? t('reopen') : t('resolve')}
                     </button>
                     {currentUserId === c.authorId && (
                       <>
@@ -179,18 +272,15 @@ export function CommentSection({ taskId, currentUserId, initialComments }: Props
 
       {/* Add comment form */}
       <div className={styles.form}>
-        <textarea
-          className={styles.textarea}
-          placeholder={t('addCommentPlaceholder')}
-          value={newBody}
-          onChange={(e) => setNewBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && newBody.trim()) {
-              e.preventDefault();
-              onAdd(newBody);
-            }
-          }}
-        />
+        <div style={{ flex: 1 }}>
+          <MentionInput
+            value={newBody}
+            onChange={setNewBody}
+            members={members}
+            placeholder={t('addCommentPlaceholder')}
+            onSubmit={() => newBody.trim() && onAdd(newBody)}
+          />
+        </div>
         <button
           className={styles.submitBtn}
           onClick={() => newBody.trim() && onAdd(newBody)}

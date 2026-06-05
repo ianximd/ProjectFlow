@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import {
   DndContext,
   closestCenter,
@@ -11,7 +12,8 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Globe } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { HIERARCHY_ICONS, HIERARCHY_LABELS_PLURAL } from '@/config/hierarchy.config';
 import type { Project, Folder, List } from '@/server/queries/normalize';
 import {
@@ -105,8 +107,28 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
     />
   );
 
+  // Workspace-wide "Everything" views surface. EVERYTHING views have no hierarchy
+  // node, so the route carries the workspaceId in the [scopeId] segment; the views
+  // page maps it back to a null node scope + workspaceId for the fail-closed
+  // EVERYTHING read path.
+  const everythingHref = `/views/EVERYTHING/${data.workspaceId}`;
+  const everythingActive = pathname?.startsWith('/views/EVERYTHING/') ?? false;
+
   return (
     <div className="space-y-1">
+      <Link
+        href={everythingHref}
+        data-testid="everything-nav"
+        aria-current={everythingActive ? 'page' : undefined}
+        className={cn(
+          'flex items-center gap-2 h-8 px-1 text-sm font-medium rounded hover:bg-muted',
+          everythingActive ? 'text-primary bg-muted' : 'text-accent-foreground',
+        )}
+      >
+        <Globe className="size-4 shrink-0 text-muted-foreground" />
+        <span className="grow truncate">Everything</span>
+      </Link>
+
       <div className="uppercase text-xs font-medium text-muted-foreground/70 pt-2 pb-px px-1">
         {HIERARCHY_LABELS_PLURAL.space}
       </div>

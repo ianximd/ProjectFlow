@@ -43,6 +43,9 @@ interface Props {
   activeView: SavedView;
   scopeType: ViewScopeType;
   scopeId: string;
+  /** Workspace id for EVERYTHING-scoped preview/save-as-new (they fail closed
+   *  without it). Undefined for node-scoped views. */
+  workspaceId?: string;
   customFields: CustomField[];
   meMode: boolean;
 }
@@ -69,9 +72,12 @@ function isGroup(node: FilterRule | FilterGroup): node is FilterGroup {
   return (node as FilterGroup).conjunction !== undefined;
 }
 
-export function FilterBuilder({ activeView, scopeType, scopeId, customFields, meMode }: Props) {
+export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, customFields, meMode }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // EVERYTHING views have no hierarchy node — send a null node scope + workspaceId.
+  const nodeScopeId = scopeType === 'EVERYTHING' ? null : scopeId;
+  const wsId = scopeType === 'EVERYTHING' ? workspaceId : undefined;
 
   const options = buildFieldOptions(customFields);
   const firstField: FieldRef = options[0]?.ref ?? { kind: 'builtin', key: 'title' };
@@ -107,13 +113,13 @@ export function FilterBuilder({ activeView, scopeType, scopeId, customFields, me
     (cfg: ViewConfig) => {
       setPreviewing(true);
       startTransition(async () => {
-        const res = await previewViewTasks(scopeType, scopeId, cfg, 1, meMode);
+        const res = await previewViewTasks(scopeType, nodeScopeId, cfg, 1, meMode, wsId);
         setPreviewing(false);
         if (!res.ok) { notifyActionError(res); setPreviewCount(null); return; }
         setPreviewCount(res.data.total);
       });
     },
-    [scopeType, scopeId, meMode],
+    [scopeType, nodeScopeId, wsId, meMode],
   );
 
   useEffect(() => {
@@ -251,6 +257,7 @@ export function FilterBuilder({ activeView, scopeType, scopeId, customFields, me
           activeView={activeView}
           scopeType={scopeType}
           scopeId={scopeId}
+          workspaceId={workspaceId}
           config={config}
           onSaved={() => router.refresh()}
         />
@@ -518,12 +525,14 @@ function SaveControls({
   activeView,
   scopeType,
   scopeId,
+  workspaceId,
   config,
   onSaved,
 }: {
   activeView: SavedView;
   scopeType: ViewScopeType;
   scopeId: string;
+  workspaceId?: string;
   config: ViewConfig;
   onSaved: () => void;
 }) {
@@ -542,12 +551,13 @@ function SaveControls({
     startTransition(async () => {
       const res = await createSavedView({
         scopeType,
-        scopeId,
+        scopeId: scopeType === 'EVERYTHING' ? null : scopeId,
         type: activeView.type,
         name: asNewName.trim() || `${activeView.name} copy`,
         isShared: activeView.isShared,
         isDefault: false,
         config,
+        workspaceId: scopeType === 'EVERYTHING' ? workspaceId : undefined,
       });
       if (!res.ok) { notifyActionError(res); return; }
       setShowAsNew(false);

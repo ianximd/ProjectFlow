@@ -82,14 +82,15 @@ const TASK_BUILTIN_ACCESSORS: Record<string, (t: Task) => unknown> = {
 };
 
 /** Resolve a FieldRef's value for a given task (used for client-side grouping and
- *  rendering table/list cells). Returns null when the field isn't present on the
- *  normalized Task projection (custom fields aren't fetched per-row here). */
+ *  rendering table/list cells). Returns null when a built-in isn't on the
+ *  normalized Task projection, or when a custom field has no value for the task. */
 export function taskFieldValue(task: Task, ref: FieldRef, _customFields: CustomField[]): unknown {
   if (ref.kind === 'builtin') {
     const accessor = TASK_BUILTIN_ACCESSORS[ref.key];
     return accessor ? accessor(task) : null;
   }
-  // Custom field values aren't part of the page's task projection; grouping by a
-  // custom field still works server-side via taskPage.groups counts.
-  return null;
+  // Custom field: resolved from the Views projection (ViewRepository.queryTasks),
+  // keyed by lowercased FieldId. The ref key can carry either case, so lowercase
+  // it to match. Returns null when this task has no value for the field.
+  return task.customFieldValues?.[ref.key.toLowerCase()] ?? null;
 }

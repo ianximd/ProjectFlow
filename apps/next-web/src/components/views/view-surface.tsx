@@ -8,7 +8,7 @@ import { ViewTabs } from '@/components/views/view-tabs';
 import { TableView } from '@/components/views/table-view';
 import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
-import { BoardViewEngine } from '@/components/views/board-view-engine';
+import { BoardViewEngine, type BoardWorkflowStatus } from '@/components/views/board-view-engine';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
@@ -21,12 +21,18 @@ interface Props {
   activeViewId: string | null;
   scopeType: ViewScopeType;
   scopeId: string;
+  /** Workspace id for EVERYTHING-scoped create/preview (those fail closed without
+   *  it). Undefined for node-scoped views, whose authority is the node ACL. */
+  workspaceId?: string;
   meMode: boolean;
   /** Paged tasks for the active view, or null when no view is active. */
   taskPage: ViewTaskPageResult | null;
   /** The scope's custom fields, fetched SSR in page.tsx and threaded down for the
    *  table/list columns + the filter-builder's field options. */
   customFields: CustomField[];
+  /** The scope's effective workflow statuses (board views only), resolved SSR.
+   *  Null when not a board view, EVERYTHING scope, or the project has no workflow. */
+  boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
 }
 
 export function ViewSurface({
@@ -34,9 +40,11 @@ export function ViewSurface({
   activeViewId,
   scopeType,
   scopeId,
+  workspaceId,
   meMode,
   taskPage,
   customFields,
+  boardWorkflowStatuses,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -74,7 +82,7 @@ export function ViewSurface({
   if (views.length === 0) {
     return (
       <div className="flex h-full flex-col gap-4">
-        <ViewTabs views={views} activeViewId={null} scopeType={scopeType} scopeId={scopeId} />
+        <ViewTabs views={views} activeViewId={null} scopeType={scopeType} scopeId={scopeId} workspaceId={workspaceId} />
         <EmptyViewsState />
       </div>
     );
@@ -88,6 +96,7 @@ export function ViewSurface({
           activeViewId={activeViewId}
           scopeType={scopeType}
           scopeId={scopeId}
+          workspaceId={workspaceId}
         />
         <div className="flex shrink-0 items-center gap-2">
           {activeView && (activeView.type === 'table' || activeView.type === 'list') && (
@@ -123,6 +132,7 @@ export function ViewSurface({
           activeView={activeView}
           scopeType={scopeType}
           scopeId={scopeId}
+          workspaceId={workspaceId}
           customFields={customFields}
           meMode={meMode}
         />
@@ -146,6 +156,7 @@ export function ViewSurface({
             customFields={customFields}
             scopeType={scopeType}
             scopeId={scopeId}
+            boardWorkflowStatuses={boardWorkflowStatuses}
             onSelectionChange={onSelectionChange}
           />
         ) : (
@@ -175,6 +186,7 @@ function ViewBody({
   customFields,
   scopeType,
   scopeId,
+  boardWorkflowStatuses,
   onSelectionChange,
 }: {
   type: ViewType;
@@ -183,6 +195,7 @@ function ViewBody({
   customFields: CustomField[];
   scopeType: ViewScopeType;
   scopeId: string;
+  boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
   onSelectionChange?: (ids: string[]) => void;
 }) {
   switch (type) {
@@ -215,6 +228,7 @@ function ViewBody({
           activeView={activeView}
           scopeType={scopeType}
           scopeId={scopeId}
+          workflowStatuses={boardWorkflowStatuses}
         />
       );
     default:

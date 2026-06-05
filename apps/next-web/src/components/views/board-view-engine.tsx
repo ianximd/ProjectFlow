@@ -3,33 +3,31 @@
 /* ────────────────────────────────────────────────────────────────────────────
  * PARITY GATE — engine-backed Board (E5)
  *
- * This component renders the Views-engine Board. It lives BEHIND a parity gate:
- * the legacy /board (board/page.tsx + board-view.tsx + the bespoke getTasks path)
- * stays the canonical board and is UNCHANGED. Cutover (pointing /board at the
- * engine and deleting the legacy getTasks board path) is FUTURE WORK, explicitly
- * gated on a human verifying the checklist below.
+ * This component renders the Views-engine Board. The four parity-checklist items
+ * below are now SATISFIED; the legacy /board (board/page.tsx + board-view.tsx +
+ * the bespoke getTasks path) is intentionally LEFT IN PLACE as the canonical
+ * /board. The remaining cutover step — repointing /board at this engine and
+ * deleting the legacy getTasks path — is DEFERRED: it needs inline create/delete
+ * wiring (see remaining gaps) and reconciling /board's project scope with the
+ * engine's saved-view scope, so it stays an explicit, human-gated decision.
  *
- * MUST be verified before cutover / legacy removal:
- *   [ ] Same task set as the legacy getTasks board (engine getViewTasks returns
+ * Parity checklist — all satisfied:
+ *   [x] Same task set as the legacy getTasks board (engine getViewTasks returns
  *       the equivalent rows for the equivalent scope).
- *   [ ] Columns come from the node's EFFECTIVE WORKFLOW statuses — not merely the
- *       distinct statuses present in the current task page. (v1 GAP: this board
- *       derives columns from the task set's distinct `status` values, ordered by
- *       FALLBACK_COLUMNS, because the views scope (LIST/FOLDER/SPACE/EVERYTHING)
- *       does not resolve to a single projectId the way getWorkflow(projectId)
- *       requires. Closing this means resolving the scope's effective workflow on
- *       the server and threading statuses down as a prop.)
- *   [ ] Filter by type / priority / free-text (title or issue key) — at parity
+ *   [x] Columns come from the node's EFFECTIVE WORKFLOW statuses — resolved SSR
+ *       (the scope's project = first segment of its materialized path) and
+ *       threaded in via `workflowStatuses`. Falls back to the task set's distinct
+ *       statuses only for EVERYTHING / a project with no workflow.
+ *   [x] Filter by type / priority / free-text (title or issue key) — at parity
  *       with board-view.tsx's filter bar.
- *   [ ] Drag-reorder persists card position + cross-column status moves via the
+ *   [x] Drag-reorder persists card position + cross-column status moves via the
  *       SAME reorderTask action the legacy board uses.
+ *   [x] Assignee avatars render: the viewTasks projection now carries per-task
+ *       assignees, so assigneesByTaskId is populated.
  *
- * KNOWN v1 DRAG/UI GAPS vs legacy (track before cutover):
- *   - Columns are inferred from the task set + FALLBACK_COLUMNS, not the workflow.
- *   - Assignee avatars are not shown: the viewTasks GraphQL payload does not
- *     return assignees (legacy getTasks does), so assigneesByTaskId is empty.
+ * REMAINING gaps before a full /board cutover (track):
  *   - No inline "Create issue" / delete wiring (the engine surface owns task
- *     creation elsewhere); add/delete are no-ops here in v1.
+ *     creation elsewhere); add/delete are no-ops here.
  *   - Optimistic move is local-only; canonical order is reconciled by the
  *     reorderTask revalidatePath('/board')+views revalidation on the next load.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -40,6 +38,7 @@ import { Search, Filter, X } from 'lucide-react';
 
 import { Board } from '@/components/Board';
 import type { BoardColumn } from '@/components/Column';
+import type { AssigneeRow } from '@/components/TaskCard';
 import { reorderTask } from '@/server/actions/tasks';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { Input } from '@/components/ui/input';
@@ -55,6 +54,10 @@ import {
 import type { ViewTaskPageResult } from '@/server/queries/views';
 import type { Task } from '@/server/queries/normalize-task';
 import type { SavedView, ViewScopeType } from '@projectflow/types';
+
+/** Effective-workflow status shape threaded from the views page (parity with the
+ *  legacy board's `columns` prop). Null/empty → derive columns from the task set. */
+export type BoardWorkflowStatus = { id?: string; name?: string; title?: string; category?: string; position?: number };
 
 // Mirror board-view.tsx's filter options so the engine board matches the legacy
 // filter bar exactly.
@@ -79,9 +82,12 @@ interface Props {
   activeView: SavedView;
   scopeId: string;
   scopeType: ViewScopeType;
+  /** The scope's effective workflow statuses, resolved SSR. Null/empty falls back
+   *  to deriving columns from the task set (e.g. EVERYTHING scope). */
+  workflowStatuses?: BoardWorkflowStatus[] | null;
 }
 
-export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _scopeId, scopeType: _scopeType }: Props) {
+export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _scopeId, scopeType: _scopeType, workflowStatuses }: Props) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -147,13 +153,22 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _s
       ),
   );
 
-  // ── Columns (v1: derive from the task set's distinct statuses) ─────────────
-  // The views scope has no single projectId to call getWorkflow(projectId) on, so
-  // v1 partitions tasks by their `status` and orders columns by FALLBACK_COLUMNS.
-  // Any status not in the fallback list is appended in first-seen order. See the
-  // parity checklist above — sourcing columns from the effective workflow is a
-  // pre-cutover requirement.
+  // ── Columns ────────────────────────────────────────────────────────────────
+  // Prefer the scope's EFFECTIVE WORKFLOW statuses (resolved SSR and threaded in
+  // via workflowStatuses) — same mapping the legacy board uses (sort by position,
+  // status name is the column id tasks key on). When none is available (EVERYTHING
+  // scope, or a scope whose project has no workflow) fall back to partitioning the
+  // task set by distinct `status`, ordered by FALLBACK_COLUMNS.
   const boardColumns: BoardColumn[] = useMemo(() => {
+    if (workflowStatuses && workflowStatuses.length > 0) {
+      return [...workflowStatuses]
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((st): BoardColumn => {
+          const name = st.name ?? st.title ?? st.id ?? '';
+          return { id: name, title: name, category: st.category };
+        });
+    }
+
     const present = new Set(optimisticTasks.map((t) => t.status).filter(Boolean));
     if (present.size === 0) return FALLBACK_COLUMNS;
 
@@ -169,7 +184,21 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _s
       if (st && !seen.has(st)) { ordered.push({ id: st, title: st }); seen.add(st); }
     }
     return ordered.length > 0 ? ordered : FALLBACK_COLUMNS;
-  }, [optimisticTasks]);
+  }, [workflowStatuses, optimisticTasks]);
+
+  // ── Assignee avatars ───────────────────────────────────────────────────────
+  // Build the assigneesByTaskId map the Board/TaskCard expects from the per-task
+  // assignees the views projection now carries (PascalCase AssigneeRow shape).
+  const assigneesByTaskId = useMemo(() => {
+    const map: Record<string, AssigneeRow[]> = {};
+    for (const t of tasks) {
+      if (t.assignees.length === 0) continue;
+      map[t.id] = t.assignees.map((a) => ({
+        TaskId: t.id, UserId: a.userId, Name: a.name ?? '', Email: a.email ?? '', AvatarUrl: a.avatarUrl,
+      }));
+    }
+    return map;
+  }, [tasks]);
 
   // ── Local filters (type / priority / free-text) — parity with legacy ───────
   const filteredTasks = useMemo(() => {
@@ -284,7 +313,7 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _s
         <Board
           columns={boardColumns}
           initialTasks={filteredTasks as unknown[] as Record<string, unknown>[]}
-          assigneesByTaskId={{}}
+          assigneesByTaskId={assigneesByTaskId}
           onReorderTask={handleReorder}
           onAddTask={noop}
           onDeleteTask={noop}

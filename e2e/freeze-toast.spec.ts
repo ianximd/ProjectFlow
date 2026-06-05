@@ -23,7 +23,7 @@ async function grantSuperAdmin(email: string) {
     port:     1433,
     user:     'sa',
     password: 'YourStrong@Passw0rd',
-    database: 'ProjectFlow',
+    database: process.env.DB_NAME ?? 'ProjectFlow',
     options:  { trustServerCertificate: true, encrypt: false },
   });
   try {
@@ -86,7 +86,7 @@ test('frozen workspace → project-create attempt shows the WORKSPACE_FROZEN toa
   // actually applies to this browser session's writes.
   const conn = await sql.connect({
     server: 'localhost', port: 1433, user: 'sa', password: 'YourStrong@Passw0rd',
-    database: 'ProjectFlow', options: { trustServerCertificate: true, encrypt: false },
+    database: process.env.DB_NAME ?? 'ProjectFlow', options: { trustServerCertificate: true, encrypt: false },
   });
   try {
     await conn.request().input('Email', email).query(`

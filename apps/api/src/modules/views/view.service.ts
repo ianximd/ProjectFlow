@@ -7,6 +7,7 @@ import { ViewNotFoundError, ViewValidationError } from './view.errors.js';
 import { TaskService } from '../tasks/task.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { customFieldService } from '../customfields/customfield.service.js';
+import { WorkflowService } from '../workflows/workflow.service.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
 import { accessService } from '../access/access.service.js';
 import { roleService } from '../roles/role.service.js';
@@ -39,6 +40,29 @@ interface ScopeNode { workspaceId: string; scopePath: string | null }
 export class ViewService {
   private repo = new ViewRepository();
   private cfRepo = new CustomFieldRepository();
+  private workflowService = new WorkflowService();
+
+  /**
+   * Resolve the EFFECTIVE WORKFLOW statuses for a scope so the engine Board can
+   * source its columns from the workflow (parity with the legacy board) instead
+   * of inferring them from the task page. A scope's project is the first segment
+   * of its materialized path (`/spaceId/.../`), and a space IS a project here.
+   * Returns null for EVERYTHING (spans projects → no single workflow) or when the
+   * project has no workflow; the Board then falls back to task-derived columns.
+   */
+  async effectiveWorkflowStatuses(
+    scopeType: ViewScopeType,
+    scopeId: string | null,
+    workspaceId?: string,
+  ): Promise<Array<{ id: string; name: string; category: string; color: string; position: number }> | null> {
+    if (scopeType === 'EVERYTHING') return null;
+    const scope = await this.resolveScope(scopeType, scopeId, workspaceId);
+    if (!scope.scopePath) return null;
+    const projectId = scope.scopePath.split('/').filter(Boolean)[0];
+    if (!projectId) return null;
+    const wf = await this.workflowService.getByProject(projectId);
+    return wf?.statuses.map((s) => ({ id: s.id, name: s.name, category: s.category, color: s.color, position: s.position })) ?? null;
+  }
 
   private async resolveScope(
     scopeType: ViewScopeType,

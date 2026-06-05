@@ -31,9 +31,11 @@ interface Props {
   activeViewId: string | null;
   scopeType: ViewScopeType;
   scopeId: string;
+  /** Workspace id for creating EVERYTHING views (which fail closed without it). */
+  workspaceId?: string;
 }
 
-export function ViewTabs({ views, activeViewId, scopeType, scopeId }: Props) {
+export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -78,12 +80,13 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId }: Props) {
     startTransition(async () => {
       const res = await createSavedView({
         scopeType,
-        scopeId,
+        scopeId: scopeType === 'EVERYTHING' ? null : scopeId,
         type: 'list',
         name: 'New view',
         isShared: true,
         isDefault: false,
         config: { filter: { conjunction: 'AND', rules: [] }, sort: [] },
+        workspaceId: scopeType === 'EVERYTHING' ? workspaceId : undefined,
       });
       if (!res.ok) { notifyActionError(res); return; }
       selectView(res.data.id);

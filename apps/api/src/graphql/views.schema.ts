@@ -76,6 +76,10 @@ function mapTaskRow(r: any): TaskShape {
     dueDate:     r.DueDate ?? null,
     createdAt:   r.CreatedAt,
     updatedAt:   r.UpdatedAt,
+    // Populated by ViewRepository.queryTasks: { [lowercasedFieldId]: rawValue }.
+    customFieldValues: r.CustomFieldValues ?? {},
+    // Populated by ViewRepository.queryTasks — PascalCase assignee rows.
+    assignees: r.Assignees ?? [],
   };
 }
 
@@ -126,6 +130,15 @@ export function registerViewsGraphql(): void {
     tasks:  t.field({ type: [TaskType], resolve: (p) => (p.tasks as any[]).map(mapTaskRow) as any }),
   }) });
 
+  const WorkflowStatusType = builder.objectRef<{ id: string; name: string; category: string; color: string; position: number }>('ViewWorkflowStatus');
+  WorkflowStatusType.implement({ fields: (t) => ({
+    id:       t.exposeString('id'),
+    name:     t.exposeString('name'),
+    category: t.exposeString('category'),
+    color:    t.exposeString('color'),
+    position: t.exposeFloat('position'),
+  }) });
+
   const CreateInput = builder.inputType('CreateSavedViewInput', { fields: (t) => ({
     scopeType:   t.string({ required: true }),
     scopeId:     t.string({ required: false }),
@@ -155,6 +168,19 @@ export function registerViewsGraphql(): void {
         if (node) await requireObjectLevel(ctx, node, a.scopeId, 'VIEW');
         else await requireEverythingWorkspace(ctx, a.workspaceId);
         return viewService.list(userId, scopeType, a.scopeId ?? null, a.workspaceId ?? undefined);
+      },
+    }),
+    viewWorkflowStatuses: t.field({
+      type: [WorkflowStatusType],
+      nullable: true,
+      args: { scopeType: t.arg.string({ required: true }), scopeId: t.arg.string({ required: false }), workspaceId: t.arg.string({ required: false }) },
+      resolve: async (_, a, ctx) => {
+        requireUser(ctx);
+        const scopeType = assertScopeType(a.scopeType);
+        const node = authzNode(scopeType);
+        if (node) await requireObjectLevel(ctx, node, a.scopeId, 'VIEW');
+        else { await requireEverythingWorkspace(ctx, a.workspaceId); return null; } // EVERYTHING: no single workflow
+        return viewService.effectiveWorkflowStatuses(scopeType, a.scopeId ?? null, a.workspaceId ?? undefined);
       },
     }),
     viewTasks: t.field({

@@ -99,6 +99,13 @@ export interface TaskShape {
   dueDate?: IsoOrDate | null;
   createdAt: IsoOrDate;
   updatedAt: IsoOrDate;
+  /** Custom-field values for this task, keyed by lowercased FieldId. Only the
+   *  Views engine projection populates this (see ViewRepository.queryTasks);
+   *  other task sources leave it undefined and the GraphQL field resolves null. */
+  customFieldValues?: Record<string, unknown>;
+  /** Assignees for this task (Views engine projection). PascalCase rows as the
+   *  repository produces them; the GraphQL field maps to camelCase for clients. */
+  assignees?: Array<{ UserId: string; Name: string | null; Email: string; AvatarUrl: string | null }>;
 }
 
 interface CommentShape {
@@ -196,6 +203,17 @@ SprintType.implement({
   }),
 });
 
+const TaskAssigneeType = builder.objectRef<{ UserId: string; Name: string | null; Email: string; AvatarUrl: string | null }>('TaskAssignee');
+TaskAssigneeType.implement({
+  description: 'A user assigned to a task (lightweight projection for board avatar stacks)',
+  fields: (t) => ({
+    userId:    t.exposeString('UserId'),
+    name:      t.string({ nullable: true, resolve: (a) => a.Name ?? null }),
+    email:     t.exposeString('Email'),
+    avatarUrl: t.string({ nullable: true, resolve: (a) => a.AvatarUrl ?? null }),
+  }),
+});
+
 TaskType.implement({
   description: 'A task / issue',
   fields: (t) => ({
@@ -214,6 +232,16 @@ TaskType.implement({
     dueDate:     t.field({ type: 'Date', nullable: true, resolve: (tk) => tk.dueDate ? new Date(tk.dueDate) : null }),
     createdAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.createdAt) }),
     updatedAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.updatedAt) }),
+    // JSON object string of { [lowercasedFieldId]: rawStoredValue }. Mirrors how
+    // SavedView.config is transported as a String. Null when the task carries no
+    // custom values (or came from a non-views source that doesn't populate them).
+    customFieldValues: t.string({ nullable: true, resolve: (tk) =>
+      tk.customFieldValues && Object.keys(tk.customFieldValues).length > 0
+        ? JSON.stringify(tk.customFieldValues)
+        : null }),
+    // Assignees for board avatar stacks (Views engine projection). Empty list
+    // when the task has none, or came from a source that doesn't populate them.
+    assignees: t.field({ type: [TaskAssigneeType], resolve: (tk) => tk.assignees ?? [] }),
   }),
 });
 

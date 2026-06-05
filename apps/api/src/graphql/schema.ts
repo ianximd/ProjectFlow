@@ -2,6 +2,7 @@ import { GraphQLError, GraphQLScalarType, Kind } from 'graphql';
 
 import { builder } from './builder.js';
 import { pubsub }  from './pubsub.js';
+import { notificationAddedSubscribe } from './subscriptions/notificationAdded.js';
 import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
@@ -606,6 +607,14 @@ builder.subscriptionType({
         return pubsub.subscribe('comment:created');
       },
       resolve: (payload: any) => payload.comment,
+    }),
+
+    /** Live in-app notifications for the authenticated user only. */
+    notificationAdded: t.field({
+      type: NotificationType,
+      args: { userId: t.arg.string({ required: false }) }, // accepted but IGNORED; bound to ctx user
+      subscribe: (root, args, ctx) => notificationAddedSubscribe(root, args, ctx),
+      resolve: (payload: any) => payload.notification,
     }),
   }),
 });

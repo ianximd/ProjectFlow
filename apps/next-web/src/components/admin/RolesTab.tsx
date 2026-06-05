@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { Plus, ShieldCheck, Loader2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { RoleScope, RoleWithCounts } from '@projectflow/types';
 import { loadRoles } from '@/server/actions/admin-roles';
 import { Button } from '@/components/ui/button';
@@ -14,6 +15,7 @@ import { RoleEditorDialog } from './RoleEditorDialog';
 type ScopeFilter = 'ALL' | RoleScope;
 
 export function RolesTab() {
+  const t = useTranslations('Admin');
   const [scope,        setScope]        = useState<ScopeFilter>('ALL');
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [creatingScope, setCreatingScope] = useState<RoleScope | null>(null);
@@ -28,7 +30,7 @@ export function RolesTab() {
     try {
       setRoles(await loadRoles(scope === 'ALL' ? undefined : scope));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load roles');
+      setError(e instanceof Error ? e.message : t('rolesLoadingRoles'));
     } finally {
       setLoaded(true);
     }
@@ -55,9 +57,9 @@ export function RolesTab() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs value={scope} onValueChange={(v) => setScope(v as ScopeFilter)}>
           <TabsList>
-            <TabsTrigger value="ALL">All</TabsTrigger>
-            <TabsTrigger value="SYSTEM">System</TabsTrigger>
-            <TabsTrigger value="WORKSPACE">Workspace</TabsTrigger>
+            <TabsTrigger value="ALL">{t('rolesTabAllLabel')}</TabsTrigger>
+            <TabsTrigger value="SYSTEM">{t('rolesTabSystemLabel')}</TabsTrigger>
+            <TabsTrigger value="WORKSPACE">{t('rolesTabWorkspaceLabel')}</TabsTrigger>
           </TabsList>
         </Tabs>
 
@@ -65,7 +67,7 @@ export function RolesTab() {
           onClick={() => setCreatingScope(scope === 'SYSTEM' ? 'SYSTEM' : 'WORKSPACE')}
         >
           <Plus className="size-4" />
-          New role
+          {t('rolesTabNewRole')}
         </Button>
       </div>
 
@@ -80,7 +82,7 @@ export function RolesTab() {
       {isLoading && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading roles…
+          {t('rolesLoadingRoles')}
         </div>
       )}
 
@@ -90,18 +92,18 @@ export function RolesTab() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Name</th>
-                <th scope="col" className="px-4 py-2.5 text-start font-medium">Scope</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium">Permissions</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium">Members</th>
-                <th scope="col" className="px-4 py-2.5 text-end font-medium">Updated</th>
+                <th scope="col" className="px-4 py-2.5 text-start font-medium">{t('rolesColName')}</th>
+                <th scope="col" className="px-4 py-2.5 text-start font-medium">{t('rolesColScope')}</th>
+                <th scope="col" className="px-4 py-2.5 text-end font-medium">{t('rolesColPermissions')}</th>
+                <th scope="col" className="px-4 py-2.5 text-end font-medium">{t('rolesColMembers')}</th>
+                <th scope="col" className="px-4 py-2.5 text-end font-medium">{t('rolesColUpdated')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {roles.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    No roles match this scope.
+                    {t('rolesNoMatch')}
                   </td>
                 </tr>
               )}
@@ -117,7 +119,7 @@ export function RolesTab() {
                       {r.isSystem && (
                         <Badge variant="secondary" size="sm" className="gap-1">
                           <ShieldCheck className="size-3" />
-                          Built-in
+                          {t('rolesBuiltIn')}
                         </Badge>
                       )}
                     </div>
@@ -132,7 +134,7 @@ export function RolesTab() {
                       variant={r.scope === 'SYSTEM' ? 'destructive' : 'secondary'}
                       size="sm"
                     >
-                      {r.scope === 'SYSTEM' ? 'System' : 'Workspace'}
+                      {r.scope === 'SYSTEM' ? t('rolesTabSystemLabel') : t('rolesTabWorkspaceLabel')}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">

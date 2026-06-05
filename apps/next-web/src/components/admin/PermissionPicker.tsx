@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import type { Permission, RoleScope } from '@projectflow/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -16,6 +17,7 @@ interface Props {
 
 /** Permission catalog grouped by resource with a checkbox per slug. */
 export function PermissionPicker({ catalog, scope, selectedIds, onChange, disabled }: Props) {
+  const t = useTranslations('Admin');
   const groups = useMemo(() => {
     const map = new Map<string, Permission[]>();
     for (const p of catalog) {
@@ -46,7 +48,7 @@ export function PermissionPicker({ catalog, scope, selectedIds, onChange, disabl
     <div className="space-y-4">
       {groups.length === 0 && (
         <p className="text-sm text-muted-foreground">
-          No permissions available for this scope.
+          {t('permissionsNoAvailable')}
         </p>
       )}
 

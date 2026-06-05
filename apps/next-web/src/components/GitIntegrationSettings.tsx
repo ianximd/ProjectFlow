@@ -5,6 +5,7 @@ import type { JSX } from 'react';
 import {
   GitPullRequest, Plus, Trash2, Copy, Check, ExternalLink, Info,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import type { GitConnection, GitProvider } from '@projectflow/types';
 
@@ -57,6 +58,7 @@ const PROVIDER_DOCS: Record<GitProvider, string> = {
 interface Props { workspaceId: string }
 
 export default function GitIntegrationSettings({ workspaceId }: Props) {
+  const t = useTranslations('Integrations');
   const [connections, setConnections] = useState<GitConnection[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -97,15 +99,13 @@ export default function GitIntegrationSettings({ workspaceId }: Props) {
             <GitPullRequest className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-foreground">Connect a repository</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('gitConnectRepoTitle')}</h3>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Link GitHub or GitLab repos to this workspace. Once connected, PRs and commits that
-              mention an issue key (e.g. <code className="font-mono text-foreground bg-muted/60 px-1 py-0.5 rounded">PF-42</code>) are
-              auto-linked to the matching issue via webhooks.
+              {t('gitConnectRepoDesc')}
             </p>
           </div>
           <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)} className="shrink-0">
-            <Plus className="size-4" /> Add repository
+            <Plus className="size-4" /> {t('gitAddRepository')}
           </Button>
         </div>
       </Card>
@@ -123,7 +123,7 @@ export default function GitIntegrationSettings({ workspaceId }: Props) {
               conn={conn}
               busy={deleting}
               onDelete={() => {
-                if (window.confirm(`Disconnect ${conn.repoOwner}/${conn.repoName}?\n\nThis stops auto-linking PRs and commits for this repo. The webhook on the provider side will keep firing until you remove it there.`)) {
+                if (window.confirm(t('gitDisconnectConfirm', { repo: `${conn.repoOwner}/${conn.repoName}` }))) {
                   onDelete(conn.id);
                 }
               }}
@@ -154,6 +154,7 @@ function ConnectionCard({
   onDelete: () => void;
   busy: boolean;
 }) {
+  const t = useTranslations('Integrations');
   const repoUrl = conn.provider === 'github'
     ? `https://github.com/${conn.repoOwner}/${conn.repoName}`
     : `https://gitlab.com/${conn.repoOwner}/${conn.repoName}`;
@@ -181,14 +182,13 @@ function ConnectionCard({
               {PROVIDER_LABELS[conn.provider]}
             </Badge>
             <span>
-              Connected{' '}
               {Number.isFinite(connected.getTime())
-                ? formatShortDateYear(connected)
+                ? t('gitConnectedBadge', { date: formatShortDateYear(connected) })
                 : '—'}
             </span>
             {!conn.webhookId && (
               <Badge size="xs" variant="outline" appearance="outline" className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                No webhook detected
+                {t('gitNoWebhookBadge')}
               </Badge>
             )}
           </div>
@@ -198,7 +198,7 @@ function ConnectionCard({
           className="text-destructive hover:text-destructive shrink-0"
           onClick={onDelete}
           disabled={busy}
-          aria-label={`Disconnect ${conn.repoOwner}/${conn.repoName}`}
+          aria-label={t('gitDisconnectAriaLabel', { repo: `${conn.repoOwner}/${conn.repoName}` })}
         >
           <Trash2 className="size-3.5" />
         </Button>
@@ -222,6 +222,7 @@ function CreateConnectionDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Integrations');
   const [provider,      setProvider]      = useState<GitProvider>('github');
   const [repoOwner,     setRepoOwner]     = useState('');
   const [repoName,      setRepoName]      = useState('');
@@ -246,7 +247,7 @@ function CreateConnectionDialog({
     >
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>Connect a repository</DialogTitle>
+          <DialogTitle>{t('gitConnectDialogTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -262,7 +263,7 @@ function CreateConnectionDialog({
           <DialogBody className="flex flex-col gap-4">
             {/* Provider tile picker */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Provider</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('gitProviderLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 {(['github', 'gitlab'] as GitProvider[]).map((p) => {
                   const active = provider === p;
@@ -290,35 +291,35 @@ function CreateConnectionDialog({
             {/* Owner / repo */}
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="git-owner" className="text-xs font-medium text-muted-foreground">Owner / org</label>
+                <label htmlFor="git-owner" className="text-xs font-medium text-muted-foreground">{t('gitOwnerLabel')}</label>
                 <Input
                   id="git-owner" required value={repoOwner} autoFocus
                   onChange={(e) => setRepoOwner(e.target.value)}
-                  placeholder="acme-corp"
+                  placeholder={t('gitOwnerPlaceholder')}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="git-repo" className="text-xs font-medium text-muted-foreground">Repository</label>
+                <label htmlFor="git-repo" className="text-xs font-medium text-muted-foreground">{t('gitRepoLabel')}</label>
                 <Input
                   id="git-repo" required value={repoName}
                   onChange={(e) => setRepoName(e.target.value)}
-                  placeholder="my-app"
+                  placeholder={t('gitRepoPlaceholder')}
                 />
               </div>
             </div>
 
             {/* Webhook URL with copy button */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Webhook URL</label>
-              <CopyField value={webhookUrl} />
+              <label className="text-xs font-medium text-muted-foreground">{t('gitWebhookUrlLabel')}</label>
+              <CopyField value={webhookUrl} copyLabel={t('gitCopyToClipboard')} webhookUrlAria={t('gitWebhookUrlFieldAria')} />
               <span className="text-xs text-muted-foreground">
-                Paste this URL into your repo's webhook settings.{' '}
+                {t('gitWebhookUrlHint')}{' '}
                 <a
                   href={PROVIDER_DOCS[provider]}
                   target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-0.5 text-primary hover:underline"
                 >
-                  {PROVIDER_LABELS[provider]} webhook docs
+                  {t('gitWebhookDocsLabel', { provider: PROVIDER_LABELS[provider] })}
                   <ExternalLink className="size-3" />
                 </a>
               </span>
@@ -326,16 +327,16 @@ function CreateConnectionDialog({
 
             {/* Webhook secret */}
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="git-secret" className="text-xs font-medium text-muted-foreground">Webhook secret</label>
+              <label htmlFor="git-secret" className="text-xs font-medium text-muted-foreground">{t('gitWebhookSecretLabel')}</label>
               <Input
                 id="git-secret" type="password" required minLength={8}
                 value={webhookSecret}
                 onChange={(e) => setWebhookSecret(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t('gitWebhookSecretPlaceholder')}
                 autoComplete="new-password"
               />
               <span className="text-xs text-muted-foreground">
-                Paste the same secret you'll enter on the provider side. Used to verify incoming webhook payloads.
+                {t('gitWebhookSecretHint')}
               </span>
             </div>
 
@@ -343,12 +344,12 @@ function CreateConnectionDialog({
             <div className="rounded-md border border-border bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">
               <div className="flex items-center gap-1.5 mb-1 text-foreground font-medium">
                 <Info className="size-3.5 text-primary" />
-                Setup checklist
+                {t('gitSetupChecklistTitle')}
               </div>
               <ol className="list-decimal pl-5 space-y-0.5">
-                <li>Subscribe to <strong>Pull request</strong> and <strong>Push</strong> events on the provider side.</li>
-                <li>Set content type to <code className="font-mono">application/json</code>.</li>
-                <li>Use the URL and secret above.</li>
+                <li>{t('gitSetupStep1')}</li>
+                <li>{t('gitSetupStep2')}</li>
+                <li>{t('gitSetupStep3')}</li>
               </ol>
             </div>
 
@@ -359,13 +360,13 @@ function CreateConnectionDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('gitCancel')}</Button>
             <Button
               type="submit"
               variant="primary"
               disabled={isPending || !repoOwner.trim() || !repoName.trim() || webhookSecret.length < 8}
             >
-              {isPending ? 'Connecting…' : 'Connect repository'}
+              {isPending ? t('gitConnecting') : t('gitConnectRepository')}
             </Button>
           </DialogFooter>
         </form>
@@ -378,7 +379,7 @@ function CreateConnectionDialog({
 // Copy-to-clipboard field
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CopyField({ value }: { value: string }) {
+function CopyField({ value, copyLabel, webhookUrlAria }: { value: string; copyLabel: string; webhookUrlAria: string }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
@@ -397,7 +398,7 @@ function CopyField({ value }: { value: string }) {
         value={value}
         onFocus={(e) => e.currentTarget.select()}
         className="flex-1 min-w-0 px-3 py-1.5 text-xs font-mono bg-transparent focus:outline-none"
-        aria-label="Webhook URL"
+        aria-label={webhookUrlAria}
       />
       <Button
         type="button"
@@ -405,7 +406,7 @@ function CopyField({ value }: { value: string }) {
         size="sm"
         className="rounded-none border-l border-input shrink-0"
         onClick={copy}
-        aria-label="Copy to clipboard"
+        aria-label={copyLabel}
       >
         {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
       </Button>
@@ -426,18 +427,18 @@ function ListSkeleton() {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Integrations');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <GitPullRequest className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No repositories connected</div>
+        <div className="text-sm font-medium text-foreground">{t('gitNoReposTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-md">
-          Connect a GitHub or GitLab repo so commits and pull requests that mention an issue key
-          show up on the matching issue automatically.
+          {t('gitNoReposBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Connect repository
+        <Plus className="size-4" /> {t('gitConnectRepoBtn')}
       </Button>
     </div>
   );

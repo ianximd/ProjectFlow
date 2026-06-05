@@ -1,9 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { NextIntlClientProvider } from 'next-intl';
 import type { Permission } from '@projectflow/types';
+import enMessages from '../../../../messages/en.json';
 
 import { PermissionPicker } from '../PermissionPicker';
+
+function renderPicker(props: React.ComponentProps<typeof PermissionPicker>) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      <PermissionPicker {...props} />
+    </NextIntlClientProvider>,
+  );
+}
 
 // Minimal catalog spanning two scopes and two resources so we can exercise
 // the scope filter, the resource grouping, and the "select all in group"
@@ -17,14 +27,12 @@ const catalog: Permission[] = [
 
 describe('PermissionPicker', () => {
   it('renders the scope-filtered catalog grouped by resource', () => {
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set()}
-        onChange={() => {}}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(),
+      onChange: () => {},
+    });
 
     // WORKSPACE scope: task + workspace groups visible, admin (SYSTEM) hidden.
     expect(screen.getByLabelText(/^task$/i)).toBeInTheDocument();
@@ -39,27 +47,23 @@ describe('PermissionPicker', () => {
   });
 
   it('shows the empty-state hint when no permission matches the scope', () => {
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="SYSTEM"
-        selectedIds={new Set()}
-        onChange={() => {}}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "SYSTEM",
+      selectedIds: new Set(),
+      onChange: () => {},
+    });
 
     // Only one SYSTEM permission exists, so the resource group renders.
     // To prove the empty state, swap the catalog to one that has no matches.
     expect(screen.getByLabelText('roles')).toBeInTheDocument();
 
-    render(
-      <PermissionPicker
-        catalog={[]}
-        scope="SYSTEM"
-        selectedIds={new Set()}
-        onChange={() => {}}
-      />,
-    );
+    renderPicker({
+      catalog: [],
+      scope: "SYSTEM",
+      selectedIds: new Set(),
+      onChange: () => {},
+    });
     expect(screen.getByText(/No permissions available for this scope/)).toBeInTheDocument();
   });
 
@@ -67,14 +71,12 @@ describe('PermissionPicker', () => {
     const onChange = vi.fn();
     const user     = userEvent.setup();
 
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set()}
-        onChange={onChange}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(),
+      onChange,
+    });
 
     await user.click(screen.getByLabelText('create'));
 
@@ -88,14 +90,12 @@ describe('PermissionPicker', () => {
     const onChange = vi.fn();
     const user     = userEvent.setup();
 
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set(['p-task-create', 'p-task-delete'])}
-        onChange={onChange}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(['p-task-create', 'p-task-delete']),
+      onChange,
+    });
 
     await user.click(screen.getByLabelText('create'));
 
@@ -107,14 +107,12 @@ describe('PermissionPicker', () => {
     const onChange = vi.fn();
     const user     = userEvent.setup();
 
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set()}
-        onChange={onChange}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(),
+      onChange,
+    });
 
     await user.click(screen.getByLabelText(/Toggle all task permissions/));
 
@@ -126,14 +124,12 @@ describe('PermissionPicker', () => {
     const onChange = vi.fn();
     const user     = userEvent.setup();
 
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set(['p-task-create', 'p-task-delete', 'p-ws-update'])}
-        onChange={onChange}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(['p-task-create', 'p-task-delete', 'p-ws-update']),
+      onChange,
+    });
 
     await user.click(screen.getByLabelText(/Toggle all task permissions/));
 
@@ -143,14 +139,12 @@ describe('PermissionPicker', () => {
   });
 
   it('renders a partial-selection badge with the count', () => {
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set(['p-task-create'])}
-        onChange={() => {}}
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(['p-task-create']),
+      onChange: () => {},
+    });
 
     // Partial state: 1 of 2 task perms selected → "1/2" badge appears in the
     // task group header.
@@ -158,15 +152,13 @@ describe('PermissionPicker', () => {
   });
 
   it('disables every checkbox when disabled prop is set', () => {
-    render(
-      <PermissionPicker
-        catalog={catalog}
-        scope="WORKSPACE"
-        selectedIds={new Set(['p-task-create'])}
-        onChange={() => {}}
-        disabled
-      />,
-    );
+    renderPicker({
+      catalog,
+      scope: "WORKSPACE",
+      selectedIds: new Set(['p-task-create']),
+      onChange: () => {},
+      disabled: true,
+    });
 
     // Every checkbox in the form is disabled (group toggles + per-perm).
     const boxes = screen.getAllByRole('checkbox');

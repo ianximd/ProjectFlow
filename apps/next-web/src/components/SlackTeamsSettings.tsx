@@ -5,6 +5,7 @@ import type { JSX } from 'react';
 import {
   MessageSquare, Plus, Trash2, ExternalLink, Send, CheckCircle2, AlertTriangle, Info,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import type {
   IntegrationConnection,
@@ -32,11 +33,17 @@ import { cn } from '@/lib/utils';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALL_EVENTS: { value: IntegrationEvent; label: string; description: string }[] = [
-  { value: 'task.created',      label: 'Task created',      description: 'A new issue is created in any project of this workspace' },
-  { value: 'task.transitioned', label: 'Task transitioned', description: 'An issue moves between workflow statuses' },
-  { value: 'sprint.started',    label: 'Sprint started',    description: 'A sprint enters the ACTIVE state' },
-  { value: 'sprint.completed',  label: 'Sprint completed',  description: 'A sprint is closed out' },
+// Each event carries translation keys instead of hardcoded strings.
+// At render time components call t(item.labelKey) / t(item.descKey).
+const ALL_EVENTS: {
+  value: IntegrationEvent;
+  labelKey: 'slackEventTaskCreated' | 'slackEventTaskTransitioned' | 'slackEventSprintStarted' | 'slackEventSprintCompleted';
+  descKey:  'slackEventTaskCreatedDesc' | 'slackEventTaskTransitionedDesc' | 'slackEventSprintStartedDesc' | 'slackEventSprintCompletedDesc';
+}[] = [
+  { value: 'task.created',      labelKey: 'slackEventTaskCreated',      descKey: 'slackEventTaskCreatedDesc' },
+  { value: 'task.transitioned', labelKey: 'slackEventTaskTransitioned',  descKey: 'slackEventTaskTransitionedDesc' },
+  { value: 'sprint.started',    labelKey: 'slackEventSprintStarted',     descKey: 'slackEventSprintStartedDesc' },
+  { value: 'sprint.completed',  labelKey: 'slackEventSprintCompleted',   descKey: 'slackEventSprintCompletedDesc' },
 ];
 const DEFAULT_EVENTS: IntegrationEvent[] = ALL_EVENTS.map((e) => e.value);
 
@@ -81,6 +88,7 @@ const PROVIDER_DOCS: Record<IntegrationProvider, string> = {
 interface Props { workspaceId: string }
 
 export default function SlackTeamsSettings({ workspaceId }: Props) {
+  const t = useTranslations('Integrations');
   const [connections, setConnections] = useState<IntegrationConnection[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -104,7 +112,8 @@ export default function SlackTeamsSettings({ workspaceId }: Props) {
     await refetch();
   });
 
-  const onDelete = (id: string) => startDelete(async () => {
+  const onDelete = (id: string, channelName: string) => startDelete(async () => {
+    if (!window.confirm(t('slackRemoveConfirm', { channel: channelName }))) return;
     const r = await deleteIntegration(id);
     if (!r.ok) return notifyActionError(r);
     await refetch();
@@ -121,15 +130,13 @@ export default function SlackTeamsSettings({ workspaceId }: Props) {
             <MessageSquare className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-foreground">Notify Slack &amp; Teams channels</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('slackNotifyTitle')}</h3>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Send a message to a channel whenever an issue is created or transitioned, or when a sprint
-              starts or completes. Paste an <strong>Incoming Webhook URL</strong> from your Slack app or
-              Teams connector.
+              {t('slackNotifyDesc')}
             </p>
           </div>
           <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)} className="shrink-0">
-            <Plus className="size-4" /> Add connection
+            <Plus className="size-4" /> {t('slackAddConnection')}
           </Button>
         </div>
       </Card>
@@ -146,11 +153,7 @@ export default function SlackTeamsSettings({ workspaceId }: Props) {
               key={c.id}
               conn={c}
               busy={deleting}
-              onDelete={() => {
-                if (window.confirm(`Remove the connection for ${c.channelName}?\n\nMessages will stop being sent. You can re-add the same webhook URL later.`)) {
-                  onDelete(c.id);
-                }
-              }}
+              onDelete={() => onDelete(c.id, c.channelName)}
             />
           ))}
         </div>
@@ -178,6 +181,7 @@ function ConnectionCard({
   onDelete: () => void;
   busy: boolean;
 }) {
+  const t = useTranslations('Integrations');
   const created = new Date(conn.createdAt);
   return (
     <Card className={cn('p-4 flex flex-col gap-3', !conn.isActive && 'opacity-70')}>
@@ -190,7 +194,7 @@ function ConnectionCard({
             <h3 className="text-sm font-semibold text-foreground truncate">{conn.channelName}</h3>
             {!conn.isActive && (
               <Badge size="xs" variant="outline" appearance="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                Inactive
+                {t('slackInactiveLabel')}
               </Badge>
             )}
           </div>
@@ -199,10 +203,9 @@ function ConnectionCard({
               {PROVIDER_LABELS[conn.provider]}
             </Badge>
             <span>
-              Added{' '}
-              {Number.isFinite(created.getTime())
-                ? formatShortDateYear(created)
-                : '—'}
+              {t('slackAddedBadge', {
+                date: Number.isFinite(created.getTime()) ? formatShortDateYear(created) : '—',
+              })}
             </span>
           </div>
         </div>
@@ -211,7 +214,7 @@ function ConnectionCard({
           className="text-destructive hover:text-destructive shrink-0"
           onClick={onDelete}
           disabled={busy}
-          aria-label={`Remove ${conn.channelName}`}
+          aria-label={t('slackRemoveAriaLabel', { channel: conn.channelName })}
         >
           <Trash2 className="size-3.5" />
         </Button>
@@ -235,7 +238,7 @@ function ConnectionCard({
               )}
             >
               <span className={cn('inline-block size-1.5 rounded-full', enabled ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
-              {e.label}
+              {t(e.labelKey)}
             </Badge>
           );
         })}
@@ -259,6 +262,7 @@ function CreateConnectionDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Integrations');
   const [provider,    setProvider]    = useState<IntegrationProvider>('slack');
   const [channelName, setChannelName] = useState('');
   const [webhookUrl,  setWebhookUrl]  = useState('');
@@ -294,7 +298,7 @@ function CreateConnectionDialog({
     >
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>New integration</DialogTitle>
+          <DialogTitle>{t('slackNewIntegrationTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -305,7 +309,7 @@ function CreateConnectionDialog({
           <DialogBody className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
             {/* Provider tiles */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Platform</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('slackPlatformLabel')}</label>
               <div className="grid grid-cols-2 gap-2">
                 {(['slack', 'msteams'] as IntegrationProvider[]).map((p) => {
                   const active = provider === p;
@@ -332,17 +336,21 @@ function CreateConnectionDialog({
 
             {/* Channel + webhook URL */}
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="slk-channel" className="text-xs font-medium text-muted-foreground">Channel label</label>
+              <label htmlFor="slk-channel" className="text-xs font-medium text-muted-foreground">
+                {t('slackChannelLabel')}
+              </label>
               <Input
                 id="slk-channel" required value={channelName} autoFocus
                 onChange={(e) => setChannelName(e.target.value)}
                 placeholder={placeholder.channel}
               />
-              <span className="text-xs text-muted-foreground">A friendly name — shown in the connection list. The actual destination is decided by the webhook URL.</span>
+              <span className="text-xs text-muted-foreground">{t('slackChannelHint')}</span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="slk-url" className="text-xs font-medium text-muted-foreground">Incoming webhook URL</label>
+              <label htmlFor="slk-url" className="text-xs font-medium text-muted-foreground">
+                {t('slackIncomingWebhookLabel')}
+              </label>
               <Input
                 id="slk-url" type="url" required
                 value={webhookUrl}
@@ -352,13 +360,13 @@ function CreateConnectionDialog({
                 className="font-mono text-xs"
               />
               <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
-                Need help?{' '}
+                {t('slackNeedHelp')}{' '}
                 <a
                   href={PROVIDER_DOCS[provider]}
                   target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-0.5 text-primary hover:underline"
                 >
-                  {PROVIDER_LABELS[provider]} webhook docs
+                  {t('slackWebhookDocsLabel', { provider: PROVIDER_LABELS[provider] })}
                   <ExternalLink className="size-3" />
                 </a>
               </span>
@@ -372,11 +380,11 @@ function CreateConnectionDialog({
                 disabled={!webhookUrl || testStatus === 'testing'}
               >
                 <Send className="size-3.5" />
-                {testStatus === 'testing' ? 'Sending…' : 'Send test message'}
+                {testStatus === 'testing' ? t('slackSending') : t('slackSendTestMessage')}
               </Button>
               {testStatus === 'ok' && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" /> Delivered
+                  <CheckCircle2 className="size-3.5" /> {t('slackDelivered')}
                 </span>
               )}
               {testStatus === 'err' && (
@@ -384,27 +392,24 @@ function CreateConnectionDialog({
                   <AlertTriangle className="size-3.5" /> {testError}
                 </span>
               )}
-              <span className="ml-auto text-xs text-muted-foreground">
-                Sends a one-line "Hello from ProjectFlow" to the URL above.
-              </span>
             </div>
 
             {/* Event subscriptions */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">Notify on events</label>
+                <label className="text-xs font-medium text-muted-foreground">{t('slackNotifyOnEvents')}</label>
                 <div className="flex items-center gap-2 text-xs">
                   <button
                     type="button"
                     className="text-primary hover:underline"
                     onClick={() => setEvents([...DEFAULT_EVENTS])}
-                  >All</button>
+                  >{t('slackSelectAll')}</button>
                   <span className="text-muted-foreground">·</span>
                   <button
                     type="button"
                     className="text-primary hover:underline"
                     onClick={() => setEvents([])}
-                  >None</button>
+                  >{t('slackSelectNone')}</button>
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -425,8 +430,8 @@ function CreateConnectionDialog({
                         className="mt-1 size-3.5 accent-primary"
                       />
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-foreground">{e.label}</span>
-                        <span className="text-xs text-muted-foreground">{e.description}</span>
+                        <span className="text-sm font-medium text-foreground">{t(e.labelKey)}</span>
+                        <span className="text-xs text-muted-foreground">{t(e.descKey)}</span>
                       </div>
                     </label>
                   );
@@ -434,7 +439,7 @@ function CreateConnectionDialog({
               </div>
               {events.length === 0 && (
                 <div className="text-xs text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
-                  <Info className="size-3.5" /> Pick at least one event — otherwise the connection won't fire.
+                  <Info className="size-3.5" /> {t('slackPickAtLeastOneEvent')}
                 </div>
               )}
             </div>
@@ -446,9 +451,11 @@ function CreateConnectionDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+              {t('slackCancel')}
+            </Button>
             <Button type="submit" variant="primary" disabled={!canSubmit}>
-              {isPending ? 'Saving…' : 'Save connection'}
+              {isPending ? t('slackSaving') : t('slackSaveConnection')}
             </Button>
           </DialogFooter>
         </form>
@@ -470,17 +477,18 @@ function ListSkeleton() {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Integrations');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <MessageSquare className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No integrations yet</div>
+        <div className="text-sm font-medium text-foreground">{t('slackNoIntegrationsTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-md">
-          Connect a Slack channel or Microsoft Teams channel to get pinged when issues move or sprints turn over.
+          {t('slackNoIntegrationsBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Add your first connection
+        <Plus className="size-4" /> {t('slackAddFirstConnection')}
       </Button>
     </div>
   );

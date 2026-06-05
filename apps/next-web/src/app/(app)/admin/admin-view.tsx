@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useTransition } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import styles from './page.module.css';
 import type {
   AdminStats,
@@ -107,6 +108,7 @@ export function AdminView({
   currentFrom,
   currentTo,
 }: AdminViewProps) {
+  const t = useTranslations('Admin');
   const navigate = useAdminNav();
   const [isPending, startTransition] = useTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -179,9 +181,7 @@ export function AdminView({
   };
 
   const handleDeleteUser = (u: AdminUser) => {
-    if (!window.confirm(
-      `Permanently delete ${u.email}?\n\nThis cannot be undone. The action will be refused if the user owns workspaces, has reported tasks, comments, attachments, or work logs — suspend them and reassign their work first.`,
-    )) return;
+    if (!window.confirm(t('deleteUserConfirm', { email: u.email }))) return;
     setPendingId(u.id);
     startTransition(async () => {
       const res = await deleteUser(u.id);
@@ -210,9 +210,7 @@ export function AdminView({
   };
 
   const handleResetPassword = (u: AdminUser) => {
-    if (!window.confirm(
-      `Generate a new temporary password for ${u.email}?\n\nThe current password will stop working immediately.`,
-    )) return;
+    if (!window.confirm(t('resetPasswordConfirm', { email: u.email }))) return;
     setPendingId(u.id);
     startTransition(async () => {
       const res = await resetPassword(u.id);
@@ -223,9 +221,7 @@ export function AdminView({
   };
 
   const handleDisableMfa = (u: AdminUser) => {
-    if (!window.confirm(
-      `Disable MFA for ${u.email}?\n\nThe user will be able to sign in with just their password.`,
-    )) return;
+    if (!window.confirm(t('disableMfaConfirm', { email: u.email }))) return;
     setPendingId(u.id);
     startTransition(async () => {
       const res = await disableMfa(u.id);
@@ -265,23 +261,29 @@ export function AdminView({
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Admin Panel</h1>
-        <p className={styles.subtitle}>System management &amp; audit log viewer</p>
+        <h1 className={styles.title}>{t('panelTitle')}</h1>
+        <p className={styles.subtitle}>{t('panelSubtitle')}</p>
       </div>
 
       {/* Tabs */}
-      <div className={styles.tabs} role="tablist" aria-label="Admin sections">
-        {(['stats', 'users', 'workspaces', 'audit', 'roles'] as Tab[]).map((t) => (
+      <div className={styles.tabs} role="tablist" aria-label={t('tabsAriaLabel')}>
+        {(['stats', 'users', 'workspaces', 'audit', 'roles'] as Tab[]).map((tab) => (
           <button
-            key={t}
+            key={tab}
             role="tab"
-            aria-selected={activeTab === t}
-            aria-controls={`panel-${t}`}
-            id={`tab-${t}`}
-            className={`${styles.tab} ${activeTab === t ? styles.tabActive : ''}`}
-            onClick={() => switchTab(t)}
+            aria-selected={activeTab === tab}
+            aria-controls={`panel-${tab}`}
+            id={`tab-${tab}`}
+            className={`${styles.tab} ${activeTab === tab ? styles.tabActive : ''}`}
+            onClick={() => switchTab(tab)}
           >
-            {{ stats: 'Overview', users: 'Users', workspaces: 'Workspaces', audit: 'Audit Log', roles: 'Roles & Permissions' }[t]}
+            {{
+              stats:      t('tabOverview'),
+              users:      t('tabUsers'),
+              workspaces: t('tabWorkspaces'),
+              audit:      t('tabAuditLog'),
+              roles:      t('tabRolesPermissions'),
+            }[tab]}
           </button>
         ))}
       </div>
@@ -290,13 +292,13 @@ export function AdminView({
       {activeTab === 'stats' && statsData && (
         <div className={styles.statsGrid} id="panel-stats" role="tabpanel" aria-labelledby="tab-stats">
           {([
-            ['Total Users',         statsData.totalUsers],
-            ['Total Workspaces',    statsData.totalWorkspaces],
-            ['Total Projects',      statsData.totalProjects],
-            ['Total Tasks',         statsData.totalTasks],
-            ['Tasks Today',         statsData.tasksCreatedToday],
-            ['Logins (24h)',        statsData.loginsLast24h],
-            ['Audit Events Today',  statsData.auditEventsToday],
+            [t('statTotalUsers'),        statsData.totalUsers],
+            [t('statTotalWorkspaces'),   statsData.totalWorkspaces],
+            [t('statTotalProjects'),     statsData.totalProjects],
+            [t('statTotalTasks'),        statsData.totalTasks],
+            [t('statTasksToday'),        statsData.tasksCreatedToday],
+            [t('statLogins24h'),         statsData.loginsLast24h],
+            [t('statAuditEventsToday'),  statsData.auditEventsToday],
           ] as [string, number][]).map(([label, value]) => (
             <div key={label} className={styles.statCard}>
               <div className={styles.statValue}>{value.toLocaleString()}</div>
@@ -310,11 +312,11 @@ export function AdminView({
       {activeTab === 'users' && (
         <div id="panel-users" role="tabpanel" aria-labelledby="tab-users">
           <div className={styles.filterBar}>
-            <label htmlFor="user-search" className="sr-only">Search users</label>
+            <label htmlFor="user-search" className="sr-only">{t('searchUsersLabel')}</label>
             <input
               id="user-search"
               className={styles.searchInput}
-              placeholder="Search by name or email…"
+              placeholder={t('searchUsersPlaceholder')}
               defaultValue={currentSearch}
               onChange={(e) => onSearchChange(e.target.value)}
             />
@@ -322,42 +324,42 @@ export function AdminView({
               <button
                 className={styles.btnPrimary}
                 onClick={() => setCreateOpen(true)}
-                aria-label="Create new user"
+                aria-label={t('createNewUserAriaLabel')}
               >
-                + New user
+                {t('createNewUser')}
               </button>
             </div>
           </div>
 
           {selected.size > 0 && (
-            <div className={styles.bulkBar} role="region" aria-label="Bulk actions">
+            <div className={styles.bulkBar} role="region" aria-label={t('bulkActionsAriaLabel')}>
               <strong>{selected.size}</strong> selected
               <button
                 className={styles.btnSecondary}
                 onClick={() => handleBulkSuspend(true)}
                 disabled={isPending}
-              >Suspend</button>
+              >{t('bulkSuspend')}</button>
               <button
                 className={styles.btnSecondary}
                 onClick={() => handleBulkSuspend(false)}
                 disabled={isPending}
-              >Restore</button>
+              >{t('bulkRestore')}</button>
               <button
                 className={styles.btnSecondary}
                 onClick={() => setSelected(new Set())}
                 style={{ marginLeft: 'auto' }}
-              >Clear</button>
+              >{t('bulkClear')}</button>
             </div>
           )}
 
           <div className={styles.tableWrap}>
-            <table className={styles.table} aria-label="Users">
+            <table className={styles.table} aria-label={t('usersTableAriaLabel')}>
               <thead>
                 <tr>
                   <th scope="col" className={styles.checkCol}>
                     <input
                       type="checkbox"
-                      aria-label="Select all on this page"
+                      aria-label={t('colSelectAllThisPage')}
                       checked={
                         (usersData?.items?.length ?? 0) > 0 &&
                         (usersData?.items ?? []).every((u) => selected.has(u.id))
@@ -365,26 +367,26 @@ export function AdminView({
                       onChange={() => toggleSelectAll((usersData?.items ?? []).map((u) => u.id))}
                     />
                   </th>
-                  <th scope="col">Email</th>
-                  <th scope="col">Name</th>
-                  <th scope="col">Verified</th>
-                  <th scope="col">MFA</th>
-                  <th scope="col">Workspaces</th>
-                  <th scope="col">Created</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Actions</th>
+                  <th scope="col">{t('colEmail')}</th>
+                  <th scope="col">{t('colName')}</th>
+                  <th scope="col">{t('colVerified')}</th>
+                  <th scope="col">{t('colMfa')}</th>
+                  <th scope="col">{t('colWorkspaces')}</th>
+                  <th scope="col">{t('colCreated')}</th>
+                  <th scope="col">{t('colStatus')}</th>
+                  <th scope="col">{t('colActions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(usersData?.items ?? []).length === 0 && (
-                  <tr><td colSpan={9} className={styles.empty}>No users found</td></tr>
+                  <tr><td colSpan={9} className={styles.empty}>{t('noUsersFound')}</td></tr>
                 )}
                 {(usersData?.items ?? []).map((u) => (
                   <tr key={u.id}>
                     <td className={styles.checkCol}>
                       <input
                         type="checkbox"
-                        aria-label={`Select ${u.email}`}
+                        aria-label={t('colSelectUser', { email: u.email })}
                         checked={selected.has(u.id)}
                         onChange={() => toggleSelect(u.id)}
                       />
@@ -393,12 +395,12 @@ export function AdminView({
                     <td>{u.name}</td>
                     <td>
                       <span className={`${styles.badge} ${u.isEmailVerified ? styles.badgeGreen : styles.badgeYellow}`}>
-                        {u.isEmailVerified ? 'Yes' : 'No'}
+                        {u.isEmailVerified ? t('verifiedYes') : t('verifiedNo')}
                       </span>
                     </td>
                     <td>
                       <span className={`${styles.badge} ${u.mfaEnabled ? styles.badgeBlue : styles.badgeGray}`}>
-                        {u.mfaEnabled ? 'On' : 'Off'}
+                        {u.mfaEnabled ? t('mfaOn') : t('mfaOff')}
                       </span>
                     </td>
                     <td>{u.workspaceCount}</td>
@@ -414,7 +416,7 @@ export function AdminView({
                           <span
                             className={`${styles.badge} ${toneClass}`}
                             title={u.lockedUntil && tone === 'orange'
-                              ? `Locked until ${new Date(u.lockedUntil).toLocaleString()}`
+                              ? t('lockedUntil', { datetime: new Date(u.lockedUntil).toLocaleString() })
                               : undefined}
                           >
                             {label}
@@ -427,62 +429,62 @@ export function AdminView({
                         <button
                           className={`${styles.actionBtn} ${styles.btnEdit}`}
                           onClick={() => setEditingUser(u)}
-                          aria-label={`Edit ${u.email}`}
+                          aria-label={t('ariaEdit', { email: u.email })}
                           disabled={pendingId === u.id}
-                        >Edit</button>
+                        >{t('btnEdit')}</button>
 
                         <button
                           className={`${styles.actionBtn} ${styles.btnEdit}`}
                           onClick={() => setRolesUser(u)}
-                          aria-label={`Manage roles for ${u.email}`}
-                        >Roles</button>
+                          aria-label={t('ariaManageRoles', { email: u.email })}
+                        >{t('btnRoles')}</button>
 
                         {u.deletedAt ? (
                           <button
                             className={`${styles.actionBtn} ${styles.btnRestore}`}
                             onClick={() => handleRestoreUser(u)}
-                            aria-label={`Restore ${u.email}`}
+                            aria-label={t('ariaRestore', { email: u.email })}
                             disabled={pendingId === u.id}
-                          >Restore</button>
+                          >{t('btnRestore')}</button>
                         ) : (
                           <button
                             className={`${styles.actionBtn} ${styles.btnSuspend}`}
                             onClick={() => handleSuspendUser(u)}
-                            aria-label={`Suspend ${u.email}`}
+                            aria-label={t('ariaSuspend', { email: u.email })}
                             disabled={pendingId === u.id}
-                          >Suspend</button>
+                          >{t('btnSuspend')}</button>
                         )}
 
                         <button
                           className={`${styles.actionBtn} ${styles.btnRecover}`}
                           onClick={() => handleResetPassword(u)}
-                          aria-label={`Reset password for ${u.email}`}
+                          aria-label={t('ariaResetPw', { email: u.email })}
                           disabled={pendingId === u.id}
-                        >Reset PW</button>
+                        >{t('btnResetPw')}</button>
 
                         {u.mfaEnabled && (
                           <button
                             className={`${styles.actionBtn} ${styles.btnRecover}`}
                             onClick={() => handleDisableMfa(u)}
-                            aria-label={`Disable MFA for ${u.email}`}
+                            aria-label={t('ariaDisableMfa', { email: u.email })}
                             disabled={pendingId === u.id}
-                          >Disable MFA</button>
+                          >{t('btnDisableMfa')}</button>
                         )}
 
                         <button
                           className={`${styles.actionBtn} ${styles.btnRecover}`}
                           onClick={() => handleUnlockUser(u)}
-                          aria-label={`Unlock ${u.email}`}
-                          title="Clear failed-login lockout"
+                          aria-label={t('ariaUnlock', { email: u.email })}
+                          title={t('btnUnlockTitle')}
                           disabled={pendingId === u.id}
-                        >Unlock</button>
+                        >{t('btnUnlock')}</button>
 
                         <button
                           className={`${styles.actionBtn} ${styles.btnDelete}`}
                           onClick={() => handleDeleteUser(u)}
-                          aria-label={`Delete ${u.email}`}
+                          aria-label={t('ariaDelete', { email: u.email })}
                           disabled={pendingId === u.id}
-                        >Delete</button>
+                        >{t('btnDelete')}</button>
                       </div>
                     </td>
                   </tr>
@@ -531,21 +533,21 @@ export function AdminView({
       {activeTab === 'workspaces' && (
         <div id="panel-workspaces" role="tabpanel" aria-labelledby="tab-workspaces">
           <div className={styles.tableWrap}>
-            <table className={styles.table} aria-label="Workspaces">
+            <table className={styles.table} aria-label={t('workspacesTableAriaLabel')}>
               <thead>
                 <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Slug</th>
-                  <th scope="col">Owner</th>
-                  <th scope="col">Members</th>
-                  <th scope="col">Projects</th>
-                  <th scope="col">Created</th>
-                  <th scope="col">Status</th>
+                  <th scope="col">{t('colWsName')}</th>
+                  <th scope="col">{t('colWsSlug')}</th>
+                  <th scope="col">{t('colWsOwner')}</th>
+                  <th scope="col">{t('colWsMembers')}</th>
+                  <th scope="col">{t('colWsProjects')}</th>
+                  <th scope="col">{t('colWsCreated')}</th>
+                  <th scope="col">{t('colWsStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(workspacesData?.items ?? []).length === 0 && (
-                  <tr><td colSpan={7} className={styles.empty}>No workspaces found</td></tr>
+                  <tr><td colSpan={7} className={styles.empty}>{t('noWorkspacesFound')}</td></tr>
                 )}
                 {(workspacesData?.items ?? []).map((w) => (
                   <tr key={w.id}>
@@ -568,7 +570,7 @@ export function AdminView({
                             <span className={`${styles.badge} ${toneClass}`}>{label}</span>
                             {!w.deletedAt && (
                               <select
-                                aria-label={`Change status of ${w.name}`}
+                                aria-label={t('changeWsStatusAria', { name: w.name })}
                                 className={styles.statusSelect}
                                 value={w.status}
                                 onChange={(e) => handleWsStatusChange(w.id, e.target.value as WorkspaceStatus)}
@@ -602,74 +604,74 @@ export function AdminView({
       {activeTab === 'audit' && (
         <div id="panel-audit" role="tabpanel" aria-labelledby="tab-audit">
           <div className={styles.filterBar}>
-            <label htmlFor="audit-resource" className="sr-only">Filter by resource</label>
+            <label htmlFor="audit-resource" className="sr-only">{t('auditFilterResourceLabel')}</label>
             <select
               id="audit-resource"
               className={styles.filterSelect}
               value={currentResource}
               onChange={(e) => navigate({ resource: e.target.value || undefined, page: undefined })}
-              aria-label="Filter by resource"
+              aria-label={t('auditFilterResourceAria')}
             >
-              <option value="">All resources</option>
+              <option value="">{t('auditAllResources')}</option>
               {['Task','Project','Sprint','Workspace','Comment','AutomationRule',
                 'Webhook','OutgoingWebhook','WorkLog','Version','Label','Component',
                 'Epic','GitIntegration','Auth','Admin',
               ].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
 
-            <label htmlFor="audit-action" className="sr-only">Filter by action</label>
+            <label htmlFor="audit-action" className="sr-only">{t('auditFilterActionLabel')}</label>
             <select
               id="audit-action"
               className={styles.filterSelect}
               value={currentAction}
               onChange={(e) => navigate({ action: e.target.value || undefined, page: undefined })}
-              aria-label="Filter by action"
+              aria-label={t('auditFilterActionAria')}
             >
-              <option value="">All actions</option>
+              <option value="">{t('auditAllActions')}</option>
               {['CREATE','UPDATE','DELETE','LOGIN','LOGOUT'].map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
             </select>
 
-            <label htmlFor="audit-from" className="sr-only">From date</label>
+            <label htmlFor="audit-from" className="sr-only">{t('auditFromDateLabel')}</label>
             <input
               id="audit-from"
               className={styles.dateInput}
               type="date"
-              aria-label="From date"
+              aria-label={t('auditFromDateAria')}
               value={currentFrom}
               onChange={(e) => navigate({ from: e.target.value || undefined, page: undefined })}
             />
-            <label htmlFor="audit-to" className="sr-only">To date</label>
+            <label htmlFor="audit-to" className="sr-only">{t('auditToDateLabel')}</label>
             <input
               id="audit-to"
               className={styles.dateInput}
               type="date"
-              aria-label="To date"
+              aria-label={t('auditToDateAria')}
               value={currentTo}
               onChange={(e) => navigate({ to: e.target.value || undefined, page: undefined })}
             />
-            <button className={styles.pageBtn} onClick={resetAuditFilters} aria-label="Clear all filters">
-              Clear
+            <button className={styles.pageBtn} onClick={resetAuditFilters} aria-label={t('auditClearFiltersAria')}>
+              {t('auditClearFilters')}
             </button>
           </div>
 
           <div className={styles.tableWrap}>
-            <table className={styles.table} aria-label="Audit log">
+            <table className={styles.table} aria-label={t('auditTableAriaLabel')}>
               <thead>
                 <tr>
-                  <th scope="col">Time (UTC)</th>
-                  <th scope="col">User</th>
-                  <th scope="col">Action</th>
-                  <th scope="col">Resource</th>
-                  <th scope="col">Resource ID</th>
-                  <th scope="col">IP</th>
-                  <th scope="col">Changes</th>
+                  <th scope="col">{t('colAuditTime')}</th>
+                  <th scope="col">{t('colAuditUser')}</th>
+                  <th scope="col">{t('colAuditAction')}</th>
+                  <th scope="col">{t('colAuditResource')}</th>
+                  <th scope="col">{t('colAuditResourceId')}</th>
+                  <th scope="col">{t('colAuditIp')}</th>
+                  <th scope="col">{t('colAuditChanges')}</th>
                 </tr>
               </thead>
               <tbody>
                 {(auditData?.items ?? []).length === 0 && (
-                  <tr><td colSpan={7} className={styles.empty}>No audit events found</td></tr>
+                  <tr><td colSpan={7} className={styles.empty}>{t('noAuditEventsFound')}</td></tr>
                 )}
                 {(auditData?.items ?? []).map((e) => (
                   <>
@@ -687,10 +689,10 @@ export function AdminView({
                           <button
                             className={styles.pageBtn}
                             aria-expanded={expandedId === e.id}
-                            aria-label={expandedId === e.id ? 'Hide change details' : 'View change details'}
+                            aria-label={expandedId === e.id ? t('auditHideDetails') : t('auditViewDetails')}
                             onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
                           >
-                            {expandedId === e.id ? 'Hide' : 'View'}
+                            {expandedId === e.id ? t('auditHide') : t('auditView')}
                           </button>
                         )}
                       </td>
@@ -700,13 +702,13 @@ export function AdminView({
                         <td colSpan={7} style={{ background: '#0f172a', padding: '0.75rem 1rem' }}>
                           {e.oldValues && (
                             <>
-                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Before</div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('auditBefore')}</div>
                               <pre className={styles.jsonPre}>{JSON.stringify(e.oldValues, null, 2)}</pre>
                             </>
                           )}
                           {e.newValues && (
                             <>
-                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', margin: '0.5rem 0 0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>After</div>
+                              <div style={{ color: '#94a3b8', fontSize: '0.7rem', margin: '0.5rem 0 0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{t('auditAfter')}</div>
                               <pre className={styles.jsonPre}>{JSON.stringify(e.newValues, null, 2)}</pre>
                             </>
                           )}
@@ -746,12 +748,13 @@ function Pagination({
   page: number; total: number; pageSize: number;
   onPrev: () => void; onNext: () => void;
 }) {
+  const t = useTranslations('Admin');
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <div className={styles.pagination}>
-      <span>Page {page} of {totalPages} ({total.toLocaleString()} total)</span>
-      <button className={styles.pageBtn} disabled={page <= 1} onClick={onPrev}>← Prev</button>
-      <button className={styles.pageBtn} disabled={page >= totalPages} onClick={onNext}>Next →</button>
+      <span>{t('paginationPage', { page, total: totalPages, count: total.toLocaleString() })}</span>
+      <button className={styles.pageBtn} disabled={page <= 1} onClick={onPrev}>{t('paginationPrev')}</button>
+      <button className={styles.pageBtn} disabled={page >= totalPages} onClick={onNext}>{t('paginationNext')}</button>
     </div>
   );
 }
@@ -796,6 +799,7 @@ function CreateUserDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Admin');
   const [email,           setEmail]           = useState('');
   const [name,            setName]            = useState('');
   const [password,        setPassword]        = useState('');
@@ -816,40 +820,40 @@ function CreateUserDialog({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Create new user">
+    <Dialog open={open} onClose={onClose} title={t('createUserDialogTitle')}>
       <form onSubmit={submit}>
         <div className={styles.dialogBody}>
           <div className={styles.dialogField}>
-            <label htmlFor="cu-email">Email</label>
+            <label htmlFor="cu-email">{t('cuEmailLabel')}</label>
             <input id="cu-email" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)} autoFocus />
           </div>
           <div className={styles.dialogField}>
-            <label htmlFor="cu-name">Name</label>
+            <label htmlFor="cu-name">{t('cuNameLabel')}</label>
             <input id="cu-name" required value={name}
               onChange={(e) => setName(e.target.value)} />
           </div>
           <div className={styles.dialogField}>
-            <label htmlFor="cu-password">Password (optional)</label>
-            <input id="cu-password" type="text" value={password} placeholder="Leave blank to auto-generate"
+            <label htmlFor="cu-password">{t('cuPasswordLabel')}</label>
+            <input id="cu-password" type="text" value={password} placeholder={t('cuPasswordPlaceholder')}
               onChange={(e) => setPassword(e.target.value)} />
             <span className={styles.dialogHint}>
-              If blank, a temporary password is generated and shown once after submit.
+              {t('cuPasswordHint')}
             </span>
           </div>
           <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', fontSize: '0.85rem', color: '#475569' }}>
             <input type="checkbox" checked={isEmailVerified}
               onChange={(e) => setIsEmailVerified(e.target.checked)} />
-            Mark email as verified (skip verification flow)
+            {t('cuMarkVerified')}
           </label>
           {error && <div className={styles.dialogWarn}>{error}</div>}
         </div>
         <div className={styles.dialogFooter}>
           <button type="button" className={styles.btnSecondary} onClick={onClose} disabled={isPending}>
-            Cancel
+            {t('cuCancel')}
           </button>
           <button type="submit" className={styles.btnPrimary} disabled={isPending || !email || !name}>
-            {isPending ? 'Creating…' : 'Create user'}
+            {isPending ? t('cuCreating') : t('cuCreate')}
           </button>
         </div>
       </form>
@@ -868,6 +872,7 @@ function EditUserDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Admin');
   const [email, setEmail] = useState('');
   const [name,  setName]  = useState('');
 
@@ -886,16 +891,16 @@ function EditUserDialog({
   };
 
   return (
-    <Dialog open={user !== null} onClose={onClose} title={`Edit ${user?.email ?? ''}`}>
+    <Dialog open={user !== null} onClose={onClose} title={t('editUserDialogTitle', { email: user?.email ?? '' })}>
       <form onSubmit={submit}>
         <div className={styles.dialogBody}>
           <div className={styles.dialogField}>
-            <label htmlFor="eu-email">Email</label>
+            <label htmlFor="eu-email">{t('euEmailLabel')}</label>
             <input id="eu-email" type="email" required value={email}
               onChange={(e) => setEmail(e.target.value)} autoFocus />
           </div>
           <div className={styles.dialogField}>
-            <label htmlFor="eu-name">Name</label>
+            <label htmlFor="eu-name">{t('euNameLabel')}</label>
             <input id="eu-name" required value={name}
               onChange={(e) => setName(e.target.value)} />
           </div>
@@ -903,10 +908,10 @@ function EditUserDialog({
         </div>
         <div className={styles.dialogFooter}>
           <button type="button" className={styles.btnSecondary} onClick={onClose} disabled={isPending}>
-            Cancel
+            {t('euCancel')}
           </button>
           <button type="submit" className={styles.btnPrimary} disabled={isPending}>
-            {isPending ? 'Saving…' : 'Save changes'}
+            {isPending ? t('euSaving') : t('euSaveChanges')}
           </button>
         </div>
       </form>
@@ -922,6 +927,7 @@ function TempPasswordDialog({
   data: { email: string; password: string } | null;
   onClose: () => void;
 }) {
+  const t = useTranslations('Admin');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -940,22 +946,22 @@ function TempPasswordDialog({
   };
 
   return (
-    <Dialog open={data !== null} onClose={onClose} title="Temporary password">
+    <Dialog open={data !== null} onClose={onClose} title={t('tempPasswordDialogTitle')}>
       <div className={styles.dialogBody}>
         <p style={{ margin: 0, fontSize: '0.85rem', color: '#475569' }}>
-          For <strong>{data?.email}</strong>:
+          {t('tempPasswordFor')} <strong>{data?.email}</strong>:
         </p>
         <div className={styles.tempPasswordBox}>{data?.password}</div>
         <div className={styles.dialogWarn}>
-          This password is shown only once. Send it to the user through a secure channel and ask them to change it on first login.
+          {t('tempPasswordWarning')}
         </div>
       </div>
       <div className={styles.dialogFooter}>
         <button type="button" className={styles.btnSecondary} onClick={copy}>
-          {copied ? 'Copied ✓' : 'Copy'}
+          {copied ? t('tempPasswordCopied') : t('tempPasswordCopy')}
         </button>
         <button type="button" className={styles.btnPrimary} onClick={onClose}>
-          I&apos;ve saved it
+          {t('tempPasswordSaved')}
         </button>
       </div>
     </Dialog>
@@ -973,6 +979,7 @@ function UserRolesDialog({
   user:    AdminUser | null;
   onClose: () => void;
 }) {
+  const t = useTranslations('Admin');
   const userId = user?.id ?? null;
 
   const [assignments, setAssignments] = useState<UserRoleAssignment[]>([]);
@@ -1028,20 +1035,20 @@ function UserRolesDialog({
   const canAssign = !!pickRoleId && (!needsWs || !!pickWsId) && !pending;
 
   return (
-    <Dialog open={user !== null} onClose={onClose} title={`Roles for ${user?.email ?? ''}`}>
+    <Dialog open={user !== null} onClose={onClose} title={t('userRolesDialogTitle', { email: user?.email ?? '' })}>
       <div className={styles.dialogBody}>
         {assignments.length === 0 ? (
           <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
-            This user has no roles assigned yet.
+            {t('userRolesNoRoles')}
           </p>
         ) : (
           <table className={styles.table} style={{ marginTop: 0 }}>
             <thead>
               <tr>
-                <th scope="col">Role</th>
-                <th scope="col">Scope</th>
-                <th scope="col">Workspace</th>
-                <th scope="col">Assigned</th>
+                <th scope="col">{t('colRoleName')}</th>
+                <th scope="col">{t('colRoleScope')}</th>
+                <th scope="col">{t('colRoleWorkspace')}</th>
+                <th scope="col">{t('colRoleAssigned')}</th>
                 <th scope="col"></th>
               </tr>
             </thead>
@@ -1051,7 +1058,7 @@ function UserRolesDialog({
                   <td>{a.roleName}</td>
                   <td>
                     <span className={`${styles.badge} ${a.roleScope === 'SYSTEM' ? styles.badgeRed : styles.badgeBlue}`}>
-                      {a.roleScope === 'SYSTEM' ? 'System' : 'Workspace'}
+                      {a.roleScope === 'SYSTEM' ? t('roleScopeSystem') : t('roleScopeWorkspace')}
                     </span>
                   </td>
                   <td className={styles.mono}>{a.workspaceName ?? '—'}</td>
@@ -1061,12 +1068,12 @@ function UserRolesDialog({
                       className={`${styles.actionBtn} ${styles.btnDelete}`}
                       disabled={pending}
                       onClick={() => {
-                        if (window.confirm(`Revoke "${a.roleName}" from ${user?.email}?`)) {
+                        if (window.confirm(t('revokeConfirm', { role: a.roleName, email: user?.email ?? '' }))) {
                           onRevoke(a.roleId, a.workspaceId);
                         }
                       }}
-                      aria-label={`Revoke ${a.roleName}`}
-                    >Revoke</button>
+                      aria-label={t('ariaRevoke', { role: a.roleName })}
+                    >{t('btnRevoke')}</button>
                   </td>
                 </tr>
               ))}
@@ -1076,19 +1083,19 @@ function UserRolesDialog({
 
         <div style={{ marginTop: '1rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem' }}>
-            Assign new role
+            {t('assignNewRole')}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <select
               value={pickRoleId}
               onChange={(e) => { setPickRoleId(e.target.value); setPickWsId(''); }}
               className={styles.filterSelect}
-              aria-label="Role to assign"
+              aria-label={t('roleToAssignAria')}
             >
-              <option value="">Select role…</option>
+              <option value="">{t('selectRolePlaceholder')}</option>
               {candidateRoles.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({r.scope === 'SYSTEM' ? 'System' : 'Workspace'})
+                  {r.name} ({r.scope === 'SYSTEM' ? t('roleScopeSystem') : t('roleScopeWorkspace')})
                 </option>
               ))}
             </select>
@@ -1098,9 +1105,9 @@ function UserRolesDialog({
                 value={pickWsId}
                 onChange={(e) => setPickWsId(e.target.value)}
                 className={styles.filterSelect}
-                aria-label="Workspace"
+                aria-label={t('workspaceAria')}
               >
-                <option value="">Workspace…</option>
+                <option value="">{t('workspacePlaceholder')}</option>
                 {workspaces.map((w) => (
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
@@ -1113,7 +1120,7 @@ function UserRolesDialog({
               disabled={!canAssign}
               onClick={onAssign}
             >
-              {pending ? 'Assigning…' : 'Assign'}
+              {pending ? t('assigning') : t('assign')}
             </button>
           </div>
           {assignError && (
@@ -1125,7 +1132,7 @@ function UserRolesDialog({
       </div>
       <div className={styles.dialogFooter}>
         <button type="button" className={styles.btnSecondary} onClick={onClose}>
-          Close
+          {t('rolesDialogClose')}
         </button>
       </div>
     </Dialog>

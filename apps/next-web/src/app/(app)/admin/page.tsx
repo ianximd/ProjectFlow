@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { ShieldAlert } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { requireSession } from '@/server/session';
 import { getAdminStats, getAdminUsers, getAdminWorkspaces, getAuditLog, hasAdminAccess } from '@/server/queries/admin';
 import { AdminView } from './admin-view';
@@ -23,6 +24,7 @@ export default async function AdminPage({
   searchParams: Promise<SearchParams>;
 }) {
   await requireSession();
+  const t = await getTranslations('Admin');
 
   // The Admin nav link is shown app-wide, so a non-admin can land here. Render a
   // clean "not authorized" panel instead of letting the admin.* data fetches
@@ -33,10 +35,9 @@ export default async function AdminPage({
         <div className="rounded-full bg-muted p-3 text-muted-foreground">
           <ShieldAlert className="size-6" aria-hidden="true" />
         </div>
-        <h1 className="text-lg font-semibold text-foreground">Admin access required</h1>
+        <h1 className="text-lg font-semibold text-foreground">{t('accessRequired')}</h1>
         <p className="max-w-sm text-sm text-muted-foreground">
-          You don&apos;t have permission to view the admin area. Ask a workspace
-          owner or super-admin to grant you an admin role.
+          {t('accessRequiredBody')}
         </p>
       </div>
     );

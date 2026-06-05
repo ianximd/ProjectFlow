@@ -5,6 +5,7 @@ import {
   Webhook, Plus, Trash2, Send, CheckCircle2, AlertTriangle, ChevronDown,
   ChevronRight, Activity, ExternalLink, Info,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import type {
   OutgoingWebhook,
@@ -33,14 +34,19 @@ import { cn } from '@/lib/utils';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const ALL_EVENTS: { value: OutgoingWebhookEvent; label: string; description: string }[] = [
-  { value: 'issue.created',     label: 'Issue created',     description: 'A new task / story / bug is created' },
-  { value: 'issue.updated',     label: 'Issue updated',     description: 'Any field on an existing issue changes' },
-  { value: 'issue.deleted',     label: 'Issue deleted',     description: 'An issue is soft-deleted from a project' },
-  { value: 'sprint.started',    label: 'Sprint started',    description: 'A sprint enters the ACTIVE state' },
-  { value: 'sprint.completed',  label: 'Sprint completed',  description: 'A sprint is closed out' },
-  { value: 'comment.created',   label: 'Comment created',   description: 'Someone leaves a comment on an issue' },
-  { value: 'member.invited',    label: 'Member invited',    description: 'A user is added to this workspace' },
+// Each event carries translation keys; components call t(item.labelKey) / t(item.descKey).
+const ALL_EVENTS: {
+  value: OutgoingWebhookEvent;
+  labelKey: 'webhookEventIssueCreated' | 'webhookEventIssueUpdated' | 'webhookEventIssueDeleted' | 'webhookEventSprintStarted' | 'webhookEventSprintCompleted' | 'webhookEventCommentCreated' | 'webhookEventMemberInvited';
+  descKey:  'webhookEventIssueCreatedDesc' | 'webhookEventIssueUpdatedDesc' | 'webhookEventIssueDeletedDesc' | 'webhookEventSprintStartedDesc' | 'webhookEventSprintCompletedDesc' | 'webhookEventCommentCreatedDesc' | 'webhookEventMemberInvitedDesc';
+}[] = [
+  { value: 'issue.created',    labelKey: 'webhookEventIssueCreated',    descKey: 'webhookEventIssueCreatedDesc' },
+  { value: 'issue.updated',    labelKey: 'webhookEventIssueUpdated',    descKey: 'webhookEventIssueUpdatedDesc' },
+  { value: 'issue.deleted',    labelKey: 'webhookEventIssueDeleted',    descKey: 'webhookEventIssueDeletedDesc' },
+  { value: 'sprint.started',   labelKey: 'webhookEventSprintStarted',   descKey: 'webhookEventSprintStartedDesc' },
+  { value: 'sprint.completed', labelKey: 'webhookEventSprintCompleted', descKey: 'webhookEventSprintCompletedDesc' },
+  { value: 'comment.created',  labelKey: 'webhookEventCommentCreated',  descKey: 'webhookEventCommentCreatedDesc' },
+  { value: 'member.invited',   labelKey: 'webhookEventMemberInvited',   descKey: 'webhookEventMemberInvitedDesc' },
 ];
 
 function shortDateTime(iso: string | null): string {
@@ -55,6 +61,7 @@ function shortDateTime(iso: string | null): string {
 interface Props { workspaceId: string }
 
 export default function WebhookManager({ workspaceId }: Props) {
+  const t = useTranslations('Integrations');
   const [webhooks, setWebhooks] = useState<OutgoingWebhook[] | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -78,7 +85,8 @@ export default function WebhookManager({ workspaceId }: Props) {
     await refetch();
   });
 
-  const onDelete = (id: string) => startDelete(async () => {
+  const onDelete = (id: string, name: string) => startDelete(async () => {
+    if (!window.confirm(t('webhookDeleteConfirm', { name }))) return;
     const r = await deleteOutgoingWebhook(id);
     if (!r.ok) return notifyActionError(r);
     await refetch();
@@ -95,15 +103,13 @@ export default function WebhookManager({ workspaceId }: Props) {
             <Webhook className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-foreground">Outgoing webhooks</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('webhookOutgoingTitle')}</h3>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-              Subscribe a URL to events in this workspace. Each delivery is signed with{' '}
-              <code className="font-mono text-foreground bg-muted/60 px-1 py-0.5 rounded">X-ProjectFlow-Signature</code>
-              {' '}(HMAC-SHA256 of the body using your secret), so your endpoint can verify the call is real.
+              {t('webhookOutgoingDesc')}
             </p>
           </div>
           <Button size="sm" variant="primary" onClick={() => setCreateOpen(true)} className="shrink-0">
-            <Plus className="size-4" /> Add webhook
+            <Plus className="size-4" /> {t('webhookAddWebhook')}
           </Button>
         </div>
       </Card>
@@ -121,11 +127,7 @@ export default function WebhookManager({ workspaceId }: Props) {
               webhook={wh}
               workspaceId={workspaceId}
               busy={deleting}
-              onDelete={() => {
-                if (window.confirm(`Delete webhook "${wh.name}"?\n\nFuture events will stop being delivered. Past delivery history is also removed.`)) {
-                  onDelete(wh.id);
-                }
-              }}
+              onDelete={() => onDelete(wh.id, wh.name)}
             />
           ))}
         </div>
@@ -154,6 +156,7 @@ function WebhookCard({
   onDelete: () => void;
   busy: boolean;
 }) {
+  const t = useTranslations('Integrations');
   const [pingStatus, setPingStatus] = useState<'idle' | 'pinging' | 'ok' | 'err'>('idle');
   const [pingError,  setPingError]  = useState('');
   const [pingCode,   setPingCode]   = useState<number | null>(null);
@@ -207,7 +210,7 @@ function WebhookCard({
             <h3 className="text-sm font-semibold text-foreground truncate">{webhook.name}</h3>
             {!webhook.isActive && (
               <Badge size="xs" variant="outline" appearance="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                Inactive
+                {t('webhookInactiveLabel')}
               </Badge>
             )}
           </div>
@@ -227,14 +230,14 @@ function WebhookCard({
             disabled={pingStatus === 'pinging' || !webhook.isActive}
           >
             <Send className="size-3.5" />
-            {pingStatus === 'pinging' ? 'Pinging…' : 'Ping'}
+            {pingStatus === 'pinging' ? t('webhookPinging') : t('webhookPing')}
           </Button>
           <Button
             size="sm" variant="ghost"
             className="text-destructive hover:text-destructive"
             onClick={onDelete}
             disabled={busy}
-            aria-label={`Delete ${webhook.name}`}
+            aria-label={t('webhookDeleteAriaLabel', { name: webhook.name })}
           >
             <Trash2 className="size-3.5" />
           </Button>
@@ -244,17 +247,17 @@ function WebhookCard({
       {/* Ping result strip (inline; not alert) */}
       {pingStatus === 'ok' && (
         <div className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-medium w-fit">
-          <CheckCircle2 className="size-3.5" /> Ping delivered {pingCode != null && `· HTTP ${pingCode}`}
+          <CheckCircle2 className="size-3.5" /> {t('webhookPingDelivered')} {pingCode != null && `· HTTP ${pingCode}`}
         </div>
       )}
       {pingStatus === 'err' && (
         <div className="inline-flex items-center gap-1.5 rounded-md bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 px-2.5 py-1 text-xs font-medium w-fit">
           <AlertTriangle className="size-3.5" />
-          Ping failed {pingCode != null && `· HTTP ${pingCode}`} {pingError && `· ${pingError}`}
+          {t('webhookPingFailed')} {pingCode != null && `· HTTP ${pingCode}`} {pingError && `· ${pingError}`}
         </div>
       )}
 
-      {/* Subscribed event chips */}
+      {/* Subscribed event chips — show machine codes (font-mono), not translated labels, for events */}
       <div className="flex flex-wrap gap-1.5">
         {ALL_EVENTS.map((e) => {
           const enabled = webhook.events.includes(e.value);
@@ -288,7 +291,7 @@ function WebhookCard({
         >
           {showDeliveries ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           <Activity className="size-3.5" />
-          Recent deliveries
+          {t('webhookRecentDeliveries')}
         </button>
 
         {showDeliveries && (
@@ -297,7 +300,7 @@ function WebhookCard({
               <Skeleton className="h-24 w-full" />
             ) : !deliveries || deliveries.length === 0 ? (
               <div className="rounded-md border border-dashed border-border p-3 text-center text-xs text-muted-foreground">
-                No deliveries yet. Use Ping above to send a test event, or wait for a real event to fire.
+                {t('webhookNoDeliveries')}
               </div>
             ) : (
               <div className="overflow-x-auto rounded-md border border-border/60">
@@ -305,11 +308,11 @@ function WebhookCard({
                   <thead className="bg-muted/40">
                     <tr className="text-left font-medium text-muted-foreground uppercase tracking-wide">
                       <th className="px-3 py-2 w-[1%]"></th>
-                      <th className="px-3 py-2">Event</th>
-                      <th className="px-3 py-2">HTTP</th>
-                      <th className="px-3 py-2">Duration</th>
-                      <th className="px-3 py-2">Attempt</th>
-                      <th className="px-3 py-2">Delivered</th>
+                      <th className="px-3 py-2">{t('webhookColEvent')}</th>
+                      <th className="px-3 py-2">{t('webhookColHttp')}</th>
+                      <th className="px-3 py-2">{t('webhookColDuration')}</th>
+                      <th className="px-3 py-2">{t('webhookColAttempt')}</th>
+                      <th className="px-3 py-2">{t('webhookColDelivered')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,8 +320,8 @@ function WebhookCard({
                       <tr key={d.id} className="border-t border-border/40">
                         <td className="px-3 py-2">
                           {d.success
-                            ? <CheckCircle2 className="size-3.5 text-emerald-500" aria-label="Success" />
-                            : <AlertTriangle className="size-3.5 text-destructive" aria-label="Failure" />}
+                            ? <CheckCircle2 className="size-3.5 text-emerald-500" aria-label={t('webhookSuccessAriaLabel')} />
+                            : <AlertTriangle className="size-3.5 text-destructive" aria-label={t('webhookFailureAriaLabel')} />}
                         </td>
                         <td className="px-3 py-2 font-mono">{d.event}</td>
                         <td className="px-3 py-2 tabular-nums">{d.statusCode ?? '–'}</td>
@@ -353,6 +356,7 @@ function CreateWebhookDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Integrations');
   const [name,   setName]   = useState('');
   const [url,    setUrl]    = useState('');
   const [secret, setSecret] = useState('');
@@ -376,7 +380,7 @@ function CreateWebhookDialog({
     >
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>New outgoing webhook</DialogTitle>
+          <DialogTitle>{t('webhookNewDialogTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -386,58 +390,64 @@ function CreateWebhookDialog({
         >
           <DialogBody className="flex flex-col gap-4 max-h-[60vh] overflow-y-auto">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="wh-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="wh-name" className="text-xs font-medium text-muted-foreground">
+                {t('webhookNameLabel')}
+              </label>
               <Input
                 id="wh-name" required autoFocus value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. CRM sync"
+                placeholder={t('webhookNamePlaceholder')}
               />
-              <span className="text-xs text-muted-foreground">Shown in the connection list. Anything you'll recognise later.</span>
+              <span className="text-xs text-muted-foreground">{t('webhookNameHint')}</span>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="wh-url" className="text-xs font-medium text-muted-foreground">Payload URL</label>
+              <label htmlFor="wh-url" className="text-xs font-medium text-muted-foreground">
+                {t('webhookPayloadUrlLabel')}
+              </label>
               <Input
                 id="wh-url" type="url" required value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://example.com/hooks/projectflow"
+                placeholder={t('webhookPayloadUrlPlaceholder')}
                 autoComplete="off"
                 className="font-mono text-xs"
               />
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="wh-secret" className="text-xs font-medium text-muted-foreground">Secret</label>
+              <label htmlFor="wh-secret" className="text-xs font-medium text-muted-foreground">
+                {t('webhookSecretLabel')}
+              </label>
               <Input
                 id="wh-secret" type="password" required minLength={8}
                 value={secret}
                 onChange={(e) => setSecret(e.target.value)}
-                placeholder="At least 8 characters"
+                placeholder={t('webhookSecretPlaceholder')}
                 autoComplete="new-password"
               />
               <span className="text-xs text-muted-foreground">
-                Used to sign each request with{' '}
-                <code className="font-mono text-foreground bg-muted/60 px-1 py-0.5 rounded">X-ProjectFlow-Signature</code>{' '}
-                (HMAC-SHA256). Your endpoint should verify this header before trusting the payload.
+                {t('webhookSecretHint')}
               </span>
             </div>
 
             {/* Events */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-muted-foreground">Subscribe to events</label>
+                <label className="text-xs font-medium text-muted-foreground">
+                  {t('webhookSubscribeToEvents')}
+                </label>
                 <div className="flex items-center gap-2 text-xs">
                   <button
                     type="button"
                     className="text-primary hover:underline"
                     onClick={() => setEvents(ALL_EVENTS.map((e) => e.value))}
-                  >All</button>
+                  >{t('webhookSelectAll')}</button>
                   <span className="text-muted-foreground">·</span>
                   <button
                     type="button"
                     className="text-primary hover:underline"
                     onClick={() => setEvents([])}
-                  >None</button>
+                  >{t('webhookSelectNone')}</button>
                 </div>
               </div>
               <div className="flex flex-col gap-1.5">
@@ -459,7 +469,7 @@ function CreateWebhookDialog({
                       />
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-foreground font-mono">{e.value}</span>
-                        <span className="text-xs text-muted-foreground">{e.description}</span>
+                        <span className="text-xs text-muted-foreground">{t(e.descKey)}</span>
                       </div>
                     </label>
                   );
@@ -467,7 +477,7 @@ function CreateWebhookDialog({
               </div>
               {events.length === 0 && (
                 <div className="text-xs text-amber-700 dark:text-amber-300 inline-flex items-center gap-1">
-                  <Info className="size-3.5" /> Pick at least one event — otherwise the webhook won't fire.
+                  <Info className="size-3.5" /> {t('webhookPickAtLeastOneEvent')}
                 </div>
               )}
             </div>
@@ -479,9 +489,11 @@ function CreateWebhookDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+              {t('webhookCancel')}
+            </Button>
             <Button type="submit" variant="primary" disabled={!canSubmit}>
-              {isPending ? 'Saving…' : 'Save webhook'}
+              {isPending ? t('webhookSaving') : t('webhookSave')}
             </Button>
           </DialogFooter>
         </form>
@@ -503,18 +515,18 @@ function ListSkeleton() {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Integrations');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Webhook className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No webhooks yet</div>
+        <div className="text-sm font-medium text-foreground">{t('webhookNoWebhooksTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-md">
-          Forward events from this workspace to your own services — CRM sync, audit pipelines,
-          chatops scripts. Each delivery is signed so your endpoint can verify it.
+          {t('webhookNoWebhooksBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Add your first webhook
+        <Plus className="size-4" /> {t('webhookAddFirstWebhook')}
       </Button>
     </div>
   );

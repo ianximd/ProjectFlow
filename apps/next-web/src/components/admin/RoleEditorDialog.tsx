@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { Loader2, Trash2, UserPlus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type {
   AdminUser,
   AdminWorkspace,
@@ -50,6 +51,7 @@ interface Props {
 }
 
 export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props) {
+  const t = useTranslations('Admin');
   const isEdit = !!roleId;
 
   // ── form state ─────────────────────────────────────────────────────────
@@ -133,7 +135,7 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
     e.preventDefault();
     setErrorMsg(null);
     if (!name.trim()) {
-      setErrorMsg('Name is required');
+      setErrorMsg(t('rolesEditorNameRequired'));
       return;
     }
     if (isEdit) doUpdate();
@@ -147,8 +149,8 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
       <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col p-0">
         <SheetHeader className="px-6 py-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2">
-            {isEdit ? 'Edit role' : 'Create role'}
-            {isBuiltIn && <Badge variant="secondary" size="sm">Built-in</Badge>}
+            {isEdit ? t('rolesEditorEditTitle') : t('rolesEditorCreateTitle')}
+            {isBuiltIn && <Badge variant="secondary" size="sm">{t('rolesBuiltIn')}</Badge>}
           </SheetTitle>
         </SheetHeader>
 
@@ -163,30 +165,30 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
             {isEdit && isLoadingRole && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
-                Loading role…
+                {t('rolesEditorLoadingRole')}
               </div>
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="role-name">Name</Label>
+                <Label htmlFor="role-name">{t('rolesEditorNameLabel')}</Label>
                 <Input
                   id="role-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
                   disabled={isBuiltIn || isPending}
-                  placeholder="e.g. Project Lead"
+                  placeholder={t('rolesEditorNamePlaceholder')}
                 />
                 {isBuiltIn && (
                   <p className="text-xs text-muted-foreground">
-                    Built-in role names can&apos;t be changed.
+                    {t('rolesEditorBuiltInNameHint')}
                   </p>
                 )}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="role-scope">Scope</Label>
+                <Label htmlFor="role-scope">{t('rolesEditorScopeLabel')}</Label>
                 <select
                   id="role-scope"
                   value={scope}
@@ -198,19 +200,19 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
                   disabled={isEdit || isPending}
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <option value="WORKSPACE">Workspace</option>
-                  <option value="SYSTEM">System</option>
+                  <option value="WORKSPACE">{t('rolesEditorScopeWorkspace')}</option>
+                  <option value="SYSTEM">{t('rolesEditorScopeSystem')}</option>
                 </select>
                 {isEdit && (
                   <p className="text-xs text-muted-foreground">
-                    Scope can&apos;t be changed after creation.
+                    {t('rolesEditorScopeFixedHint')}
                   </p>
                 )}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="role-desc">Description</Label>
+              <Label htmlFor="role-desc">{t('rolesEditorDescLabel')}</Label>
               <textarea
                 id="role-desc"
                 value={description}
@@ -218,15 +220,15 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
                 disabled={isPending}
                 rows={2}
                 className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                placeholder="Short description of what this role can do"
+                placeholder={t('rolesEditorDescPlaceholder')}
               />
             </div>
 
             <div className="space-y-2">
               <Label className="text-sm">
-                Permissions
+                {t('rolesEditorPermissionsLabel')}
                 <span className="ms-2 text-xs font-normal text-muted-foreground">
-                  ({selectedIds.size} selected)
+                  ({t('rolesEditorSelectedCount', { count: selectedIds.size })})
                 </span>
               </Label>
               <PermissionPicker
@@ -254,22 +256,22 @@ export function RoleEditorDialog({ open, onClose, roleId, initialScope }: Props)
                   variant="destructive"
                   disabled={isPending}
                   onClick={() => {
-                    if (confirm('Delete this role? Active assignments will block deletion.')) {
+                    if (confirm(t('rolesEditorDeleteConfirm'))) {
                       doDelete();
                     }
                   }}
                 >
-                  Delete
+                  {t('rolesEditorDelete')}
                 </Button>
               )}
             </div>
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
-                Cancel
+                {t('rolesEditorCancel')}
               </Button>
               <Button type="submit" disabled={isPending}>
                 {isPending && <Loader2 className="size-4 animate-spin" />}
-                {isEdit ? 'Save changes' : 'Create role'}
+                {isPending ? t('rolesEditorSaving') : isEdit ? t('rolesEditorSaveChanges') : t('rolesEditorCreateRole')}
               </Button>
             </div>
           </SheetFooter>
@@ -287,6 +289,7 @@ function RoleMembersSection({
   roleId: string;
   scope:  RoleScope;
 }) {
+  const t = useTranslations('Admin');
   const [members, setMembers] = useState<RoleMember[]>([]);
   const [loaded,  setLoaded]  = useState(false);
   const [pending, start]      = useTransition();
@@ -317,7 +320,7 @@ function RoleMembersSection({
     <div className="space-y-2 border-t border-border pt-4">
       <div className="flex items-center justify-between">
         <Label className="text-sm">
-          Members
+          {t('rolesMembersLabel')}
           <span className="ms-2 text-xs font-normal text-muted-foreground">
             ({members.length})
           </span>
@@ -329,7 +332,7 @@ function RoleMembersSection({
           onClick={() => setShowAdd((v) => !v)}
         >
           <UserPlus className="size-3.5" />
-          {showAdd ? 'Cancel' : 'Assign user'}
+          {showAdd ? t('rolesMembersCancelAssign') : t('rolesMembersAssignUser')}
         </Button>
       </div>
 
@@ -344,10 +347,10 @@ function RoleMembersSection({
 
       {!loaded ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" /> Loading members…
+          <Loader2 className="size-3.5 animate-spin" /> {t('rolesMembersLoadingMembers')}
         </div>
       ) : members.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No one holds this role yet.</p>
+        <p className="text-xs text-muted-foreground">{t('rolesMembersNoOne')}</p>
       ) : (
         <div className="overflow-hidden rounded-md border border-border">
           <table className="w-full text-sm">
@@ -373,11 +376,11 @@ function RoleMembersSection({
                       variant="ghost"
                       disabled={pending}
                       onClick={() => {
-                        if (confirm(`Revoke this role from ${m.email}?`)) {
+                        if (confirm(t('rolesMembersRevokeConfirm', { email: m.email }))) {
                           onRevoke(m.userId, m.workspaceId);
                         }
                       }}
-                      aria-label={`Revoke role from ${m.email}`}
+                      aria-label={t('rolesMembersRevokeAriaLabel', { email: m.email })}
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -402,6 +405,7 @@ function AssignMemberPicker({
   onAssign:  (userId: string, workspaceId: string | null) => void;
   isPending: boolean;
 }) {
+  const t = useTranslations('Admin');
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
   const [userId, setUserId] = useState<string | null>(null);
@@ -441,11 +445,11 @@ function AssignMemberPicker({
     <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-xs">User</Label>
+          <Label className="text-xs">{t('rolesMembersUserLabel')}</Label>
           <Input
             value={search}
             onChange={(e) => { setSearch(e.target.value); setUserId(null); }}
-            placeholder="Search by name or email…"
+            placeholder={t('rolesMembersSearchPlaceholder')}
             className="h-8 text-xs"
           />
           {users.length > 0 && (
@@ -469,13 +473,13 @@ function AssignMemberPicker({
 
         {scope === 'WORKSPACE' && (
           <div className="space-y-1">
-            <Label className="text-xs">Workspace</Label>
+            <Label className="text-xs">{t('rolesMembersWorkspaceLabel')}</Label>
             <select
               value={workspaceId ?? ''}
               onChange={(e) => setWorkspaceId(e.target.value || null)}
               className="flex h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
             >
-              <option value="">Choose workspace…</option>
+              <option value="">{t('rolesMembersChooseWorkspace')}</option>
               {workspaces.map((w) => (
                 <option key={w.id} value={w.id}>{w.name}</option>
               ))}
@@ -492,7 +496,7 @@ function AssignMemberPicker({
           onClick={() => onAssign(userId!, workspaceId)}
         >
           {isPending && <Loader2 className="size-3.5 animate-spin" />}
-          Assign
+          {isPending ? t('rolesMembersAssigning') : t('rolesMembersAssign')}
         </Button>
       </div>
     </div>

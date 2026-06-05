@@ -50,6 +50,7 @@ const LOCALE_LABEL_KEY: Record<AppLocale, string> = { en: 'english', id: 'indone
 
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
   const t = useTranslations('Common');
+  const tNav = useTranslations('Nav');
   const locale = useLocale();
   const activeLanguage =
     I18N_LANGUAGES.find((l) => l.code === locale) ?? I18N_LANGUAGES[0];
@@ -65,7 +66,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
       await setLocale(nextLocale);
     });
 
-  const displayName = user?.name ?? 'Account';
+  const displayName = user?.name ?? tNav('accountFallback');
   const email       = user?.email ?? '';
   const avatarUrl   = user?.avatarUrl ?? null;
   const [avatarBroken, setAvatarBroken] = useState(false);
@@ -119,7 +120,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
             </div>
           </div>
           <Badge variant="primary" appearance="light" size="sm">
-            Pro
+            {tNav('pro')}
           </Badge>
         </div>
 
@@ -132,7 +133,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
             className="flex items-center gap-2"
           >
             <IdCard />
-            Public Profile
+            {tNav('publicProfile')}
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
@@ -141,7 +142,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
             className="flex items-center gap-2"
           >
             <UserCircle />
-            My Profile
+            {tNav('myProfile')}
           </Link>
         </DropdownMenuItem>
 
@@ -149,7 +150,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="flex items-center gap-2">
             <Settings />
-            My Account
+            {tNav('myAccount')}
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-48">
             <DropdownMenuItem asChild>
@@ -158,7 +159,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <Coffee />
-                Get Started
+                {tNav('getStarted')}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -167,7 +168,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <FileText />
-                My Profile
+                {tNav('myProfile')}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -176,7 +177,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <CreditCard />
-                Billing
+                {tNav('billing')}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -185,7 +186,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <Shield />
-                Security
+                {tNav('security')}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -194,7 +195,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <Users />
-                Members & Roles
+                {tNav('membersAndRoles')}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -203,7 +204,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
                 className="flex items-center gap-2"
               >
                 <BetweenHorizontalStart />
-                Integrations
+                {tNav('integrations')}
               </Link>
             </DropdownMenuItem>
           </DropdownMenuSubContent>
@@ -215,7 +216,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
             className="flex items-center gap-2"
           >
             <SquareCode />
-            Dev Forum
+            {tNav('devForum')}
           </Link>
         </DropdownMenuItem>
 
@@ -270,7 +271,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
         >
           <Moon />
           <div className="flex items-center gap-2 justify-between grow">
-            Dark Mode
+            {tNav('darkMode')}
             <Switch
               size="sm"
               checked={theme === 'dark'}
@@ -280,7 +281,7 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
         </DropdownMenuItem>
         <div className="p-2 mt-1">
           <Button variant="outline" size="sm" className="w-full" onClick={handleLogout}>
-            Logout
+            {tNav('logout')}
           </Button>
         </div>
       </DropdownMenuContent>

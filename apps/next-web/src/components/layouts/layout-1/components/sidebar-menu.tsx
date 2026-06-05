@@ -1,6 +1,7 @@
 'use client';
 
 import { JSX, useCallback, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import { MENU_SIDEBAR } from '@/config/layout-1.config';
 import { MenuConfig, MenuItem } from '@/config/types';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ import { SidebarTree } from '@/components/hierarchy/SidebarTree';
 
 export function SidebarMenu() {
   const pathname = usePathname();
+  const t = useTranslations('Nav');
 
   // Hide the System → Admin item for non-admins. `isAdmin` is derived
   // server-side in the (app) layout (hasAdminAccess) and provided via the
@@ -69,12 +71,13 @@ export function SidebarMenu() {
   };
 
   const buildMenuItemRoot = (item: MenuItem, index: number): JSX.Element => {
+    const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : (item.title ?? '');
     if (item.children) {
       return (
         <AccordionMenuSub key={index} value={item.path || `root-${index}`}>
           <AccordionMenuSubTrigger className="text-sm font-medium">
             {item.icon && <item.icon data-slot="accordion-menu-icon" />}
-            <span data-slot="accordion-menu-title">{item.title}</span>
+            <span data-slot="accordion-menu-title">{label}</span>
           </AccordionMenuSubTrigger>
           <AccordionMenuSubContent
             type="single"
@@ -101,7 +104,7 @@ export function SidebarMenu() {
             aria-current={item.path && matchPath(item.path) ? 'page' : undefined}
           >
             {item.icon && <item.icon data-slot="accordion-menu-icon" />}
-            <span data-slot="accordion-menu-title">{item.title}</span>
+            <span data-slot="accordion-menu-title">{label}</span>
           </Link>
         </AccordionMenuItem>
       );
@@ -112,6 +115,7 @@ export function SidebarMenu() {
     item: MenuItem,
     index: number,
   ): JSX.Element => {
+    const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : (item.title ?? '');
     return (
       <AccordionMenuItem
         key={index}
@@ -119,10 +123,10 @@ export function SidebarMenu() {
         className="text-sm font-medium"
       >
         {item.icon && <item.icon data-slot="accordion-menu-icon" />}
-        <span data-slot="accordion-menu-title">{item.title}</span>
+        <span data-slot="accordion-menu-title">{label}</span>
         {item.disabled && (
           <Badge variant="secondary" size="sm" className="ms-auto me-[-10px]">
-            Soon
+            {t('soon')}
           </Badge>
         )}
       </AccordionMenuItem>
@@ -147,6 +151,7 @@ export function SidebarMenu() {
     index: number,
     level: number = 0,
   ): JSX.Element => {
+    const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : (item.title ?? '');
     if (item.children) {
       return (
         <AccordionMenuSub
@@ -164,7 +169,7 @@ export function SidebarMenu() {
                 </span>
               </span>
             ) : (
-              item.title
+              label
             )}
           </AccordionMenuSubTrigger>
           <AccordionMenuSubContent
@@ -197,7 +202,7 @@ export function SidebarMenu() {
             href={item.path || '#'}
             aria-current={item.path && matchPath(item.path) ? 'page' : undefined}
           >
-            {item.title}
+            {label}
           </Link>
         </AccordionMenuItem>
       );
@@ -209,16 +214,17 @@ export function SidebarMenu() {
     index: number,
     level: number = 0,
   ): JSX.Element => {
+    const label = item.labelKey ? t(item.labelKey as Parameters<typeof t>[0]) : (item.title ?? '');
     return (
       <AccordionMenuItem
         key={index}
         value={`disabled-child-${level}-${index}`}
         className="text-[13px]"
       >
-        <span data-slot="accordion-menu-title">{item.title}</span>
+        <span data-slot="accordion-menu-title">{label}</span>
         {item.disabled && (
           <Badge variant="secondary" size="sm" className="ms-auto me-[-10px]">
-            Soon
+            {t('soon')}
           </Badge>
         )}
       </AccordionMenuItem>
@@ -226,7 +232,8 @@ export function SidebarMenu() {
   };
 
   const buildMenuHeading = (item: MenuItem, index: number): JSX.Element => {
-    return <AccordionMenuLabel key={index}>{item.heading}</AccordionMenuLabel>;
+    const heading = item.headingKey ? t(item.headingKey as Parameters<typeof t>[0]) : (item.heading ?? '');
+    return <AccordionMenuLabel key={index}>{heading}</AccordionMenuLabel>;
   };
 
   return (

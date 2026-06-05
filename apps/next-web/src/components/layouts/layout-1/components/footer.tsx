@@ -1,6 +1,10 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
 import { generalSettings } from '@/config/general.config';
 
 export function Footer() {
+  const t = useTranslations('Nav');
   const currentYear = new Date().getFullYear();
 
   return (
@@ -23,35 +27,35 @@ export function Footer() {
               target="_blank"
               className="hover:text-primary"
             >
-              Docs
+              {t('docs')}
             </a>
             <a
               href={generalSettings.purchaseLink}
               target="_blank"
               className="hover:text-primary"
             >
-              Purchase
+              {t('purchase')}
             </a>
             <a
               href={generalSettings.faqLink}
               target="_blank"
               className="hover:text-primary"
             >
-              FAQ
+              {t('faq')}
             </a>
             <a
               href="https://devs.keenthemes.com"
               target="_blank"
               className="hover:text-primary"
             >
-              Support
+              {t('support')}
             </a>
             <a
               href={generalSettings.licenseLink}
               target="_blank"
               className="hover:text-primary"
             >
-              License
+              {t('license')}
             </a>
           </nav>
         </div>

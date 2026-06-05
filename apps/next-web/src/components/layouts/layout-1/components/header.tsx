@@ -1,4 +1,7 @@
+'use client';
+
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Bell, Menu, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -24,6 +27,7 @@ function initials(s: string): string {
 }
 
 export function Header() {
+  const t = useTranslations('Nav');
   const [isSidebarSheetOpen, setIsSidebarSheetOpen] = useState(false);
 
   const pathname = usePathname();
@@ -126,13 +130,13 @@ export function Header() {
                 <img
                   className="size-9 rounded-full border border-border shrink-0 cursor-pointer object-cover"
                   src={avatarUrl}
-                  alt={displayName || 'User Avatar'}
+                  alt={displayName || t('userAvatar')}
                   onError={() => setAvatarBroken(true)}
                 />
               ) : (
                 <button
                   type="button"
-                  aria-label={displayName ? `${displayName} menu` : 'User menu'}
+                  aria-label={displayName ? `${displayName} ${t('userMenu')}` : t('userMenu')}
                   className="size-9 rounded-full border border-border shrink-0 cursor-pointer bg-muted text-foreground text-xs font-medium flex items-center justify-center"
                 >
                   {initials(displayName)}

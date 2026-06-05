@@ -1,10 +1,14 @@
+'use client';
+
 import { ChevronFirst } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useLayout } from './context';
 import Link from 'next/link';
 
 export function SidebarHeader() {
+  const t = useTranslations('Nav');
   const { sidebarCollapse, setSidebarCollapse } = useLayout();
 
   return (
@@ -22,6 +26,7 @@ export function SidebarHeader() {
       </Link>
       <Button
         onClick={() => setSidebarCollapse(!sidebarCollapse)}
+        aria-label={t('collapseSidebar')}
         size="sm"
         mode="icon"
         variant="outline"

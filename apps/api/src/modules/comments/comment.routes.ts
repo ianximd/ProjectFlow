@@ -82,6 +82,46 @@ commentRoutes.patch(
   return c.json({ data: comment });
 });
 
+// POST /api/v1/comments/:id/assign  { assigneeId }
+commentRoutes.post(
+  '/:id/assign',
+  requirePermission('task.update', {
+    resolveWorkspace: resolveCommentWorkspace,
+    ownerFallback: { slug: 'comment.update.own', resolveOwner: resolveCommentOwner },
+  }),
+  async (c) => {
+    const user = (c as any).get('user') as any;
+    const body = await c.req.json();
+    try {
+      const comment = await commentService.assign(c.req.param('id')!, body.assigneeId, user.userId);
+      if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
+      return c.json({ data: comment });
+    } catch (err: any) {
+      if (String(err?.message).includes('51401') || err?.number === 51401)
+        return c.json({ error: { code: 'ASSIGNEE_NOT_MEMBER', message: 'Assignee is not a member of the workspace' } }, 422);
+      if (String(err?.message).includes('51400') || err?.number === 51400)
+        return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
+      throw err;
+    }
+  },
+);
+
+// POST /api/v1/comments/:id/resolve  { resolved }
+commentRoutes.post(
+  '/:id/resolve',
+  requirePermission('task.update', {
+    resolveWorkspace: resolveCommentWorkspace,
+    ownerFallback: { slug: 'comment.update.own', resolveOwner: resolveCommentOwner },
+  }),
+  async (c) => {
+    const user = (c as any).get('user') as any;
+    const body = await c.req.json();
+    const comment = await commentService.resolve(c.req.param('id')!, user.userId, Boolean(body.resolved));
+    if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
+    return c.json({ data: comment });
+  },
+);
+
 // DELETE /api/v1/comments/:id  — admins (.any) or the author (.own)
 commentRoutes.delete(
   '/:id',

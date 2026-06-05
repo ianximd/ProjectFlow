@@ -4,6 +4,7 @@ import { fanOutTaskEvent } from '../notifications/fanout.js';
 import { watcherService } from '../watchers/watcher.service.js';
 import { extractMentionUserIds } from './mentions.js';
 import { TaskRepository } from '../tasks/task.repository.js';
+import { pubsub } from '../../graphql/pubsub.js';
 import type { Comment, CreateCommentInput } from '@projectflow/types';
 
 const repo     = new CommentRepository();
@@ -12,6 +13,8 @@ const taskRepo = new TaskRepository();
 export const commentService = {
   async create(input: CreateCommentInput, authorId: string): Promise<Comment> {
     const comment = await repo.create(input, authorId);
+
+    try { pubsub.publish('comment:created', { taskId: comment.taskId, comment }); } catch { /* best-effort */ }
 
     // Side-effects: fire-and-forget so the mutation isn't blocked.
     void (async () => {

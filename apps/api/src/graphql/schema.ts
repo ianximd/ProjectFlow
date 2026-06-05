@@ -524,7 +524,6 @@ builder.mutationType({
         requireAuth(ctx);
         const authorId = (ctx.user as any).userId;
         const comment = await commentService.create({ taskId, body } as any, authorId);
-        pubsub.publish('comment:created', { taskId, comment });
         return comment as any;
       },
     }),

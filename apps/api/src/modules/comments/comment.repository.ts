@@ -97,4 +97,31 @@ export class CommentRepository {
     ]);
     return rows.map((r) => ({ emoji: r.Emoji, count: r.Count }));
   }
+
+  /** Idempotent, membership-validated mention insert. Returns true if newly inserted. */
+  async addMention(commentId: string, mentionedUserId: string): Promise<boolean> {
+    const rows = await execSpOne<any>('usp_CommentMention_Add', [
+      { name: 'CommentId',       type: sql.UniqueIdentifier, value: commentId },
+      { name: 'MentionedUserId', type: sql.UniqueIdentifier, value: mentionedUserId },
+    ]);
+    return Boolean(rows[0]?.WasInserted);
+  }
+
+  async assign(commentId: string, assigneeId: string, actorId: string): Promise<Comment | null> {
+    const rows = await execSpOne<any>('usp_Comment_Assign', [
+      { name: 'CommentId',  type: sql.UniqueIdentifier, value: commentId },
+      { name: 'AssigneeId', type: sql.UniqueIdentifier, value: assigneeId },
+      { name: 'ActorId',    type: sql.UniqueIdentifier, value: actorId },
+    ]);
+    return rows[0] ? toComment(rows[0]) : null;
+  }
+
+  async resolve(commentId: string, actorId: string, resolved: boolean): Promise<Comment | null> {
+    const rows = await execSpOne<any>('usp_Comment_Resolve', [
+      { name: 'CommentId', type: sql.UniqueIdentifier, value: commentId },
+      { name: 'ActorId',   type: sql.UniqueIdentifier, value: actorId },
+      { name: 'Resolved',  type: sql.Bit,              value: resolved },
+    ]);
+    return rows[0] ? toComment(rows[0]) : null;
+  }
 }

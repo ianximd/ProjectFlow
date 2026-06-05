@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import {
   Award, Plus, Search, Filter, X, Calendar, Hourglass, CheckCircle2,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { createEpic } from '@/server/actions/epics';
@@ -82,6 +83,7 @@ function ProgressRing({ total, done }: { total: number; done: number }) {
 // ── View ──────────────────────────────────────────────────────────────────────
 
 export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics: Epic[] }) {
+  const t = useTranslations('Epics');
   const [isPending, startTransition] = useTransition();
 
   const [search,           setSearch]           = useState('');
@@ -176,7 +178,7 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Epics</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -185,7 +187,7 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProject')}
             </h2>
           </div>
         </div>
@@ -202,7 +204,7 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
             onClick={() => setCreateOpen(true)}
             disabled={!ctx.activeProjectId}
           >
-            <Plus className="size-4" /> New epic
+            <Plus className="size-4" /> {t('newEpic')}
           </Button>
         </div>
       </div>
@@ -213,10 +215,10 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
         <>
           {/* ── KPI tiles ─────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiTile icon={Award}        label="Total epics" value={kpi.total}      tone="default" />
-            <KpiTile icon={Hourglass}    label="In progress" value={kpi.inProgress} tone="info" />
-            <KpiTile icon={CheckCircle2} label="Completed"   value={kpi.completed}  tone="success" />
-            <KpiTile icon={Calendar}     label="Overdue"     value={kpi.overdue}    tone={kpi.overdue > 0 ? 'danger' : 'muted'} />
+            <KpiTile icon={Award}        label={t('kpiTotal')}      value={kpi.total}      tone="default" />
+            <KpiTile icon={Hourglass}    label={t('kpiInProgress')} value={kpi.inProgress} tone="info" />
+            <KpiTile icon={CheckCircle2} label={t('kpiCompleted')}  value={kpi.completed}  tone="success" />
+            <KpiTile icon={Calendar}     label={t('kpiOverdue')}    value={kpi.overdue}    tone={kpi.overdue > 0 ? 'danger' : 'muted'} />
           </div>
 
           {/* ── Filter bar ────────────────────────────────────────────────── */}
@@ -226,24 +228,28 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search title or key…"
+                placeholder={t('filterSearchPlaceholder')}
                 className="h-8 pl-7 text-xs"
-                aria-label="Filter epics"
+                aria-label={t('filterSearchAriaLabel')}
               />
             </div>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue placeholder={t('filterStatusPlaceholder')} />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All statuses</SelectItem>
+                <SelectItem value="ALL">{t('filterAllStatuses')}</SelectItem>
                 {statusOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
 
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-              <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue placeholder={t('filterPriorityPlaceholder')} />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All priorities</SelectItem>
+                <SelectItem value="ALL">{t('filterAllPriorities')}</SelectItem>
                 {PRIORITY_OPTIONS.map((p) => <SelectItem key={p} value={p}>{PRIORITY_META[p]?.label ?? p}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -259,14 +265,13 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
                   onClick={() => { setSearch(''); setStatusFilter('ALL'); setPriorityFilter('ALL'); }}
                   className="h-8 px-2 text-xs"
                 >
-                  <X className="size-3.5" /> Clear
+                  <X className="size-3.5" /> {t('filterClear')}
                 </Button>
               </>
             )}
 
             <div className="ml-auto text-xs text-muted-foreground">
-              Showing <strong className="text-foreground">{filteredEpics.length}</strong> of{' '}
-              <strong className="text-foreground">{epics.length}</strong>
+              {t('showingOf', { shown: filteredEpics.length, total: epics.length })}
             </div>
           </div>
 
@@ -275,7 +280,7 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
             <EmptyEpicsState onCreate={() => setCreateOpen(true)} />
           ) : filteredEpics.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              No epics match the current filters.
+              {t('noMatchFilters')}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -311,17 +316,18 @@ export function EpicsView({ ctx, epics }: { ctx: WorkspaceProjectContext; epics:
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function EpicCard({ epic, onOpen }: { epic: Epic; onOpen: () => void }) {
+  const t = useTranslations('Epics');
   const pm        = PRIORITY_META[epic.priority] ?? PRIORITY_META['MEDIUM']!;
   const statusCls = STATUS_META[epic.status] ?? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
   const dLeft     = daysUntil(epic.dueDate);
   const dueBadge  =
     dLeft == null ? null
     : dLeft < 0   ? { cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-                      text: `${Math.abs(dLeft)}d overdue` }
+                      text: t('overdueByDays', { count: Math.abs(dLeft) }) }
     : dLeft <= 7  ? { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-                      text: dLeft === 0 ? 'Due today' : `Due in ${dLeft}d` }
+                      text: dLeft === 0 ? t('dueToday') : t('dueInDays', { count: dLeft }) }
     :               { cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-                      text: `Due in ${dLeft}d` };
+                      text: t('dueInDays', { count: dLeft }) };
 
   return (
     <Card
@@ -330,7 +336,7 @@ function EpicCard({ epic, onOpen }: { epic: Epic; onOpen: () => void }) {
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter') onOpen(); }}
-      aria-label={`Open epic ${epic.issueKey}`}
+      aria-label={t('openEpicAriaLabel', { key: epic.issueKey })}
     >
       <ProgressRing total={epic.totalChildren} done={epic.completedChildren} />
       <div className="flex flex-col gap-1.5 min-w-0 flex-1">
@@ -340,8 +346,8 @@ function EpicCard({ epic, onOpen }: { epic: Epic; onOpen: () => void }) {
           </span>
           <span
             className={cn('inline-block size-2 rounded-full shrink-0', pm.dot)}
-            aria-label={`Priority: ${pm.label}`}
-            title={`Priority: ${pm.label}`}
+            aria-label={t('priorityAriaLabel', { label: pm.label })}
+            title={t('priorityAriaLabel', { label: pm.label })}
           />
         </div>
 
@@ -360,7 +366,7 @@ function EpicCard({ epic, onOpen }: { epic: Epic; onOpen: () => void }) {
           )}
           <span className="text-xs text-muted-foreground">
             {epic.completedChildren}/{epic.totalChildren}{' '}
-            {epic.totalChildren === 1 ? 'story' : 'stories'}
+            {epic.totalChildren === 1 ? t('storySingular') : t('storyPlural')}
           </span>
         </div>
       </div>
@@ -409,6 +415,7 @@ function CreateEpicDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Epics');
   const [title,    setTitle]    = useState('');
   const [priority, setPriority] = useState<string>('MEDIUM');
   const [dueDate,  setDueDate]  = useState('');
@@ -422,7 +429,7 @@ function CreateEpicDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New epic</DialogTitle>
+          <DialogTitle>{t('dialogTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -436,16 +443,20 @@ function CreateEpicDialog({
         >
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="epic-title" className="text-xs font-medium text-muted-foreground">Title</label>
+              <label htmlFor="epic-title" className="text-xs font-medium text-muted-foreground">
+                {t('dialogTitleLabel')}
+              </label>
               <Input
                 id="epic-title" required autoFocus value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="What's the big goal?"
+                placeholder={t('dialogTitlePlaceholder')}
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="epic-priority" className="text-xs font-medium text-muted-foreground">Priority</label>
+                <label htmlFor="epic-priority" className="text-xs font-medium text-muted-foreground">
+                  {t('dialogPriorityLabel')}
+                </label>
                 <Select value={priority} onValueChange={setPriority}>
                   <SelectTrigger id="epic-priority" className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -456,7 +467,9 @@ function CreateEpicDialog({
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="epic-due" className="text-xs font-medium text-muted-foreground">Due date (optional)</label>
+                <label htmlFor="epic-due" className="text-xs font-medium text-muted-foreground">
+                  {t('dialogDueDateLabel')}
+                </label>
                 <Input id="epic-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
               </div>
             </div>
@@ -467,9 +480,11 @@ function CreateEpicDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+              {t('dialogCancel')}
+            </Button>
             <Button type="submit" variant="primary" disabled={isPending || !title.trim()}>
-              {isPending ? 'Creating…' : 'Create epic'}
+              {isPending ? t('dialogCreating') : t('dialogCreate')}
             </Button>
           </DialogFooter>
         </form>
@@ -479,13 +494,14 @@ function CreateEpicDialog({
 }
 
 function EmptyProjectState() {
+  const t = useTranslations('Epics');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Award className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to show</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to start organising work into epics.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>
@@ -493,17 +509,18 @@ function EmptyProjectState() {
 }
 
 function EmptyEpicsState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Epics');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Award className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No epics yet</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyEpicsTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Epics group related stories and tasks under a single goal. Create one to start mapping out larger initiatives.
+          {t('emptyEpicsBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Create your first epic
+        <Plus className="size-4" /> {t('createFirstEpic')}
       </Button>
     </div>
   );

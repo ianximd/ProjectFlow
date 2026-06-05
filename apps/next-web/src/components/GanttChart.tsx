@@ -6,6 +6,7 @@ import {
   Bug, Bookmark, CheckSquare, Award, GitBranch, Sparkles, Zap, FlaskConical,
   AlertTriangle, ArrowLeftCircle, ArrowRightCircle,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { formatShortDate } from '@/lib/date';
 import { Button } from '@/components/ui/button';
@@ -141,6 +142,8 @@ interface DragState {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Props) {
+  const t = useTranslations('Roadmap');
+
   // Zoom + scroll position live in the store so navigating away and back
   // preserves the user's viewport instead of snapping to today.
   const zoom               = useStore((s) => s.roadmapZoom);
@@ -573,57 +576,65 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
             size="sm" variant="ghost"
             className="h-7 px-2"
             onClick={() => scrollBy(-Math.max(cfg.colPx * 4, 240))}
-            aria-label="Scroll back"
-            title="Scroll back"
+            aria-label={t('scrollBack')}
+            title={t('scrollBack')}
           ><ChevronLeft className="size-3.5" /></Button>
           <Button
             size="sm" variant="ghost"
             className="h-7 gap-1.5 px-2 text-xs"
             onClick={scrollToToday}
-            title="Jump to today"
-          ><Crosshair className="size-3.5" /> Today</Button>
+            title={t('jumpToToday')}
+          ><Crosshair className="size-3.5" /> {t('today')}</Button>
           <Button
             size="sm" variant="ghost"
             className="h-7 px-2"
             onClick={() => scrollBy(Math.max(cfg.colPx * 4, 240))}
-            aria-label="Scroll forward"
-            title="Scroll forward"
+            aria-label={t('scrollForward')}
+            title={t('scrollForward')}
           ><ChevronRight className="size-3.5" /></Button>
         </div>
 
         <div className="inline-flex rounded-md border border-border bg-background p-0.5">
-          {(['day', 'week', 'month'] as ZoomLevel[]).map((z) => (
-            <button
-              key={z}
-              type="button"
-              onClick={() => changeZoom(z)}
-              className={cn(
-                'h-7 px-3 text-xs rounded transition-colors',
-                zoom === z
-                  ? 'bg-primary text-primary-foreground font-medium'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted',
-              )}
-              aria-pressed={zoom === z}
-            >
-              {ZOOM_CFG[z].label}
-            </button>
-          ))}
+          {(['day', 'week', 'month'] as ZoomLevel[]).map((z) => {
+            const zoomLabel = z === 'day' ? t('zoomDay') : z === 'week' ? t('zoomWeek') : t('zoomMonth');
+            return (
+              <button
+                key={z}
+                type="button"
+                onClick={() => changeZoom(z)}
+                className={cn(
+                  'h-7 px-3 text-xs rounded transition-colors',
+                  zoom === z
+                    ? 'bg-primary text-primary-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted',
+                )}
+                aria-pressed={zoom === z}
+              >
+                {zoomLabel}
+              </button>
+            );
+          })}
         </div>
 
         <Button
           size="sm" variant="outline"
           className="h-7 gap-1.5 px-2 text-xs"
           onClick={scrollToFit}
-          title="Scroll to earliest data point"
-        ><Maximize2 className="size-3.5" /> Fit</Button>
+          title={t('fitTitle')}
+        ><Maximize2 className="size-3.5" /> {t('fit')}</Button>
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-          {(['EPIC','STORY','TASK','BUG'] as const).map((t) => {
-            const m = TYPE_META[t]!;
+          {([
+            { key: 'EPIC',  label: t('legendEpic') },
+            { key: 'STORY', label: t('legendStory') },
+            { key: 'TASK',  label: t('legendTask') },
+            { key: 'BUG',   label: t('legendBug') },
+          ] as const).map(({ key, label }) => {
+            const m = TYPE_META[key]!;
             return (
-              <span key={t} className="inline-flex items-center gap-1.5">
+              <span key={key} className="inline-flex items-center gap-1.5">
                 <span className={cn('size-2 rounded-sm', m.barCls)} aria-hidden="true" />
-                {m.label}
+                {label}
               </span>
             );
           })}
@@ -645,7 +656,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
             className="sticky left-0 z-40 flex items-center border-r border-border bg-muted/60 px-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
             style={{ width: LABEL_W, minWidth: LABEL_W }}
           >
-            Issue
+            {t('issueColumn')}
           </div>
           <div className="relative" style={{ width: totalW, minWidth: totalW }}>
             {/* Epoch ribbon */}
@@ -689,7 +700,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                 style={{ left: todayPx, bottom: 2 }}
                 aria-hidden="true"
               >
-                Today
+                {t('today')}
               </div>
             </div>
           </div>
@@ -698,7 +709,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
         {/* Rows ────────────────────────────────────────────────────────── */}
         {rowList.length === 0 ? (
           <div className="flex h-40 items-center justify-center text-xs text-muted-foreground">
-            No scheduled items in range.
+            {t('noScheduledItems')}
           </div>
         ) : (
           <div
@@ -788,7 +799,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                         type="button"
                         onClick={() => setCollapsed((p) => ({ ...p, [item.id]: !p[item.id] }))}
                         className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                        aria-label={isCollapsed ? 'Expand children' : 'Collapse children'}
+                        aria-label={isCollapsed ? t('expandChildren') : t('collapseChildren')}
                       >
                         <ChevronDown className={cn('size-3.5 transition-transform', isCollapsed && '-rotate-90')} />
                       </button>
@@ -803,10 +814,10 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                     <div className="ml-auto flex shrink-0 items-center gap-1.5">
                       {!geom && (
                         <span
-                          title="No start or due date — set dates to place on the timeline"
+                          title={t('noDateTitle')}
                           className="inline-flex items-center gap-1 rounded bg-amber-100 px-1 py-px text-[9px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                         >
-                          <AlertTriangle className="size-2.5" /> No date
+                          <AlertTriangle className="size-2.5" /> {t('noDate')}
                         </span>
                       )}
                       {isEpic && progressPct !== null && (
@@ -892,7 +903,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                         <div
                           onMouseDown={(e) => startDrag(e, item, 'left')}
                           className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
-                          aria-label="Resize start date"
+                          aria-label={t('resizeStartDate')}
                         />
                         <span className={cn('relative z-[1] truncate px-2', isDone && 'line-through')}>
                           {item.title}
@@ -901,7 +912,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                         <div
                           onMouseDown={(e) => startDrag(e, item, 'right')}
                           className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-ew-resize bg-white/0 hover:bg-white/40"
-                          aria-label="Resize due date"
+                          aria-label={t('resizeDueDate')}
                         />
                       </div>
                     )}
@@ -915,7 +926,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                       <button
                         type="button"
                         onClick={() => scrollToBar(geom)}
-                        title={`${item.issueKey} is to the left — click to jump`}
+                        title={t('overflowLeft', { key: item.issueKey })}
                         className="absolute top-1/2 z-[15] inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow hover:text-foreground"
                         style={{ left: viewport.left + 4 }}
                       >
@@ -926,7 +937,7 @@ export function GanttChart({ items, deps = [], onUpdateDates, onOpenTask }: Prop
                       <button
                         type="button"
                         onClick={() => scrollToBar(geom)}
-                        title={`${item.issueKey} is to the right — click to jump`}
+                        title={t('overflowRight', { key: item.issueKey })}
                         className="absolute top-1/2 z-[15] inline-flex size-5 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow hover:text-foreground"
                         style={{ left: viewport.left + Math.max(0, viewport.width - LABEL_W) - 24 }}
                       >

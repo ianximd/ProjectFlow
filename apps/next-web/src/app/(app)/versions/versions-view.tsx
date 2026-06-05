@@ -5,6 +5,7 @@ import {
   Tag, Plus, Search, Filter, X, Calendar, Archive, Rocket, Edit3, Trash2,
   CheckCircle2, CircleDashed, ArchiveX,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import {
@@ -35,20 +36,17 @@ interface Props {
 }
 
 // ── Status meta ───────────────────────────────────────────────────────────────
-
-const STATUS_META: Record<VersionStatus, { label: string; cls: string; barCls: string }> = {
+// Labels are now translated at render time via t(); these cls/barCls remain.
+const STATUS_CLS: Record<VersionStatus, { cls: string; barCls: string }> = {
   UNRELEASED: {
-    label:  'Unreleased',
     cls:    'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
     barCls: 'bg-indigo-500',
   },
   RELEASED: {
-    label:  'Released',
     cls:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
     barCls: 'bg-emerald-500',
   },
   ARCHIVED: {
-    label:  'Archived',
     cls:    'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
     barCls: 'bg-slate-500',
   },
@@ -69,6 +67,7 @@ function daysUntil(dateStr: string | null): number | null {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function VersionsView({ ctx, versions }: Props) {
+  const t = useTranslations('Versions');
   const [isPending, startTransition] = useTransition();
 
   const [search,       setSearch]       = useState('');
@@ -92,7 +91,7 @@ export function VersionsView({ ctx, versions }: Props) {
   }, [versions, search, statusFilter]);
 
   // Order: UNRELEASED (soonest release first) → RELEASED (newest first) →
-  // ARCHIVED (newest first). Helps the manager focus on what's coming up.
+  // ARCHIVED (newest first).
   const orderedVersions = useMemo(() => {
     const arr = [...filteredVersions];
     const rank: Record<VersionStatus, number> = { UNRELEASED: 0, RELEASED: 1, ARCHIVED: 2 };
@@ -138,7 +137,7 @@ export function VersionsView({ ctx, versions }: Props) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Versions</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -147,7 +146,7 @@ export function VersionsView({ ctx, versions }: Props) {
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProject')}
             </h2>
           </div>
         </div>
@@ -165,7 +164,7 @@ export function VersionsView({ ctx, versions }: Props) {
             onClick={() => { setCreateOpen(true); setActionError(null); }}
             disabled={!ctx.activeProjectId}
           >
-            <Plus className="size-4" /> New version
+            <Plus className="size-4" /> {t('newVersion')}
           </Button>
         </div>
       </div>
@@ -176,10 +175,10 @@ export function VersionsView({ ctx, versions }: Props) {
         <>
           {/* ── KPI tiles ──────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiTile icon={Tag}          label="Total versions" value={kpi.total}      tone="default" />
-            <KpiTile icon={CircleDashed} label="Unreleased"     value={kpi.unreleased} tone="info" />
-            <KpiTile icon={CheckCircle2} label="Released"       value={kpi.released}   tone="success" />
-            <KpiTile icon={ArchiveX}     label="Archived"       value={kpi.archived}   tone="muted" />
+            <KpiTile icon={Tag}          label={t('kpiTotal')}      value={kpi.total}      tone="default" />
+            <KpiTile icon={CircleDashed} label={t('kpiUnreleased')} value={kpi.unreleased} tone="info" />
+            <KpiTile icon={CheckCircle2} label={t('kpiReleased')}   value={kpi.released}   tone="success" />
+            <KpiTile icon={ArchiveX}     label={t('kpiArchived')}   value={kpi.archived}   tone="muted" />
           </div>
 
           {/* ── Filter bar ─────────────────────────────────────────────────── */}
@@ -189,19 +188,21 @@ export function VersionsView({ ctx, versions }: Props) {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search name or description…"
+                placeholder={t('filterSearchPlaceholder')}
                 className="h-8 pl-7 text-xs"
-                aria-label="Filter versions"
+                aria-label={t('filterSearchAriaLabel')}
               />
             </div>
 
             <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'ALL' | VersionStatus)}>
-              <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectTrigger className="h-8 w-[150px] text-xs">
+                <SelectValue placeholder={t('filterStatusPlaceholder')} />
+              </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">All statuses</SelectItem>
-                <SelectItem value="UNRELEASED">Unreleased</SelectItem>
-                <SelectItem value="RELEASED">Released</SelectItem>
-                <SelectItem value="ARCHIVED">Archived</SelectItem>
+                <SelectItem value="ALL">{t('filterAllStatuses')}</SelectItem>
+                <SelectItem value="UNRELEASED">{t('filterUnreleased')}</SelectItem>
+                <SelectItem value="RELEASED">{t('filterReleased')}</SelectItem>
+                <SelectItem value="ARCHIVED">{t('filterArchived')}</SelectItem>
               </SelectContent>
             </Select>
 
@@ -216,13 +217,13 @@ export function VersionsView({ ctx, versions }: Props) {
                   onClick={() => { setSearch(''); setStatusFilter('ALL'); }}
                   className="h-8 px-2 text-xs"
                 >
-                  <X className="size-3.5" /> Clear
+                  <X className="size-3.5" /> {t('filterClear')}
                 </Button>
               </>
             )}
 
             <div className="ml-auto text-xs text-muted-foreground">
-              Showing <strong className="text-foreground">{orderedVersions.length}</strong> of <strong className="text-foreground">{versions.length}</strong>
+              {t('showingOf', { shown: orderedVersions.length, total: versions.length })}
             </div>
           </div>
 
@@ -231,7 +232,7 @@ export function VersionsView({ ctx, versions }: Props) {
             <EmptyVersionsState onCreate={() => setCreateOpen(true)} />
           ) : orderedVersions.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-              No versions match the current filters.
+              {t('noMatchFilters')}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -245,7 +246,7 @@ export function VersionsView({ ctx, versions }: Props) {
                   onArchive={() => runAction(() => archiveVersion(v.id))}
                   onDelete={() => {
                     if (window.confirm(
-                      `Delete version "${v.name}"?\n\nThis won't remove the issues themselves — they'll just be detached from this version.`,
+                      t('deleteConfirm', { name: v.name }),
                     )) {
                       runAction(() => deleteVersion(v.id, ctx.activeProjectId!));
                     }
@@ -295,7 +296,6 @@ export function VersionsView({ ctx, versions }: Props) {
         onSubmit={(input) => {
           if (!editing) return;
           setActionError(null);
-          // PATCH semantics: send only what actually changed.
           const changed: Partial<{ name: string; description: string; startDate: string; releaseDate: string }> = {};
           if (input.name        !== editing.name)                  changed.name        = input.name;
           if (input.description !== (editing.description ?? ''))   changed.description = input.description;
@@ -331,16 +331,24 @@ function VersionRow({
   onDelete:  () => void;
   busy: boolean;
 }) {
-  const sm      = STATUS_META[version.status as VersionStatus] ?? STATUS_META.UNRELEASED;
+  const t = useTranslations('Versions');
+  const sm      = STATUS_CLS[version.status as VersionStatus] ?? STATUS_CLS.UNRELEASED;
+  const statusLabel =
+    version.status === 'RELEASED' ? t('statusReleased')
+    : version.status === 'ARCHIVED' ? t('statusArchived')
+    : t('statusUnreleased');
   const dLeft   = daysUntil(version.releaseDate);
   const showDue = version.status === 'UNRELEASED' && dLeft != null;
   const dueBadge = !showDue
     ? null
     : dLeft! < 0
-      ? { cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',     text: `${Math.abs(dLeft!)}d overdue` }
+      ? { cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+          text: t('overdueByDays', { count: Math.abs(dLeft!) }) }
       : dLeft! <= 7
-        ? { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300', text: dLeft === 0 ? 'Releases today' : `${dLeft}d to release` }
-        : { cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300', text: `${dLeft}d to release` };
+        ? { cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+            text: dLeft === 0 ? t('releasesToday') : t('daysToRelease', { count: dLeft }) }
+        : { cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+            text: t('daysToRelease', { count: dLeft }) };
 
   const pct = version.totalIssues > 0
     ? Math.round((version.completedIssues / version.totalIssues) * 100)
@@ -353,7 +361,7 @@ function VersionRow({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className={cn('inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide', sm.cls)}>
-              {sm.label}
+              {statusLabel}
             </span>
             <h3 className="text-sm font-semibold text-foreground truncate">{version.name}</h3>
             {dueBadge && (
@@ -364,7 +372,7 @@ function VersionRow({
             {version.releaseDate && version.status !== 'UNRELEASED' && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                 <Calendar className="size-3" />
-                {version.status === 'RELEASED' ? 'Released' : 'Planned'} {version.releaseDate.slice(0, 10)}
+                {version.status === 'RELEASED' ? t('releasedLabel') : t('plannedLabel')} {version.releaseDate.slice(0, 10)}
               </span>
             )}
           </div>
@@ -372,18 +380,18 @@ function VersionRow({
           <div className="flex items-center gap-1">
             {version.status === 'UNRELEASED' && (
               <Button size="sm" variant="primary" onClick={onRelease} disabled={busy}>
-                <Rocket className="size-3.5" /> Release
+                <Rocket className="size-3.5" /> {t('actionRelease')}
               </Button>
             )}
             {version.status !== 'ARCHIVED' && (
-              <Button size="sm" variant="ghost" onClick={onArchive} disabled={busy} aria-label="Archive">
+              <Button size="sm" variant="ghost" onClick={onArchive} disabled={busy} aria-label={t('actionArchiveAriaLabel')}>
                 <Archive className="size-3.5" />
               </Button>
             )}
-            <Button size="sm" variant="ghost" onClick={onEdit} aria-label="Edit">
+            <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t('actionEditAriaLabel')}>
               <Edit3 className="size-3.5" />
             </Button>
-            <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive" aria-label="Delete" disabled={busy}>
+            <Button size="sm" variant="ghost" onClick={onDelete} className="text-destructive hover:text-destructive" aria-label={t('actionDeleteAriaLabel')} disabled={busy}>
               <Trash2 className="size-3.5" />
             </Button>
           </div>
@@ -400,10 +408,7 @@ function VersionRow({
         <div>
           <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
             <span>
-              <span className="font-medium text-foreground tabular-nums">{version.completedIssues}</span>
-              {' / '}
-              <span className="tabular-nums">{version.totalIssues}</span>
-              {' '}{version.totalIssues === 1 ? 'issue' : 'issues'} done
+              {t('progressIssues', { completed: version.completedIssues, total: version.totalIssues })}
             </span>
             <span className="tabular-nums font-medium text-foreground">{pct}%</span>
           </div>
@@ -467,6 +472,7 @@ function VersionDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Versions');
   const [name,        setName]        = useState(initial?.name        ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [startDate,   setStartDate]   = useState(initial?.startDate   ?? '');
@@ -484,7 +490,9 @@ function VersionDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'New version' : `Edit ${initial?.name ?? 'version'}`}</DialogTitle>
+          <DialogTitle>
+            {mode === 'create' ? t('dialogCreateTitle') : t('dialogEditTitle', { name: initial?.name ?? '' })}
+          </DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -494,31 +502,39 @@ function VersionDialog({
         >
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="v-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="v-name" className="text-xs font-medium text-muted-foreground">
+                {t('dialogNameLabel')}
+              </label>
               <Input
                 id="v-name" required autoFocus value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. v1.0.0"
+                placeholder={t('dialogNamePlaceholder')}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="v-desc" className="text-xs font-medium text-muted-foreground">Description</label>
+              <label htmlFor="v-desc" className="text-xs font-medium text-muted-foreground">
+                {t('dialogDescLabel')}
+              </label>
               <textarea
                 id="v-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                placeholder="Release notes, scope, or goals…"
+                placeholder={t('dialogDescPlaceholder')}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring resize-none"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="v-start" className="text-xs font-medium text-muted-foreground">Start date</label>
+                <label htmlFor="v-start" className="text-xs font-medium text-muted-foreground">
+                  {t('dialogStartDateLabel')}
+                </label>
                 <Input id="v-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="v-release" className="text-xs font-medium text-muted-foreground">Release date</label>
+                <label htmlFor="v-release" className="text-xs font-medium text-muted-foreground">
+                  {t('dialogReleaseDateLabel')}
+                </label>
                 <Input id="v-release" type="date" value={releaseDate} onChange={(e) => setReleaseDate(e.target.value)} />
               </div>
             </div>
@@ -529,11 +545,13 @@ function VersionDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+              {t('dialogCancel')}
+            </Button>
             <Button type="submit" variant="primary" disabled={isPending || !name.trim()}>
               {isPending
-                ? (mode === 'create' ? 'Creating…' : 'Saving…')
-                : (mode === 'create' ? 'Create version' : 'Save changes')}
+                ? (mode === 'create' ? t('dialogCreating') : t('dialogSaving'))
+                : (mode === 'create' ? t('dialogCreate')   : t('dialogSave'))}
             </Button>
           </DialogFooter>
         </form>
@@ -545,13 +563,14 @@ function VersionDialog({
 // ── Empty states ──────────────────────────────────────────────────────────────
 
 function EmptyProjectState() {
+  const t = useTranslations('Versions');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Tag className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to show</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to start tracking releases as versions.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>
@@ -559,17 +578,18 @@ function EmptyProjectState() {
 }
 
 function EmptyVersionsState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Versions');
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Tag className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No versions yet</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyVersionsTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Versions group issues into a release. Create one to start tracking what's shipping when.
+          {t('emptyVersionsBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Create your first version
+        <Plus className="size-4" /> {t('createFirstVersion')}
       </Button>
     </div>
   );

@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { GitBranch, CalendarRange, AlertCircle } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { updateTaskDates } from '@/server/actions/roadmap';
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export function RoadmapView({ ctx, items, deps }: Props) {
+  const t = useTranslations('Roadmap');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -74,7 +76,7 @@ export function RoadmapView({ ctx, items, deps }: Props) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Roadmap</span>
+              <span>{t('breadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -83,7 +85,7 @@ export function RoadmapView({ ctx, items, deps }: Props) {
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProject')}
             </h2>
           </div>
         </div>
@@ -92,9 +94,9 @@ export function RoadmapView({ ctx, items, deps }: Props) {
           {hasItems && (
             <Badge variant="outline" size="sm" appearance="outline" className="gap-1.5">
               <CalendarRange className="size-3" />
-              <span>{scheduled} scheduled</span>
+              <span>{t('scheduled', { count: scheduled })}</span>
               {unscheduled > 0 && (
-                <span className="text-muted-foreground">· {unscheduled} without dates</span>
+                <span className="text-muted-foreground">· {t('withoutDates', { count: unscheduled })}</span>
               )}
             </Badge>
           )}
@@ -113,7 +115,10 @@ export function RoadmapView({ ctx, items, deps }: Props) {
           <AlertCircle className="size-3.5 shrink-0" aria-hidden="true" />
           <span>
             <strong>{unscheduled}</strong>{' '}
-            {unscheduled === 1 ? 'item has' : 'items have'} no start or due date and won&apos;t appear on the timeline.
+            {unscheduled === 1
+              ? 'item has'
+              : 'items have'}{' '}
+            no start or due date and won&apos;t appear on the timeline.
             Open them from the backlog to set dates.
           </span>
         </div>
@@ -152,13 +157,14 @@ export function RoadmapView({ ctx, items, deps }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function EmptyProjectState() {
+  const t = useTranslations('Roadmap');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <GitBranch className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to show</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to start mapping out a roadmap.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>
@@ -166,14 +172,14 @@ function EmptyProjectState() {
 }
 
 function EmptyRoadmapState() {
+  const t = useTranslations('Roadmap');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <CalendarRange className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No scheduled work</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyRoadmapTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Tasks appear on the roadmap once they have a start or due date.
-          Open an issue from the backlog and set its dates to see it here.
+          {t('emptyRoadmapBody')}
         </div>
       </div>
     </div>

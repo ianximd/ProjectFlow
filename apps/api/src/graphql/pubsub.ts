@@ -17,6 +17,7 @@ export type PubSubChannels = {
   'tag:updated': [{ spaceId: string; tag: unknown }];
   'watcher:updated': [{ taskId: string; userId: string }];
   'savedView:updated': [{ scopeType: string; scopeId: string | null }];
+  'notification:added': [userId: string, { notification: unknown }];
 };
 
 /**

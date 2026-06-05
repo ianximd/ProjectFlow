@@ -1,0 +1,62 @@
+import { TaskRepository } from '../tasks/task.repository.js';
+import { watcherService } from '../watchers/watcher.service.js';
+import { notificationService } from './notification.service.js';
+import { subLogger } from '../../shared/lib/logger.js';
+
+const log = subLogger('fanout');
+const taskRepo = new TaskRepository();
+
+/** Normalize a GUID to uppercase for case-insensitive set membership. */
+const norm = (id: string | null | undefined): string | null => (id ? id.toUpperCase() : null);
+
+/**
+ * Pure recipient computation: union(reporter, assignees, watchers) minus the
+ * actor and any extraExclude ids, deduped case-insensitively (uppercased).
+ */
+export function computeRecipients(args: {
+  reporterId: string | null;
+  assigneeIds: string[];
+  watcherIds: string[];
+  actorId: string;
+  extraExclude?: string[];
+}): string[] {
+  const set = new Set<string>();
+  const add = (id: string | null) => { const n = norm(id); if (n) set.add(n); };
+  add(args.reporterId);
+  args.assigneeIds.forEach(add);
+  args.watcherIds.forEach(add);
+  set.delete(norm(args.actorId)!);
+  for (const ex of args.extraExclude ?? []) set.delete(norm(ex)!);
+  return [...set];
+}
+
+/**
+ * Notify everyone watching/reporting/assigned to a task about an event,
+ * excluding the actor. Fire-and-forget; never throws.
+ */
+export async function fanOutTaskEvent(
+  taskId: string,
+  actorId: string,
+  type: string,
+  payload: Record<string, unknown>,
+  extraExclude: string[] = [],
+): Promise<void> {
+  try {
+    const [task, watchers] = await Promise.all([
+      taskRepo.getById(taskId),
+      watcherService.list(taskId),
+    ]);
+    if (!task) return;
+    const recipientIds = computeRecipients({
+      reporterId: (task as any).reporterId ?? null,
+      assigneeIds: (task as any).assigneeIds ?? [],
+      watcherIds: watchers.map((w) => w.userId),
+      actorId,
+      extraExclude,
+    });
+    if (recipientIds.length === 0) return;
+    await notificationService.notify({ recipientIds, actorId, type, payload });
+  } catch (err: any) {
+    log.error({ err: err?.message, taskId, type }, 'fanOutTaskEvent failed');
+  }
+}

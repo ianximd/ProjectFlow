@@ -1,0 +1,13 @@
+{
+  "Common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "loading": "Loading…",
+    "language": "Language",
+    "english": "English",
+    "indonesian": "Indonesian"
+  }
+}

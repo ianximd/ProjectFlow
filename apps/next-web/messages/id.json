@@ -1,0 +1,13 @@
+{
+  "Common": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Hapus",
+    "edit": "Ubah",
+    "close": "Tutup",
+    "loading": "Memuat…",
+    "language": "Bahasa",
+    "english": "Inggris",
+    "indonesian": "Indonesia"
+  }
+}

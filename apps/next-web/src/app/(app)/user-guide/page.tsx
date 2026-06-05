@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BookOpen } from 'lucide-react';
+import { getTranslations } from 'next-intl/server';
 import { GuideViewer } from './GuideViewer';
 
 // Server component — reads docs/USER_GUIDE.md from disk at request time so the
@@ -22,7 +23,7 @@ async function loadGuide(): Promise<string> {
 }
 
 export default async function UserGuidePage() {
-  const md = await loadGuide();
+  const [md, t] = await Promise.all([loadGuide(), getTranslations('UserGuide')]);
 
   return (
     <div className="flex h-full flex-col gap-4">
@@ -31,9 +32,9 @@ export default async function UserGuidePage() {
           <BookOpen className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-xs text-muted-foreground">Help</div>
+          <div className="text-xs text-muted-foreground">{t('helpSection')}</div>
           <h2 className="text-base font-semibold text-foreground truncate">
-            User Guide
+            {t('heading')}
           </h2>
         </div>
       </div>

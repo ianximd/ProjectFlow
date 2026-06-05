@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { Building2, ArrowLeft, Save, Trash2, AlertTriangle } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
@@ -12,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 
 export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetail }) {
+  const t = useTranslations('Workspaces');
   const [isPending, startTransition] = useTransition();
 
   const [name,      setName]      = useState(workspace.name);
@@ -62,55 +64,55 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
     <div className="flex h-full flex-col gap-4 max-w-3xl">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <Link href="/workspaces" className="text-muted-foreground hover:text-foreground" aria-label="Back to workspaces">
+        <Link href="/workspaces" className="text-muted-foreground hover:text-foreground" aria-label={t('settingsBackAriaLabel')}>
           <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
           <Building2 className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-xs text-muted-foreground">Workspace settings</div>
+          <div className="text-xs text-muted-foreground">{t('settingsBreadcrumb')}</div>
           <h2 className="text-base font-semibold text-foreground truncate">
-            {workspace.name || 'Workspace'}
+            {workspace.name || t('settingsWorkspaceFallback')}
           </h2>
         </div>
       </div>
 
       {/* ── General ──────────────────────────────────────────────────────── */}
       <Card className="p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-4">General</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-4">{t('settingsGeneral')}</h3>
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="ws-name" className="text-xs font-medium text-muted-foreground">Name</label>
+            <label htmlFor="ws-name" className="text-xs font-medium text-muted-foreground">{t('settingsNameLabel')}</label>
             <Input id="ws-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="ws-slug" className="text-xs font-medium text-muted-foreground">URL slug</label>
+            <label htmlFor="ws-slug" className="text-xs font-medium text-muted-foreground">{t('settingsSlugLabel')}</label>
             <Input
               id="ws-slug"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               pattern="[a-z0-9\-]+"
-              title="Lowercase letters, numbers, and dashes only"
+              title={t('settingsSlugTitle')}
               required
               className="font-mono text-sm"
             />
             <span className="text-xs text-muted-foreground">
-              Changing the slug will break any URLs that already reference it.
+              {t('settingsSlugHint')}
             </span>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <label htmlFor="ws-avatar" className="text-xs font-medium text-muted-foreground">
-              Avatar URL (optional)
+              {t('settingsAvatarLabel')}
             </label>
             <Input
               id="ws-avatar"
               type="url"
               value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
-              placeholder="https://…/logo.png"
+              placeholder={t('settingsAvatarPlaceholder')}
             />
           </div>
 
@@ -123,11 +125,11 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
           <div className="flex items-center gap-2">
             <Button type="submit" variant="primary" disabled={!dirty || isPending}>
               <Save className="size-4" />
-              {isPending ? 'Saving…' : 'Save changes'}
+              {isPending ? t('settingsSaving') : t('settingsSaveChanges')}
             </Button>
             {dirty && (
               <Button type="button" variant="ghost" onClick={handleDiscard} disabled={isPending}>
-                Discard
+                {t('settingsDiscard')}
               </Button>
             )}
           </div>
@@ -138,7 +140,7 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
       <Card className="p-5 border-destructive/40">
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="size-4 text-destructive" />
-          <h3 className="text-sm font-semibold text-destructive">Danger zone</h3>
+          <h3 className="text-sm font-semibold text-destructive">{t('settingsDangerZone')}</h3>
         </div>
         <DeleteWorkspacePanel
           workspaceId={workspace.id}
@@ -158,6 +160,7 @@ function DeleteWorkspacePanel({
   workspaceId: string;
   expectedSlug: string;
 }) {
+  const t = useTranslations('Workspaces');
   const [isPending, startTransition] = useTransition();
   const [confirmInput, setConfirmInput] = useState('');
   const [deleteError,  setDeleteError]  = useState<string | null>(null);
@@ -179,12 +182,11 @@ function DeleteWorkspacePanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Deleting a workspace removes all of its projects, members, and history.
-        This action cannot be undone.
+        {t('settingsDeleteDesc')}
       </p>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="ws-confirm" className="text-xs font-medium text-muted-foreground">
-          Type <code className="font-mono text-foreground">{expectedSlug}</code> to confirm
+          {t('settingsDeleteConfirmLabel', { slug: expectedSlug })}
         </label>
         <Input
           id="ws-confirm"
@@ -206,7 +208,7 @@ function DeleteWorkspacePanel({
           disabled={!matches || isPending}
         >
           <Trash2 className="size-4" />
-          {isPending ? 'Deleting…' : 'Delete workspace'}
+          {isPending ? t('settingsDeleting') : t('settingsDeleteBtn')}
         </Button>
       </div>
     </div>

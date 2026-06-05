@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import {
   Building2, Plus, Settings, Users, LayoutGrid, Shield,
 } from 'lucide-react';
@@ -34,6 +35,7 @@ interface Props {
 }
 
 export function WorkspacesView({ workspaces, currentUserId }: Props) {
+  const t = useTranslations('Workspaces');
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [saveError,  setSaveError]  = useState<string | null>(null);
@@ -63,11 +65,11 @@ export function WorkspacesView({ workspaces, currentUserId }: Props) {
           <Building2 className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs text-muted-foreground">System</div>
-          <h2 className="text-base font-semibold text-foreground truncate">Workspaces</h2>
+          <div className="text-xs text-muted-foreground">{t('system')}</div>
+          <h2 className="text-base font-semibold text-foreground truncate">{t('heading')}</h2>
         </div>
         <Button size="sm" variant="primary" onClick={() => { setSaveError(null); setCreateOpen(true); }}>
-          <Plus className="size-4" /> New workspace
+          <Plus className="size-4" /> {t('newWorkspace')}
         </Button>
       </div>
 
@@ -92,20 +94,20 @@ export function WorkspacesView({ workspaces, currentUserId }: Props) {
                   </div>
                   {isOwner && (
                     <Badge variant="outline" size="xs" appearance="outline" className="gap-1">
-                      <Shield className="size-3" /> Owner
+                      <Shield className="size-3" /> {t('ownerBadge')}
                     </Badge>
                   )}
                 </div>
 
                 <div className="mt-auto flex flex-wrap gap-1.5">
                   <Button size="sm" variant="outline" onClick={() => router.push('/board')}>
-                    <LayoutGrid className="size-3.5" /> Open board
+                    <LayoutGrid className="size-3.5" /> {t('openBoard')}
                   </Button>
                   <Link href={`/workspaces/${ws.id}/members`}>
-                    <Button size="sm" variant="ghost"><Users className="size-3.5" /> Members</Button>
+                    <Button size="sm" variant="ghost"><Users className="size-3.5" /> {t('membersLink')}</Button>
                   </Link>
                   <Link href={`/workspaces/${ws.id}/settings`}>
-                    <Button size="sm" variant="ghost"><Settings className="size-3.5" /> Settings</Button>
+                    <Button size="sm" variant="ghost"><Settings className="size-3.5" /> {t('settingsLink')}</Button>
                   </Link>
                 </div>
               </Card>
@@ -126,18 +128,18 @@ export function WorkspacesView({ workspaces, currentUserId }: Props) {
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const t = useTranslations('Workspaces');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Building2 className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No workspaces yet</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          A workspace is a top-level container for projects, members, and settings.
-          Create one to get started.
+          {t('emptyBody')}
         </div>
       </div>
       <Button size="sm" variant="primary" onClick={onCreate}>
-        <Plus className="size-4" /> Create workspace
+        <Plus className="size-4" /> {t('emptyCreate')}
       </Button>
     </div>
   );
@@ -152,6 +154,7 @@ function CreateWorkspaceDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Workspaces');
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   // Track whether the user has manually edited slug — once they have, we
@@ -162,7 +165,7 @@ function CreateWorkspaceDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setName(''); setSlug(''); setSlugTouched(false); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New workspace</DialogTitle>
+          <DialogTitle>{t('dialogTitle')}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -173,7 +176,7 @@ function CreateWorkspaceDialog({
         >
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="ws-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="ws-name" className="text-xs font-medium text-muted-foreground">{t('dialogNameLabel')}</label>
               <Input
                 id="ws-name"
                 value={name}
@@ -181,25 +184,25 @@ function CreateWorkspaceDialog({
                   setName(e.target.value);
                   if (!slugTouched) setSlug(slugify(e.target.value));
                 }}
-                placeholder="Acme Corp"
+                placeholder={t('dialogNamePlaceholder')}
                 required
                 autoFocus
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="ws-slug" className="text-xs font-medium text-muted-foreground">URL slug</label>
+              <label htmlFor="ws-slug" className="text-xs font-medium text-muted-foreground">{t('dialogSlugLabel')}</label>
               <Input
                 id="ws-slug"
                 value={slug}
                 onChange={(e) => { setSlug(e.target.value); setSlugTouched(true); }}
-                placeholder="acme-corp"
+                placeholder={t('dialogSlugPlaceholder')}
                 pattern="[a-z0-9\-]+"
-                title="Lowercase letters, numbers, and dashes only"
+                title={t('dialogSlugTitle')}
                 required
                 className="font-mono text-sm"
               />
               <span className="text-xs text-muted-foreground">
-                Used in URLs. Lowercase letters, numbers, and dashes only.
+                {t('dialogSlugHint')}
               </span>
             </div>
             {error && (
@@ -209,9 +212,9 @@ function CreateWorkspaceDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('dialogCancel')}</Button>
             <Button type="submit" variant="primary" disabled={isPending || !name.trim() || !slug.trim()}>
-              {isPending ? 'Creating…' : 'Create workspace'}
+              {isPending ? t('dialogCreating') : t('dialogCreate')}
             </Button>
           </DialogFooter>
         </form>

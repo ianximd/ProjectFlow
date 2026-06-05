@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { bootstrapWorkspace } from '@/server/actions/setup';
 
 export function SetupView() {
+  const t = useTranslations('Setup');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -33,9 +35,9 @@ export function SetupView() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Welcome to ProjectFlow!</CardTitle>
+          <CardTitle>{t('welcomeTitle')}</CardTitle>
           <CardDescription>
-            Let&apos;s set up your first Workspace and Project to get started.
+            {t('welcomeDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -46,31 +48,31 @@ export function SetupView() {
           )}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="workspace-name">Workspace Name</Label>
+              <Label htmlFor="workspace-name">{t('workspaceNameLabel')}</Label>
               <Input
                 id="workspace-name"
                 type="text"
                 required
                 value={workspaceName}
                 onChange={(e) => setWorkspaceName(e.target.value)}
-                placeholder="e.g. Acme Corp"
+                placeholder={t('workspaceNamePlaceholder')}
                 disabled={isPending}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="project-name">Project Name</Label>
+              <Label htmlFor="project-name">{t('projectNameLabel')}</Label>
               <Input
                 id="project-name"
                 type="text"
                 required
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                placeholder="e.g. Website Redesign"
+                placeholder={t('projectNamePlaceholder')}
                 disabled={isPending}
               />
             </div>
             <Button type="submit" variant="primary" disabled={isPending} className="mt-2">
-              {isPending ? 'Setting up...' : 'Create and Continue'}
+              {isPending ? t('submitting') : t('submit')}
             </Button>
           </form>
         </CardContent>

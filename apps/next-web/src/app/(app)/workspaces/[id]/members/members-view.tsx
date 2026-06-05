@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import {
   Users, ArrowLeft, UserPlus, Shield, Trash2,
 } from 'lucide-react';
@@ -32,12 +33,12 @@ function effectiveRoleInput(slugs: string | null, isOwner: boolean): RoleInput |
   return 'MEMBER';
 }
 
-function roleBadgeVariant(role: 'OWNER' | RoleInput): { label: string; cls: string } {
+function roleBadgeCls(role: 'OWNER' | RoleInput): string {
   switch (role) {
-    case 'OWNER':  return { label: 'Owner',  cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' };
-    case 'ADMIN':  return { label: 'Admin',  cls: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' };
-    case 'MEMBER': return { label: 'Member', cls: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' };
-    case 'VIEWER': return { label: 'Viewer', cls: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' };
+    case 'OWNER':  return 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300';
+    case 'ADMIN':  return 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300';
+    case 'MEMBER': return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300';
+    case 'VIEWER': return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
   }
 }
 
@@ -55,6 +56,7 @@ export function MembersView({
   workspace: WorkspaceDetail;
   members: MemberRow[];
 }) {
+  const t = useTranslations('Workspaces');
   const [inviteOpen, setInviteOpen]     = useState(false);
   const [inviteError, setInviteError]   = useState<string | null>(null);
   const [pendingId,   setPendingId]     = useState<string | null>(null);
@@ -76,9 +78,7 @@ export function MembersView({
   }
 
   function handleRemove(userId: string, email: string) {
-    if (!window.confirm(
-      `Remove ${email} from this workspace?\n\nThey will lose access to all projects and their workspace role assignments will be cleared.`,
-    )) return;
+    if (!window.confirm(t('membersRemoveConfirm', { email }))) return;
     setPendingId(userId);
     startRowAction(async () => {
       const res = await removeMember(workspace.id, userId);
@@ -100,7 +100,7 @@ export function MembersView({
     <div className="flex h-full flex-col gap-4">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <Link href="/workspaces" aria-label="Back to workspaces" className="text-muted-foreground hover:text-foreground">
+        <Link href="/workspaces" aria-label={t('settingsBackAriaLabel')} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
         <div className="rounded-lg bg-primary/10 p-2 text-primary">
@@ -108,36 +108,40 @@ export function MembersView({
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-xs text-muted-foreground truncate">
-            {workspace.name} · Members
+            {workspace.name} {t('membersSubheading')}
           </div>
           <h2 className="text-base font-semibold text-foreground">
-            {`${members.length} member${members.length === 1 ? '' : 's'}`}
+            {t('membersCount', { count: members.length })}
           </h2>
         </div>
         <Button size="sm" variant="primary" onClick={() => { setInviteError(null); setInviteOpen(true); }}>
-          <UserPlus className="size-4" /> Invite
+          <UserPlus className="size-4" /> {t('membersInviteBtn')}
         </Button>
       </div>
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
       <Card className="p-0 overflow-hidden">
         {members.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No members yet.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">{t('membersNoMembers')}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/40">
                 <tr className="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  <th className="px-4 py-2">User</th>
-                  <th className="px-4 py-2">Role</th>
-                  <th className="px-4 py-2">Joined</th>
+                  <th className="px-4 py-2">{t('membersColUser')}</th>
+                  <th className="px-4 py-2">{t('membersColRole')}</th>
+                  <th className="px-4 py-2">{t('membersColJoined')}</th>
                   <th className="px-4 py-2 w-[1%]"></th>
                 </tr>
               </thead>
               <tbody>
                 {members.map((m) => {
                   const role  = effectiveRoleInput(m.roleSlugs, m.isOwner);
-                  const badge = roleBadgeVariant(role);
+                  const cls   = roleBadgeCls(role);
+                  const roleLabel = role === 'OWNER' ? t('membersRoleOwner')
+                    : role === 'ADMIN'  ? t('membersRoleAdmin')
+                    : role === 'VIEWER' ? t('membersRoleViewer')
+                    : t('membersRoleMember');
                   return (
                     <tr key={m.id} className="border-t border-border/60">
                       <td className="px-4 py-3">
@@ -158,8 +162,8 @@ export function MembersView({
                       </td>
                       <td className="px-4 py-3">
                         {m.isOwner ? (
-                          <Badge size="sm" variant="outline" appearance="outline" className={`gap-1 ${badge.cls}`}>
-                            <Shield className="size-3" /> {badge.label}
+                          <Badge size="sm" variant="outline" appearance="outline" className={`gap-1 ${cls}`}>
+                            <Shield className="size-3" /> {roleLabel}
                           </Badge>
                         ) : (
                           <Select
@@ -171,11 +175,9 @@ export function MembersView({
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {ROLE_OPTIONS.map((r) => (
-                                <SelectItem key={r} value={r}>
-                                  {roleBadgeVariant(r).label}
-                                </SelectItem>
-                              ))}
+                              <SelectItem value="ADMIN">{t('membersRoleAdmin')}</SelectItem>
+                              <SelectItem value="MEMBER">{t('membersRoleMember')}</SelectItem>
+                              <SelectItem value="VIEWER">{t('membersRoleViewer')}</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
@@ -190,7 +192,7 @@ export function MembersView({
                             variant="ghost"
                             onClick={() => handleRemove(m.id, m.email)}
                             disabled={pendingId === m.id}
-                            aria-label={`Remove ${m.email}`}
+                            aria-label={t('membersRemoveAriaLabel', { email: m.email })}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="size-4" />
@@ -226,6 +228,7 @@ function InviteDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('Workspaces');
   const [email, setEmail] = useState('');
   const [role,  setRole]  = useState<RoleInput>('MEMBER');
 
@@ -233,29 +236,29 @@ function InviteDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) { onClose(); setEmail(''); setRole('MEMBER'); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite a member</DialogTitle>
+          <DialogTitle>{t('membersInviteDialogTitle')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); if (!isPending) onSubmit({ email: email.trim(), role }); }}>
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="inv-email" className="text-xs font-medium text-muted-foreground">Email</label>
+              <label htmlFor="inv-email" className="text-xs font-medium text-muted-foreground">{t('membersInviteEmailLabel')}</label>
               <Input
                 id="inv-email" type="email" required value={email} autoFocus
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@company.com"
+                placeholder={t('membersInviteEmailPlaceholder')}
               />
               <span className="text-xs text-muted-foreground">
-                The user must already have an account. If they don&apos;t, ask them to register first.
+                {t('membersInviteEmailHint')}
               </span>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="inv-role" className="text-xs font-medium text-muted-foreground">Role</label>
+              <label htmlFor="inv-role" className="text-xs font-medium text-muted-foreground">{t('membersInviteRoleLabel')}</label>
               <Select value={role} onValueChange={(v) => setRole(v as RoleInput)}>
                 <SelectTrigger id="inv-role" className="h-9 text-sm"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r} value={r}>{roleBadgeVariant(r).label}</SelectItem>
-                  ))}
+                  <SelectItem value="ADMIN">{t('membersRoleAdmin')}</SelectItem>
+                  <SelectItem value="MEMBER">{t('membersRoleMember')}</SelectItem>
+                  <SelectItem value="VIEWER">{t('membersRoleViewer')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -266,9 +269,9 @@ function InviteDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('membersInviteCancel')}</Button>
             <Button type="submit" variant="primary" disabled={isPending || !email.trim()}>
-              {isPending ? 'Inviting…' : 'Send invite'}
+              {isPending ? t('membersInviting') : t('membersInviteSend')}
             </Button>
           </DialogFooter>
         </form>

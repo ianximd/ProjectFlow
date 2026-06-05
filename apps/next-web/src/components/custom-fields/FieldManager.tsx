@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import { Plus, Edit3, Trash2 } from 'lucide-react';
 
 import type { CustomField, CustomFieldType } from '@projectflow/types';
@@ -25,24 +26,7 @@ const TYPES: CustomFieldType[] = [
   'phone', 'dropdown', 'labels', 'rating', 'people', 'progress_manual', 'progress_auto',
 ];
 
-// Human-readable labels for the type Select / row display.
-const TYPE_LABELS: Record<CustomFieldType, string> = {
-  text: 'Text',
-  text_area: 'Text area',
-  number: 'Number',
-  currency: 'Currency',
-  checkbox: 'Checkbox',
-  date: 'Date',
-  url: 'URL',
-  email: 'Email',
-  phone: 'Phone',
-  dropdown: 'Dropdown',
-  labels: 'Labels',
-  rating: 'Rating',
-  people: 'People',
-  progress_manual: 'Progress (manual)',
-  progress_auto: 'Progress (auto)',
-};
+// Human-readable labels are resolved via t() inside the component (see typeLabel helper).
 
 interface FormState {
   name: string;
@@ -59,6 +43,28 @@ export function FieldManager({
   scopeId: string;
   fields: CustomField[];
 }) {
+  const t = useTranslations('CustomFields');
+  const tCommon = useTranslations('Common');
+
+  // Human-readable labels for the type Select / row display.
+  const TYPE_LABELS: Record<CustomFieldType, string> = {
+    text: t('typeText'),
+    text_area: t('typeTextArea'),
+    number: t('typeNumber'),
+    currency: t('typeCurrency'),
+    checkbox: t('typeCheckbox'),
+    date: t('typeDate'),
+    url: t('typeUrl'),
+    email: t('typeEmail'),
+    phone: t('typePhone'),
+    dropdown: t('typeDropdown'),
+    labels: t('typeLabels'),
+    rating: t('typeRating'),
+    people: t('typePeople'),
+    progress_manual: t('typeProgressManual'),
+    progress_auto: t('typeProgressAuto'),
+  };
+
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CustomField | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -98,7 +104,7 @@ export function FieldManager({
   }
 
   function remove(f: CustomField) {
-    if (!window.confirm(`Delete field "${f.name}"?`)) return;
+    if (!window.confirm(t('deleteFieldAriaLabel', { name: f.name }))) return;
     start(async () => {
       const r = await deleteCustomField(f.id);
       if (!r.ok) notifyActionError(r);
@@ -109,23 +115,23 @@ export function FieldManager({
     <div className="flex flex-col gap-3 h-full">
       <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 p-2">
         <div className="text-xs text-muted-foreground">
-          Custom fields cascade down to tasks in this {scopeType.toLowerCase()} and everything beneath it.
+          {t('cascadeDesc', { scope: scopeType.toLowerCase() })}
         </div>
         <Button size="sm" variant="primary" className="ml-auto" onClick={openCreate}>
-          <Plus className="size-4" /> Add field
+          <Plus className="size-4" /> {t('addField')}
         </Button>
       </div>
 
       {fields.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
           <div className="space-y-1">
-            <div className="text-sm font-medium text-foreground">No custom fields yet</div>
+            <div className="text-sm font-medium text-foreground">{t('noFieldsYet')}</div>
             <div className="text-xs text-muted-foreground max-w-sm">
-              Add fields like priority, story points, or a customer dropdown — they appear on every task in scope.
+              {t('noFieldsDesc')}
             </div>
           </div>
           <Button size="sm" variant="primary" onClick={openCreate}>
-            <Plus className="size-4" /> Add your first field
+            <Plus className="size-4" /> {t('addFirstField')}
           </Button>
         </div>
       ) : (
@@ -141,14 +147,14 @@ export function FieldManager({
                 <span className="text-xs text-muted-foreground">{TYPE_LABELS[f.type] ?? f.type}</span>
                 {f.required && (
                   <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
-                    Required
+                    {t('requiredBadge')}
                   </span>
                 )}
                 <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                   <Button
                     size="sm" variant="ghost" className="h-7 w-7 p-0"
                     onClick={() => openEdit(f)}
-                    aria-label={`Edit ${f.name}`}
+                    aria-label={t('editFieldAriaLabel', { name: f.name })}
                   >
                     <Edit3 className="size-3.5" />
                   </Button>
@@ -157,7 +163,7 @@ export function FieldManager({
                     className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                     onClick={() => remove(f)}
                     disabled={isPending}
-                    aria-label={`Delete ${f.name}`}
+                    aria-label={t('deleteFieldAriaLabel', { name: f.name })}
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -171,23 +177,23 @@ export function FieldManager({
       <Dialog open={open} onOpenChange={(v) => { if (!v) { setOpen(false); setEditing(null); } else setOpen(true); }}>
         <DialogContent key={editing?.id ?? 'create'}>
           <DialogHeader>
-            <DialogTitle>{editing ? `Edit ${editing.name}` : 'New custom field'}</DialogTitle>
+            <DialogTitle>{editing ? t('dialogEditTitle', { name: editing.name }) : t('dialogCreateTitle')}</DialogTitle>
           </DialogHeader>
           <form onSubmit={save}>
             <DialogBody className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="cf-name" className="text-xs font-medium text-muted-foreground">Name</label>
+                <label htmlFor="cf-name" className="text-xs font-medium text-muted-foreground">{t('nameLabel')}</label>
                 <Input
                   id="cf-name" required autoFocus value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Priority, Story points, Customer"
+                  placeholder={t('namePlaceholder')}
                 />
               </div>
 
               {/* Type is fixed after creation — only selectable on create. */}
               {!editing && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Type</label>
+                  <label className="text-xs font-medium text-muted-foreground">{t('typeLabel')}</label>
                   <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as CustomFieldType })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -204,7 +210,7 @@ export function FieldManager({
                   checked={form.required}
                   onCheckedChange={(c) => setForm({ ...form, required: c === true })}
                 />
-                Required (blocks marking a task Done until set)
+                {t('requiredCheckbox')}
               </label>
             </DialogBody>
             <DialogFooter>
@@ -213,10 +219,10 @@ export function FieldManager({
                 onClick={() => { setOpen(false); setEditing(null); }}
                 disabled={isPending}
               >
-                Cancel
+                {tCommon('cancel')}
               </Button>
               <Button type="submit" variant="primary" disabled={isPending || !form.name.trim()}>
-                {isPending ? 'Saving…' : editing ? 'Save changes' : 'Create field'}
+                {isPending ? t('saving') : editing ? t('saveChanges') : t('createField')}
               </Button>
             </DialogFooter>
           </form>

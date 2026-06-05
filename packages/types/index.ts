@@ -165,6 +165,9 @@ export interface Comment {
   parentId: string | null;
   body: string;
   isEdited: boolean;
+  assignedToId: string | null;
+  resolvedAt: Date | null;
+  resolvedById: string | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;

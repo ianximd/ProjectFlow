@@ -67,3 +67,70 @@ CRUD remains SP-per-op (`usp_View_*`).
   `getViewTasks` don't pass `workspaceId` and there is no nav entry to an EVERYTHING views route. The
   backend gate fails closed (BAD_REQUEST without a workspaceId), so this is an un-surfaced entry point,
   not a regression. Wiring the EVERYTHING surface is deferred.
+
+## 2026-06-06 — Phase 3.5a Notification Depth
+
+Mentions (→ notification + auto-watch), auto-watch on commenting/assignment, watchers in the fan-out,
+and comment assign/resolve. Backend-first with minimal (non-realtime) UI.
+
+### Decisions
+
+- **SP-per-op:** `usp_CommentMention_Add` (membership-validated, idempotent, returns `WasInserted`),
+  `usp_Comment_Assign`, `usp_Comment_Resolve`. The four existing comment SPs now also SELECT
+  `AssignedToId`/`ResolvedAt`/`ResolvedById`.
+- **Mention encoding:** structured token `@[Display Name](userId GUID)` embedded in the comment body.
+  The backend extracts userIds, validates each is a member of the comment's workspace, and silently
+  skips non-members (no notification).
+- **Mention dedup via `CommentMentions` PK** `(CommentId, MentionedUserId)`: edits don't re-notify
+  already-mentioned users (`WasInserted = 0`) — no diffing.
+- **Auto-watch (ClickUp-style):** comment author, mentioned users, comment-assignee, and new
+  task-assignees all auto-watch the task.
+- **`fanOutTaskEvent`** = union(reporter, assignees, watchers) − actor − extraExclude. `COMMENT_ADDED`
+  (excludes just-mentioned users to avoid double-notifying) and `TASK_UPDATED`. `TASK_ASSIGNED` stays
+  targeted (unchanged).
+- **Dual-path assign/resolve:** GraphQL mutations (`assignComment`/`resolveComment`) for the spec, plus
+  REST endpoints for the SSR frontend — mirrors the watchers dual-path.
+- **`TASK_UPDATED` debounce** via Redis `SET NX EX` (60s/task), fail-open. Due-date trigger deferred
+  (`updateTask` has no before/after diff).
+
+### Execution-time deviations (logged during two-stage review)
+
+- **Fan-out reads PascalCase `ReporterId`.** `usp_Task_GetById` is `SELECT *` (raw PascalCase, carries no
+  assignees), so the plan's camelCase `task.reporterId`/`.assigneeIds` were `undefined` — reporter
+  notifications were a silent no-op (this was also a pre-existing bug in `comment.service`). `fanout.ts`
+  now reads `(task).reporterId ?? (task).ReporterId`; assignees are covered via the watcher path
+  (assignment auto-watches), so fan-out's `assigneeIds` is best-effort and normally empty. Verified by an
+  integration test (reporter — non-actor, non-watcher — receives `COMMENT_ADDED`). Payloads are built
+  from the known `taskId` + a casing-tolerant title read, never `task.id`/`task.title`.
+- **`actorId` normalized for `notify`.** `computeRecipients` uppercases recipient ids, so fan-out passes
+  `norm(actorId)` to `notificationService.notify` to keep its own self-exclusion guard effective.
+- **SP hardening.** `usp_Comment_Assign`/`_Resolve` UPDATEs filter `DeletedAt IS NULL` (close the
+  guard→write race; matches `usp_Comment_Update`) and wrap the body in `BEGIN TRY/BEGIN CATCH THROW`
+  (matches `usp_TaskWatcher_Add`).
+- **REST assign/resolve authz** corrected to `requirePermission('task.update', { ownerFallback: { slug:
+  'comment.update.own', resolveOwner } })` = "task-editor OR comment author", mirroring the DELETE route
+  and the GraphQL author-or-EDIT intent. (The plan's literal snippet used `comment.update.own` as the
+  primary slug, which would have let any member holding it act on any comment.)
+- **REST input/error hardening.** `/assign` returns 400 when `assigneeId` is missing/non-string; `/resolve`
+  mirrors `/assign`'s try/catch, mapping SP THROW `51402` → 404 (was an uncaught 500). `/assign` maps
+  `51401` → 422 `ASSIGNEE_NOT_MEMBER`.
+
+### Known limitations / follow-ups (not blockers)
+
+- **Debounce coalescing:** `transitionTask` and `setAssignees` share the key
+  `notif:debounce:TASK_UPDATED:${taskId}` (60s), so in a burst one change type (status vs assignees) can
+  be coalesced away. Acceptable for noise reduction; include the change type in the key if per-change
+  audit fan-out is ever required.
+- **TOCTOU in GraphQL `assertCanEditComment`:** the comment→task→List lookup and the SP write are
+  separate round-trips; a concurrent task move could shift the List between check and write (ms window,
+  over-authorizes toward stricter; SP-tier workspace validation still applies). Follow-up: fold the List
+  check into the SP.
+- **Deprovisioned author:** a user removed from the workspace can still assign/resolve their OWN comments
+  (author bypass on both paths); the assign SP still rejects a non-member assignee. Policy decision deferred.
+- **Frontend:** `workspaceId` is `string | null` — when null, member loading is skipped, so the assign
+  popover shows no members and an assigned comment displays "Assigned to {unknown}". Mention chips render
+  via React text nodes (auto-escaped; no XSS). Minor follow-ups: stable segment keys (currently index),
+  `role="option"` on suggestion items, an unassign affordance, the edit composer not yet using
+  `MentionInput`, and the pre-existing hardcoded-English `relativeTime()`.
+- **Saved-for-later notification columns** (`Notifications.SavedForLater`/`SavedAt`) + the `IX_Notif_UserSaved`
+  index ship in migration 0033 but are unused this slice — they belong to the future 3.5c Inbox.

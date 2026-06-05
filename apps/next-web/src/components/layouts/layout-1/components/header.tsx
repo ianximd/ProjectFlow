@@ -40,7 +40,7 @@ export function Header() {
   // Avatar/name come from the layout context (server-derived via getMe in the
   // (app) layout). Falls back to initials when the image fails to load
   // (legacy http URL, expired key, MinIO down).
-  const { user, initialUnread } = useLayout();
+  const { user, initialUnread, recentNotifications } = useLayout();
   const avatarUrl   = user?.avatarUrl ?? null;
   const displayName = user?.name ?? '';
   const [avatarBroken, setAvatarBroken] = useState(false);
@@ -114,6 +114,7 @@ export function Header() {
             />
           )}
           <NotificationsSheet
+            notifications={recentNotifications}
             trigger={
               <Button
                 variant="ghost"

@@ -2,6 +2,7 @@
 
 import { createContext, ReactNode, useContext, useState } from 'react';
 import type { HierarchyTreeData } from '@/components/hierarchy/SidebarTree';
+import type { NotificationRow } from '@/server/queries/notifications';
 
 type SidebarTheme = 'dark' | 'light';
 
@@ -27,6 +28,8 @@ interface LayoutState {
   hierarchy: HierarchyTreeData | null;
   /** Server-seeded unread notification count for the topbar bell badge (Phase 3.5b). */
   initialUnread: number;
+  /** Server-seeded recent notifications for the topbar dropdown preview (Phase 3.5c). */
+  recentNotifications: NotificationRow[];
 }
 
 // Create the context
@@ -39,9 +42,10 @@ interface LayoutProviderProps {
   user?:    LayoutUser | null;
   hierarchy?: HierarchyTreeData | null;
   initialUnread?: number;
+  recentNotifications?: NotificationRow[];
 }
 
-export function LayoutProvider({ children, isAdmin = false, user = null, hierarchy = null, initialUnread = 0 }: LayoutProviderProps) {
+export function LayoutProvider({ children, isAdmin = false, user = null, hierarchy = null, initialUnread = 0, recentNotifications = [] }: LayoutProviderProps) {
   const [sidebarCollapse, setSidebarCollapse] = useState(false);
   const [sidebarTheme, setSidebarTheme] = useState<SidebarTheme>('light');
 
@@ -56,6 +60,7 @@ export function LayoutProvider({ children, isAdmin = false, user = null, hierarc
         user,
         hierarchy,
         initialUnread,
+        recentNotifications,
       }}
     >
       {children}

@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useSubscription } from '@apollo/client/react';
 import {
-  Bell, BellOff, Check, CheckCheck, MessageSquare, UserPlus, AtSign,
-  FileText, AlertCircle, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck,
+  Bell, BellOff, Check, CheckCheck, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck,
 } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
-import { formatShortDate, formatDateTime } from '@/lib/date';
+import { formatDateTime } from '@/lib/date';
 import {
   markNotificationRead, markAllNotificationsRead, setNotificationSaved,
 } from '@/server/actions/notifications';
@@ -23,37 +22,10 @@ import {
 } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { NotificationRow } from '@/server/queries/notifications';
+import {
+  TONE_BG, typeMeta, timeAgo, summaryFallbackKey, type InboxT,
+} from '@/components/notifications/notification-meta';
 import { INBOX_TAB_ORDER, type InboxTab } from './inbox-tabs';
-
-type InboxT = ReturnType<typeof useTranslations<'Inbox'>>;
-
-// ── Type → icon + tone + i18n label/summary key mapping ──────────────────────
-
-const TYPE_META: Record<string, {
-  icon: typeof Bell;
-  labelKey: string;
-  summaryKey: string;
-  tone: 'blue' | 'amber' | 'emerald' | 'violet' | 'slate';
-}> = {
-  TASK_ASSIGNED:    { icon: UserPlus,      labelKey: 'labelTaskAssigned',    summaryKey: 'summaryTaskAssigned',    tone: 'blue'    },
-  COMMENT_ASSIGNED: { icon: MessageSquare, labelKey: 'labelCommentAssigned', summaryKey: 'summaryCommentAssigned', tone: 'blue'    },
-  COMMENT_ADDED:    { icon: MessageSquare, labelKey: 'labelCommentAdded',    summaryKey: 'summaryCommentAdded',    tone: 'emerald' },
-  MENTION:          { icon: AtSign,        labelKey: 'labelMention',         summaryKey: 'summaryMention',         tone: 'amber'   },
-  TASK_UPDATED:     { icon: FileText,      labelKey: 'labelTaskUpdated',     summaryKey: 'summaryTaskUpdated',     tone: 'violet'  },
-  TASK_DUE_SOON:    { icon: AlertCircle,   labelKey: 'labelTaskDueSoon',     summaryKey: 'summaryTaskDueSoon',     tone: 'amber'   },
-};
-
-const TONE_BG: Record<'blue' | 'amber' | 'emerald' | 'violet' | 'slate', string> = {
-  blue:    'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  amber:   'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  emerald: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  violet:  'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
-  slate:   'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-};
-
-function typeMeta(type: string) {
-  return TYPE_META[type] ?? { icon: Bell, labelKey: '', summaryKey: '', tone: 'slate' as const };
-}
 
 const TAB_LABEL_KEY: Record<InboxTab, string> = {
   all:      'tabAll',
@@ -63,19 +35,6 @@ const TAB_LABEL_KEY: Record<InboxTab, string> = {
   comments: 'tabComments',
   saved:    'tabSaved',
 };
-
-// ── Relative time ─────────────────────────────────────────────────────────────
-
-function timeAgo(iso: string, t: InboxT): string {
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return '';
-  const diff = Math.round((Date.now() - ts) / 1000);
-  if (diff < 60)         return t('timeSeconds', { value: diff });
-  if (diff < 3600)       return t('timeMinutes', { value: Math.round(diff / 60) });
-  if (diff < 86400)      return t('timeHours',   { value: Math.round(diff / 3600) });
-  if (diff < 86400 * 30) return t('timeDays',    { value: Math.round(diff / 86400) });
-  return formatShortDate(iso);
-}
 
 // ── Live subscription mapping ────────────────────────────────────────────────
 // The NOTIFICATION_ADDED payload carries only { id, type, isRead, createdAt }.
@@ -399,19 +358,6 @@ function NotificationItem({
 
 function humanize(s: string) {
   return s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
-
-/** Fallback noun for the {title} arg when a notification has no taskTitle. */
-function summaryFallbackKey(type: string): string {
-  switch (type) {
-    case 'COMMENT_ADDED':
-    case 'TASK_UPDATED':
-      return 'fallbackFollowedTask';
-    case 'MENTION':
-      return 'fallbackDiscussion';
-    default:
-      return 'fallbackTask';
-  }
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {

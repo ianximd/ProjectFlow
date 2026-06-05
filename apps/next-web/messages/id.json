@@ -1245,6 +1245,8 @@
     "fallbackTask": "sebuah tugas",
     "fallbackFollowedTask": "tugas yang Anda ikuti",
     "fallbackDiscussion": "sebuah diskusi",
+    "seeAll": "Lihat semua",
+    "empty": "Anda sudah menyelesaikan semuanya",
     "empty_all_title": "Anda sudah menyelesaikan semuanya",
     "empty_all_body": "Saat rekan menugaskan tugas, mengomentari isu yang Anda laporkan, atau menyebut Anda, pembaruan tersebut muncul di sini.",
     "empty_unread_title": "Kotak masuk kosong",

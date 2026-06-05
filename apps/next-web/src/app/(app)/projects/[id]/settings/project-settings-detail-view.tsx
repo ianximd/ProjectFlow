@@ -7,6 +7,7 @@ import {
   ArrowLeft, Save, Archive, ArchiveRestore, Trash2, AlertTriangle,
   Settings as SettingsIcon, Briefcase, Workflow, Kanban,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
 import {
@@ -45,6 +46,7 @@ function isoToDateInput(iso: string | null | undefined): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function ProjectSettingsDetailView({ project }: { project: ProjectDetail }) {
+  const t = useTranslations('ProjectSettings');
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -126,7 +128,7 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
         <Link
           href="/projects"
           className="text-muted-foreground hover:text-foreground"
-          aria-label="Back to projects"
+          aria-label={t('backToProjects')}
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
         </Link>
@@ -135,7 +137,7 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Project settings</span>
+            <span>{t('projectSettingsBreadcrumb')}</span>
             {project.key && (
               <>
                 <span aria-hidden="true">·</span>
@@ -156,60 +158,60 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
       <Card className="p-5">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">General</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('general')}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Identity and timeline for this project.
+              {t('generalDesc')}
             </p>
           </div>
           <Link
             href="/project-settings"
             className="text-xs text-primary hover:underline inline-flex items-center gap-1"
           >
-            Configure labels, components, integrations →
+            {t('configureLink')}
           </Link>
         </div>
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="p-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="p-name" className="text-xs font-medium text-muted-foreground">{t('nameLabel')}</label>
               <Input id="p-name" required value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5 min-w-[120px]">
-              <label className="text-xs font-medium text-muted-foreground">Key</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('keyLabel')}</label>
               <div className="h-9 flex items-center rounded-md border border-input bg-muted/40 px-3 font-mono text-sm">
                 {project.key}
               </div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            The project key is fixed once created — issues already reference it (e.g. <code className="font-mono">{project.key}-42</code>).
+            {t('keyFixedHint', { example: `${project.key}-42` })}
           </p>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="p-desc" className="text-xs font-medium text-muted-foreground">Description</label>
+            <label htmlFor="p-desc" className="text-xs font-medium text-muted-foreground">{t('descriptionLabel')}</label>
             <textarea
               id="p-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              placeholder="What does this project track?"
+              placeholder={t('descPlaceholder')}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring resize-none"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Type</label>
+            <label className="text-xs font-medium text-muted-foreground">{t('typeLabel')}</label>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(TYPE_META) as ProjectType[]).map((t) => {
-                const meta = TYPE_META[t];
+              {(Object.keys(TYPE_META) as ProjectType[]).map((typeKey) => {
+                const meta = TYPE_META[typeKey];
                 const Icon = meta.icon;
-                const active = type === t;
+                const active = type === typeKey;
                 return (
                   <button
-                    key={t}
+                    key={typeKey}
                     type="button"
-                    onClick={() => setType(t)}
+                    onClick={() => setType(typeKey)}
                     className={cn(
                       'flex flex-col items-center gap-1 rounded-md border px-2 py-3 text-xs font-medium transition-colors',
                       active
@@ -225,28 +227,27 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
               })}
             </div>
             <p className="text-xs text-muted-foreground">
-              Type affects how the board and reports render — Scrum surfaces sprints prominently;
-              Kanban skips the sprint workflow.
+              {t('typeHint')}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="p-start" className="text-xs font-medium text-muted-foreground">Start date</label>
+              <label htmlFor="p-start" className="text-xs font-medium text-muted-foreground">{t('startDate')}</label>
               <Input id="p-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="p-end" className="text-xs font-medium text-muted-foreground">End date</label>
+              <label htmlFor="p-end" className="text-xs font-medium text-muted-foreground">{t('endDate')}</label>
               <Input id="p-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor="p-avatar" className="text-xs font-medium text-muted-foreground">Avatar URL (optional)</label>
+            <label htmlFor="p-avatar" className="text-xs font-medium text-muted-foreground">{t('avatarUrlLabel')}</label>
             <Input
               id="p-avatar" type="url" value={avatarUrl}
               onChange={(e) => setAvatarUrl(e.target.value)}
-              placeholder="https://…/logo.png"
+              placeholder={t('avatarUrlPlaceholder')}
             />
           </div>
 
@@ -259,18 +260,18 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
           <div className="flex items-center gap-2">
             <Button type="submit" variant="primary" disabled={!dirty || isPending}>
               <Save className="size-4" />
-              {isPending ? 'Saving…' : 'Save changes'}
+              {isPending ? t('savingLabel') : t('saveChangesBtn')}
             </Button>
             {dirty && (
               <Button type="button" variant="ghost" onClick={handleDiscard} disabled={isPending}>
-                Discard
+                {t('discard')}
               </Button>
             )}
             <div className="ml-auto text-xs text-muted-foreground">
               <Badge size="xs" variant="outline" appearance="outline" className={cn('font-normal mr-1', tm.cls)}>
                 {tm.label}
               </Badge>
-              selected
+              {t('selected')}
             </div>
           </div>
         </form>
@@ -287,7 +288,7 @@ export function ProjectSettingsDetailView({ project }: { project: ProjectDetail 
       <Card className="p-5 border-destructive/40">
         <div className="flex items-center gap-2 mb-3">
           <AlertTriangle className="size-4 text-destructive" />
-          <h3 className="text-sm font-semibold text-destructive">Danger zone</h3>
+          <h3 className="text-sm font-semibold text-destructive">{t('dangerZone')}</h3>
         </div>
         <DeleteProjectPanel
           projectId={project.id}
@@ -310,13 +311,12 @@ function LifecycleCard({
   projectName: string;
   status: ProjectStatus;
 }) {
+  const t = useTranslations('ProjectSettings');
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   function handleArchive() {
-    if (!window.confirm(
-      `Archive ${projectName}?\n\nArchived projects keep all their data but disappear from default switchers. You can restore at any time.`,
-    )) return;
+    if (!window.confirm(t('archiveConfirm', { name: projectName }))) return;
     setError(null);
     startTransition(async () => {
       const res = await archiveProject(projectId);
@@ -340,29 +340,29 @@ function LifecycleCard({
 
   return (
     <Card className="p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-1">Lifecycle</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-1">{t('lifecycle')}</h3>
       <p className="text-xs text-muted-foreground mb-4">
-        Pause work without losing data, or restore an archived project.
+        {t('lifecycleDesc')}
       </p>
 
       {status === 'ACTIVE' ? (
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={handleArchive} disabled={isPending}>
             <Archive className="size-4" />
-            {isPending ? 'Archiving…' : 'Archive project'}
+            {isPending ? t('archiving') : t('archiveProject')}
           </Button>
-          <span className="text-xs text-muted-foreground">Hides the project from switchers; nothing is deleted.</span>
+          <span className="text-xs text-muted-foreground">{t('archiveHint')}</span>
         </div>
       ) : status === 'ARCHIVED' ? (
         <div className="flex items-center gap-3">
           <Button variant="outline" onClick={handleRestore} disabled={isPending}>
             <ArchiveRestore className="size-4" />
-            {isPending ? 'Restoring…' : 'Restore project'}
+            {isPending ? t('restoring') : t('restoreProject')}
           </Button>
-          <span className="text-xs text-muted-foreground">Returns the project to active switchers and reports.</span>
+          <span className="text-xs text-muted-foreground">{t('restoreHint')}</span>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">This project is deleted and read-only.</p>
+        <p className="text-xs text-muted-foreground">{t('projectDeleted')}</p>
       )}
 
       {error && (
@@ -385,6 +385,7 @@ function DeleteProjectPanel({
   expectedKey: string;
   onDeleted: () => void;
 }) {
+  const t = useTranslations('ProjectSettings');
   const [isPending, startTransition] = useTransition();
   const [confirmInput, setConfirmInput] = useState('');
   const [deleteError,  setDeleteError]  = useState<string | null>(null);
@@ -407,12 +408,11 @@ function DeleteProjectPanel({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Deleting a project soft-deletes its issues, sprints, and workflow. They stay in the database
-        for audit but stop appearing in the app. <strong>This cannot be undone from the UI.</strong>
+        {t('deleteProjectDesc')} <strong>{t('deleteProjectDescStrong')}</strong>
       </p>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="p-confirm" className="text-xs font-medium text-muted-foreground">
-          Type <code className="font-mono text-foreground">{expectedKey}</code> to confirm
+          {t('deleteConfirmLabel')} <code className="font-mono text-foreground">{expectedKey}</code>
         </label>
         <Input
           id="p-confirm"
@@ -430,7 +430,7 @@ function DeleteProjectPanel({
       <div>
         <Button variant="destructive" onClick={handleDelete} disabled={!matches || isPending}>
           <Trash2 className="size-4" />
-          {isPending ? 'Deleting…' : 'Delete project'}
+          {isPending ? t('deleting') : t('deleteProject')}
         </Button>
       </div>
     </div>

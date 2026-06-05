@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { disconnectIdentity } from '@/server/actions/oauth';
 import type { OAuthProvider, OAuthIdentity } from '@/server/queries/oauth';
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export function ConnectedAccountsView({ providers, identities: initialIdentities }: Props) {
+  const t = useTranslations('ConnectedAccounts');
   // Optimistic local identity list so the UI updates immediately after disconnect.
   const [identities, setIdentities] = useState(initialIdentities);
   const [busyProvider, setBusyProvider] = useState<string | null>(null);
@@ -48,17 +50,17 @@ export function ConnectedAccountsView({ providers, identities: initialIdentities
   return (
     <div className="max-w-2xl p-6 space-y-6">
       <header>
-        <h1 className="text-xl font-semibold text-foreground">Connected accounts</h1>
+        <h1 className="text-xl font-semibold text-foreground">{t('heading')}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Sign in faster by connecting your social accounts.
+          {t('subheading')}
         </p>
       </header>
 
       {/* ── Linked providers ─────────────────────────────────────────────── */}
       <section className="space-y-2">
-        <h2 className="text-sm font-medium text-foreground">Linked</h2>
+        <h2 className="text-sm font-medium text-foreground">{t('linkedSection')}</h2>
         {identities.length === 0 && (
-          <p className="text-sm text-muted-foreground">You haven&apos;t connected any providers yet.</p>
+          <p className="text-sm text-muted-foreground">{t('noProvidersYet')}</p>
         )}
         {identities.map((i) => (
           <div
@@ -78,13 +80,9 @@ export function ConnectedAccountsView({ providers, identities: initialIdentities
               onClick={() => handleDisconnect(i.provider)}
               disabled={busyProvider === i.provider}
               className="text-sm text-destructive hover:underline disabled:opacity-60"
-              title={
-                onlyCredential
-                  ? 'This is your only credential. Set a password before disconnecting to avoid being locked out.'
-                  : undefined
-              }
+              title={onlyCredential ? t('onlyCredentialTitle') : undefined}
             >
-              {busyProvider === i.provider ? 'Disconnecting…' : 'Disconnect'}
+              {busyProvider === i.provider ? t('disconnecting') : t('disconnect')}
             </button>
           </div>
         ))}
@@ -93,7 +91,7 @@ export function ConnectedAccountsView({ providers, identities: initialIdentities
       {/* ── Available (unlinked) providers ───────────────────────────────── */}
       {unlinkedNow.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-sm font-medium text-foreground">Available</h2>
+          <h2 className="text-sm font-medium text-foreground">{t('availableSection')}</h2>
           {unlinkedNow.map((p) => (
             <a
               key={p.name}
@@ -103,7 +101,7 @@ export function ConnectedAccountsView({ providers, identities: initialIdentities
               <span className="text-sm font-medium text-foreground">
                 {PROVIDER_LABEL[p.name] ?? p.name}
               </span>
-              <span className="text-xs text-muted-foreground">Connect</span>
+              <span className="text-xs text-muted-foreground">{t('connect')}</span>
             </a>
           ))}
         </section>

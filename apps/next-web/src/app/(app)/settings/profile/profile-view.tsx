@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   CheckCircle2, KeyRound, Link2, Loader2, ShieldCheck, Trash2, Upload, UserCog,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { toast } from 'sonner';
 
@@ -39,6 +40,7 @@ const MAX_AVATAR_BYTES = 3 * 1024 * 1024; // 3 MB
 // ── ProfileView (root) ───────────────────────────────────────────────────────
 
 export function ProfileView({ me }: { me: MeProfile }) {
+  const t = useTranslations('Profile');
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex items-center gap-3 min-w-0">
@@ -46,8 +48,8 @@ export function ProfileView({ me }: { me: MeProfile }) {
           <UserCog className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="text-xs text-muted-foreground">Settings</div>
-          <h2 className="text-base font-semibold text-foreground truncate">My Profile</h2>
+          <div className="text-xs text-muted-foreground">{t('settings')}</div>
+          <h2 className="text-base font-semibold text-foreground truncate">{t('myProfile')}</h2>
         </div>
       </div>
 
@@ -64,6 +66,7 @@ export function ProfileView({ me }: { me: MeProfile }) {
 // ── Profile card (name + avatar) ──────────────────────────────────────────────
 
 function ProfileCard({ me }: { me: MeProfile }) {
+  const t = useTranslations('Profile');
   const router = useRouter();
   const [avatarPending, startAvatar] = useTransition();
   const [namePending,   startName]   = useTransition();
@@ -104,9 +107,9 @@ function ProfileCard({ me }: { me: MeProfile }) {
     // body limit would otherwise reject the request as an uncaught throw and
     // crash the page with the Next.js error overlay.
     if (f.size > MAX_AVATAR_BYTES) {
-      const msg = 'Image is too large — choose a file under 3 MB.';
+      const msg = t('avatarTooLargeDesc');
       setAvatarErr(msg);
-      toast.error('Avatar too large', { description: msg });
+      toast.error(t('avatarTooLarge'), { description: msg });
       return;
     }
 
@@ -126,9 +129,9 @@ function ProfileCard({ me }: { me: MeProfile }) {
         // The Server Action threw before returning a result — e.g. the
         // framework body-size guard or a network failure. Surface it as a
         // toast instead of letting it bubble up as a runtime crash.
-        const msg = 'Could not upload the image. Please try again.';
+        const msg = t('uploadFailedDesc');
         setAvatarErr(msg);
-        toast.error('Upload failed', { description: msg });
+        toast.error(t('uploadFailed'), { description: msg });
       }
     });
   }
@@ -155,7 +158,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <UserCog className="size-4" /> Profile information
+          <UserCog className="size-4" /> {t('profileInformation')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -173,10 +176,10 @@ function ProfileCard({ me }: { me: MeProfile }) {
               {me.email}
               {me.isEmailVerified ? (
                 <Badge variant="secondary" size="sm" className="gap-1">
-                  <CheckCircle2 className="size-3" /> verified
+                  <CheckCircle2 className="size-3" /> {t('emailVerified')}
                 </Badge>
               ) : (
-                <Badge variant="outline" size="sm">unverified</Badge>
+                <Badge variant="outline" size="sm">{t('emailUnverified')}</Badge>
               )}
             </div>
           </div>
@@ -184,13 +187,13 @@ function ProfileCard({ me }: { me: MeProfile }) {
 
         {/* Avatar controls */}
         <div className="space-y-1.5">
-          <Label>Avatar</Label>
+          <Label>{t('avatarLabel')}</Label>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/jpeg,image/png,image/gif,image/webp"
             className="hidden"
-            aria-label="Upload avatar"
+            aria-label={t('uploadAvatarAriaLabel')}
             onChange={onPickFile}
           />
           <div className="flex flex-wrap items-center gap-2">
@@ -206,7 +209,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
               ) : (
                 <Upload className="size-3.5" />
               )}
-              {me.avatarUrl ? 'Replace' : 'Upload'}
+              {me.avatarUrl ? t('replace') : t('upload')}
             </Button>
             {me.avatarUrl && (
               <Button
@@ -221,31 +224,31 @@ function ProfileCard({ me }: { me: MeProfile }) {
                 ) : (
                   <Trash2 className="size-3.5" />
                 )}
-                Remove
+                {t('remove')}
               </Button>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            JPEG, PNG, GIF, or WebP — up to 3 MB.
+            {t('avatarHint')}
           </p>
           {avatarErr && <p className="text-xs text-destructive">{avatarErr}</p>}
         </div>
 
         {/* Display name field */}
         <div className="space-y-1.5">
-          <Label htmlFor="profile-name">Display name</Label>
+          <Label htmlFor="profile-name">{t('displayNameLabel')}</Label>
           <Input
             id="profile-name"
             value={name}
             onChange={(e) => { setName(e.target.value); setSaveSuccess(false); }}
-            placeholder="Jane Doe"
+            placeholder={t('displayNamePlaceholder')}
             maxLength={255}
           />
         </div>
 
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            Email cannot be changed here yet.
+            {t('emailCannotChange')}
           </p>
           <Button
             type="button"
@@ -253,12 +256,12 @@ function ProfileCard({ me }: { me: MeProfile }) {
             onClick={handleSaveName}
           >
             {namePending && <Loader2 className="size-3.5 animate-spin" />}
-            Save changes
+            {t('saveChanges')}
           </Button>
         </div>
 
         {saveSuccess && (
-          <p className="text-xs text-emerald-500">Profile updated.</p>
+          <p className="text-xs text-emerald-500">{t('profileUpdated')}</p>
         )}
       </CardContent>
     </Card>
@@ -269,6 +272,7 @@ function ProfileCard({ me }: { me: MeProfile }) {
 // Change-password goes through the changePassword Server Action (Phase 3 Batch I).
 
 function PasswordCard() {
+  const t = useTranslations('Profile');
   const [current,  setCurrent]  = useState('');
   const [next1,    setNext1]    = useState('');
   const [next2,    setNext2]    = useState('');
@@ -282,14 +286,14 @@ function PasswordCard() {
   function submit() {
     setLocalErr(null);
     setSuccess(false);
-    if (!current)          return setLocalErr('Enter your current password.');
-    if (next1.length < 8)  return setLocalErr('New password must be at least 8 characters.');
-    if (next1 !== next2)   return setLocalErr('New password and confirmation do not match.');
-    if (next1 === current) return setLocalErr('New password must differ from the current one.');
+    if (!current)          return setLocalErr(t('enterCurrentPassword'));
+    if (next1.length < 8)  return setLocalErr(t('newPasswordMin8'));
+    if (next1 !== next2)   return setLocalErr(t('newPasswordMismatch'));
+    if (next1 === current) return setLocalErr(t('newPasswordSameAsCurrent'));
     startTransition(async () => {
       const res = await changePassword(current, next1);
       if (!res.ok) {
-        setLocalErr(res.error ?? 'Something went wrong.');
+        setLocalErr(res.error ?? t('somethingWentWrong'));
         notifyActionError(res);
       } else {
         setCurrent(''); setNext1(''); setNext2('');
@@ -303,12 +307,12 @@ function PasswordCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRound className="size-4" /> Change password
+          <KeyRound className="size-4" /> {t('changePassword')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="pw-current">Current password</Label>
+          <Label htmlFor="pw-current">{t('currentPassword')}</Label>
           <Input
             id="pw-current"
             type="password"
@@ -318,7 +322,7 @@ function PasswordCard() {
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="pw-next1">New password</Label>
+          <Label htmlFor="pw-next1">{t('newPassword')}</Label>
           <Input
             id="pw-next1"
             type="password"
@@ -327,11 +331,11 @@ function PasswordCard() {
             onChange={(e) => setNext1(e.target.value)}
           />
           {tooShort && (
-            <p className="text-xs text-destructive">Must be at least 8 characters.</p>
+            <p className="text-xs text-destructive">{t('mustBeAtLeast8')}</p>
           )}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="pw-next2">Confirm new password</Label>
+          <Label htmlFor="pw-next2">{t('confirmNewPassword')}</Label>
           <Input
             id="pw-next2"
             type="password"
@@ -340,7 +344,7 @@ function PasswordCard() {
             onChange={(e) => setNext2(e.target.value)}
           />
           {mismatch && (
-            <p className="text-xs text-destructive">Passwords don&apos;t match.</p>
+            <p className="text-xs text-destructive">{t('passwordsDontMatch')}</p>
           )}
         </div>
 
@@ -353,12 +357,12 @@ function PasswordCard() {
             onClick={submit}
           >
             {isPending && <Loader2 className="size-3.5 animate-spin" />}
-            Update password
+            {t('updatePassword')}
           </Button>
         </div>
 
         {success && (
-          <p className="text-xs text-emerald-500">Password updated.</p>
+          <p className="text-xs text-emerald-500">{t('passwordUpdated')}</p>
         )}
       </CardContent>
     </Card>
@@ -368,28 +372,27 @@ function PasswordCard() {
 // ── Security card (MFA status) ────────────────────────────────────────────────
 
 function SecurityCard({ me }: { me: MeProfile }) {
+  const t = useTranslations('Profile');
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="size-4" /> Two-factor authentication
+          <ShieldCheck className="size-4" /> {t('twoFactorAuth')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="flex items-center justify-between">
-          <span>Status</span>
+          <span>{t('mfaStatus')}</span>
           {me.mfaEnabled ? (
             <Badge variant="secondary" size="sm" className="gap-1">
-              <CheckCircle2 className="size-3" /> Enabled
+              <CheckCircle2 className="size-3" /> {t('mfaEnabled')}
             </Badge>
           ) : (
-            <Badge variant="outline" size="sm">Disabled</Badge>
+            <Badge variant="outline" size="sm">{t('mfaDisabled')}</Badge>
           )}
         </div>
         <p className="text-xs text-muted-foreground">
-          Manage MFA from the API endpoints (<code className="font-mono">POST /auth/mfa/setup</code>,
-          <code className="font-mono"> POST /auth/mfa/verify-setup</code>,
-          <code className="font-mono"> POST /auth/mfa/disable</code>). UI controls are coming.
+          {t('mfaHint')}
         </p>
       </CardContent>
     </Card>
@@ -399,19 +402,20 @@ function SecurityCard({ me }: { me: MeProfile }) {
 // ── Connected accounts card ───────────────────────────────────────────────────
 
 function ConnectedAccountsCard() {
+  const t = useTranslations('Profile');
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Link2 className="size-4" /> Connected accounts
+          <Link2 className="size-4" /> {t('connectedAccountsCardTitle')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">
-          Link or unlink Google, GitHub, and other OAuth providers.
+          {t('connectedAccountsCardDesc')}
         </p>
         <Button asChild variant="outline" size="sm">
-          <Link href="/settings/connected-accounts">Manage providers</Link>
+          <Link href="/settings/connected-accounts">{t('manageProviders')}</Link>
         </Button>
       </CardContent>
     </Card>

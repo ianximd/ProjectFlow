@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   Settings, Tag, Boxes, GitPullRequest, MessageSquare, Webhook,
   Plus, Trash2, Edit3, Search, Filter, ListChecks,
@@ -34,14 +35,6 @@ import { cn } from '@/lib/utils';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 type Tab = 'labels' | 'components' | 'custom-fields' | 'git' | 'messaging' | 'webhooks';
-const TABS: Array<{ value: Tab; label: string; icon: typeof Tag }> = [
-  { value: 'labels',        label: 'Labels',          icon: Tag },
-  { value: 'components',    label: 'Components',      icon: Boxes },
-  { value: 'custom-fields', label: 'Custom Fields',   icon: ListChecks },
-  { value: 'git',           label: 'Git Integration', icon: GitPullRequest },
-  { value: 'messaging',  label: 'Slack & Teams',   icon: MessageSquare },
-  { value: 'webhooks',   label: 'Webhooks',        icon: Webhook },
-];
 
 // Eight ~accessible label colours covering the common hue families.
 const PRESET_COLORS = [
@@ -62,9 +55,20 @@ interface Props {
 }
 
 export function ProjectSettingsView({ ctx, labels, components, customFields, initialTab }: Props) {
+  const t = useTranslations('ProjectSettings');
+
+  const TABS: Array<{ value: Tab; label: string; icon: typeof Tag }> = [
+    { value: 'labels',        label: t('tabLabels'),         icon: Tag },
+    { value: 'components',    label: t('tabComponents'),     icon: Boxes },
+    { value: 'custom-fields', label: t('tabCustomFields'),   icon: ListChecks },
+    { value: 'git',           label: t('tabGitIntegration'), icon: GitPullRequest },
+    { value: 'messaging',     label: t('tabSlackTeams'),     icon: MessageSquare },
+    { value: 'webhooks',      label: t('tabWebhooks'),       icon: Webhook },
+  ];
+
   // Allow ?tab=git deep links (the sidebar uses /project-settings?tab=git). Seeded
   // once from the server-resolved searchParam, matching the original CSR behaviour.
-  const isTab = (t: string): t is Tab => TABS.some((x) => x.value === t);
+  const isTab = (v: string): v is Tab => TABS.some((x) => x.value === v);
   const [tab, setTab] = useState<Tab>(isTab(initialTab) ? initialTab : 'labels');
 
   const activeProject = ctx.projects.find((p) => p.id === ctx.activeProjectId) ?? ctx.projects[0];
@@ -80,7 +84,7 @@ export function ProjectSettingsView({ ctx, labels, components, customFields, ini
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Project settings</span>
+              <span>{t('projectSettingsBreadcrumb')}</span>
               {activeProject?.key && (
                 <>
                   <span aria-hidden="true">·</span>
@@ -89,7 +93,7 @@ export function ProjectSettingsView({ ctx, labels, components, customFields, ini
               )}
             </div>
             <h2 className="text-base font-semibold text-foreground truncate">
-              {activeProject?.name ?? 'No project'}
+              {activeProject?.name ?? t('noProject')}
             </h2>
           </div>
         </div>
@@ -109,12 +113,12 @@ export function ProjectSettingsView({ ctx, labels, components, customFields, ini
       ) : (
         <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex-1 min-h-0 flex flex-col">
           <TabsList className="self-start">
-            {TABS.map((t) => {
-              const Icon = t.icon;
+            {TABS.map((tabItem) => {
+              const Icon = tabItem.icon;
               return (
-                <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+                <TabsTrigger key={tabItem.value} value={tabItem.value} className="gap-1.5">
                   <Icon className="size-3.5" />
-                  {t.label}
+                  {tabItem.label}
                 </TabsTrigger>
               );
             })}
@@ -171,6 +175,7 @@ export function LabelBadge({ name, color }: { name: string; color: string }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }) {
+  const t = useTranslations('ProjectSettings');
   const [isPending, startTransition] = useTransition();
 
   const [search,     setSearch]     = useState('');
@@ -221,9 +226,9 @@ function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search label name…"
+            placeholder={t('labelsSearchPlaceholder')}
             className="h-8 pl-7 text-xs"
-            aria-label="Filter labels"
+            aria-label={t('labelsFilterAriaLabel')}
           />
         </div>
         {search.trim() && (
@@ -232,7 +237,7 @@ function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }
           </Badge>
         )}
         <Button size="sm" variant="primary" onClick={() => { setSaveError(null); setCreateOpen(true); }}>
-          <Plus className="size-4" /> New label
+          <Plus className="size-4" /> {t('newLabel')}
         </Button>
         <div className="ml-auto text-xs text-muted-foreground">
           <strong className="text-foreground">{filtered.length}</strong> of {labels.length}
@@ -242,9 +247,9 @@ function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }
       {labels.length === 0 ? (
         <EmptyTabState
           icon={Tag}
-          title="No labels yet"
-          body="Labels let you tag issues with quick visual markers — bug, frontend, customer-request, etc."
-          ctaLabel="Create your first label"
+          title={t('noLabelsTitle')}
+          body={t('noLabelsBody')}
+          ctaLabel={t('createFirstLabel')}
           onCreate={() => { setSaveError(null); setCreateOpen(true); }}
         />
       ) : filtered.length === 0 ? (
@@ -259,7 +264,7 @@ function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }
                   {l.issueCount} {l.issueCount === 1 ? 'issue' : 'issues'}
                 </span>
                 <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setSaveError(null); setEditing(l); }} aria-label={`Edit ${l.name}`}>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setSaveError(null); setEditing(l); }} aria-label={t('editLabelAriaLabel', { name: l.name })}>
                     <Edit3 className="size-3.5" />
                   </Button>
                   <Button
@@ -267,7 +272,7 @@ function LabelsTab({ projectId, labels }: { projectId: string; labels: Label[] }
                     className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                     onClick={() => handleDelete(l)}
                     disabled={isPending}
-                    aria-label={`Delete ${l.name}`}
+                    aria-label={t('deleteLabelAriaLabel', { name: l.name })}
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -311,6 +316,7 @@ function LabelDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('ProjectSettings');
   const [name,  setName]  = useState(initial?.name  ?? '');
   const [color, setColor] = useState(initial?.color ?? PRESET_COLORS[0]!);
 
@@ -318,12 +324,14 @@ function LabelDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent key={initial?.id ?? mode}>
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'New label' : `Edit ${initial?.name}`}</DialogTitle>
+          <DialogTitle>
+            {mode === 'create' ? t('labelDialogCreateTitle') : t('labelDialogEditTitle', { name: initial?.name ?? '' })}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name: name.trim(), color }); }}>
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="lbl-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="lbl-name" className="text-xs font-medium text-muted-foreground">{t('nameLabel')}</label>
               <Input
                 id="lbl-name" required autoFocus value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -331,7 +339,7 @@ function LabelDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Colour</label>
+              <label className="text-xs font-medium text-muted-foreground">{t('colourLabel')}</label>
               <div className="flex items-center gap-2 flex-wrap">
                 {PRESET_COLORS.map((c) => (
                   <button
@@ -343,19 +351,19 @@ function LabelDialog({
                     )}
                     style={{ background: c }}
                     onClick={() => setColor(c)}
-                    aria-label={`Pick colour ${c}`}
+                    aria-label={t('pickColour', { colour: c })}
                   />
                 ))}
                 <label
                   className="size-7 rounded-full border border-input cursor-pointer flex items-center justify-center text-muted-foreground hover:text-foreground"
                   style={{ background: !PRESET_COLORS.includes(color) ? color : 'transparent' }}
-                  title="Pick custom colour"
+                  title={t('pickCustomColour')}
                 >
                   <input
                     type="color" value={color}
                     onChange={(e) => setColor(e.target.value)}
                     className="opacity-0 size-0"
-                    aria-label="Pick custom colour"
+                    aria-label={t('pickCustomColour')}
                   />
                   {PRESET_COLORS.includes(color) && '+'}
                 </label>
@@ -363,7 +371,7 @@ function LabelDialog({
               </div>
             </div>
             <div className="flex items-center gap-2 rounded-md bg-muted/30 px-3 py-2">
-              <span className="text-xs text-muted-foreground">Preview:</span>
+              <span className="text-xs text-muted-foreground">{t('preview')}</span>
               <LabelBadge name={name.trim() || 'label'} color={color} />
             </div>
             {error && (
@@ -373,9 +381,9 @@ function LabelDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('cancel')}</Button>
             <Button type="submit" variant="primary" disabled={isPending || !name.trim()}>
-              {isPending ? 'Saving…' : mode === 'create' ? 'Create label' : 'Save changes'}
+              {isPending ? t('saving') : mode === 'create' ? t('createLabelBtn') : t('saveChangesBtn')}
             </Button>
           </DialogFooter>
         </form>
@@ -389,6 +397,7 @@ function LabelDialog({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ComponentsTab({ projectId, components }: { projectId: string; components: ProjectComponent[] }) {
+  const t = useTranslations('ProjectSettings');
   const [isPending, startTransition] = useTransition();
 
   const [search,     setSearch]     = useState('');
@@ -441,9 +450,9 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search components…"
+            placeholder={t('componentsSearchPlaceholder')}
             className="h-8 pl-7 text-xs"
-            aria-label="Filter components"
+            aria-label={t('componentsFilterAriaLabel')}
           />
         </div>
         {search.trim() && (
@@ -452,7 +461,7 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
           </Badge>
         )}
         <Button size="sm" variant="primary" onClick={() => { setSaveError(null); setCreateOpen(true); }}>
-          <Plus className="size-4" /> New component
+          <Plus className="size-4" /> {t('newComponent')}
         </Button>
         <div className="ml-auto text-xs text-muted-foreground">
           <strong className="text-foreground">{filtered.length}</strong> of {components.length}
@@ -462,9 +471,9 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
       {components.length === 0 ? (
         <EmptyTabState
           icon={Boxes}
-          title="No components yet"
-          body="Components let you split a project into functional areas — Frontend, Auth, Database — and optionally assign each one a lead."
-          ctaLabel="Create your first component"
+          title={t('noComponentsTitle')}
+          body={t('noComponentsBody')}
+          ctaLabel={t('createFirstComponent')}
           onCreate={() => { setSaveError(null); setCreateOpen(true); }}
         />
       ) : filtered.length === 0 ? (
@@ -481,7 +490,7 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
                   <h3 className="text-sm font-semibold text-foreground truncate">{c.name}</h3>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setSaveError(null); setEditing(c); }} aria-label="Edit">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => { setSaveError(null); setEditing(c); }} aria-label={t('editComponentAriaLabel')}>
                     <Edit3 className="size-3.5" />
                   </Button>
                   <Button
@@ -489,7 +498,7 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
                     className="h-7 w-7 p-0 text-destructive hover:text-destructive"
                     onClick={() => handleDelete(c)}
                     disabled={isPending}
-                    aria-label="Delete"
+                    aria-label={t('deleteComponentAriaLabel')}
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
@@ -503,7 +512,7 @@ function ComponentsTab({ projectId, components }: { projectId: string; component
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                 {c.leadUserName && (
                   <Badge size="xs" variant="outline" appearance="outline">
-                    Lead: {c.leadUserName}
+                    {t('leadBadge', { name: c.leadUserName })}
                   </Badge>
                 )}
                 <Badge size="xs" variant="outline" appearance="outline" className="font-normal">
@@ -548,6 +557,7 @@ function ComponentDialog({
   isPending: boolean;
   error: string | null;
 }) {
+  const t = useTranslations('ProjectSettings');
   const [name,        setName]        = useState(initial?.name        ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
 
@@ -555,12 +565,14 @@ function ComponentDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent key={initial?.id ?? mode}>
         <DialogHeader>
-          <DialogTitle>{mode === 'create' ? 'New component' : `Edit ${initial?.name}`}</DialogTitle>
+          <DialogTitle>
+            {mode === 'create' ? t('componentDialogCreateTitle') : t('componentDialogEditTitle', { name: initial?.name ?? '' })}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); onSubmit({ name: name.trim(), description: description.trim() }); }}>
           <DialogBody className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="cmp-name" className="text-xs font-medium text-muted-foreground">Name</label>
+              <label htmlFor="cmp-name" className="text-xs font-medium text-muted-foreground">{t('nameLabel')}</label>
               <Input
                 id="cmp-name" required autoFocus value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -568,13 +580,13 @@ function ComponentDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="cmp-desc" className="text-xs font-medium text-muted-foreground">Description</label>
+              <label htmlFor="cmp-desc" className="text-xs font-medium text-muted-foreground">{t('descriptionLabel')}</label>
               <textarea
                 id="cmp-desc"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                placeholder="What does this component cover?"
+                placeholder={t('componentDescPlaceholder')}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring resize-none"
               />
             </div>
@@ -585,9 +597,9 @@ function ComponentDialog({
             )}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>{t('cancel')}</Button>
             <Button type="submit" variant="primary" disabled={isPending || !name.trim()}>
-              {isPending ? 'Saving…' : mode === 'create' ? 'Create component' : 'Save changes'}
+              {isPending ? t('saving') : mode === 'create' ? t('createComponentBtn') : t('saveChangesBtn')}
             </Button>
           </DialogFooter>
         </form>
@@ -601,13 +613,14 @@ function ComponentDialog({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function EmptyProjectState() {
+  const t = useTranslations('ProjectSettings');
   return (
     <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-center">
       <Settings className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No project to configure</div>
+        <div className="text-sm font-medium text-foreground">{t('emptyProjectTitle')}</div>
         <div className="text-xs text-muted-foreground max-w-sm">
-          Create a project in this workspace to set up labels, components, and integrations.
+          {t('emptyProjectBody')}
         </div>
       </div>
     </div>
@@ -638,9 +651,10 @@ function EmptyTabState({
 }
 
 function NoResultsState() {
+  const t = useTranslations('ProjectSettings');
   return (
     <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-      No matches for the current filter.
+      {t('noMatchesFilter')}
     </div>
   );
 }

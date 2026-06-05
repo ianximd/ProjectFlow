@@ -6,6 +6,7 @@ import { ThemeProvider } from 'next-themes';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { IntlProvider } from '@/components/providers/IntlProvider';
+import { ApolloRealtimeProvider } from '@/components/providers/ApolloRealtimeProvider';
 import { cn } from '@/lib/utils';
 import './globals.css';
 
@@ -31,22 +32,24 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         )}
       >
         <IntlProvider locale={locale} messages={messages}>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            storageKey="projectflow-theme"
-            enableSystem
-            disableTransitionOnChange
-            enableColorScheme
-          >
-            <TooltipProvider delayDuration={0}>
-              <a href="#main-content" className="skip-link">
-                Skip to main content
-              </a>
-              <Suspense>{children}</Suspense>
-              <Toaster />
-            </TooltipProvider>
-          </ThemeProvider>
+          <ApolloRealtimeProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              storageKey="projectflow-theme"
+              enableSystem
+              disableTransitionOnChange
+              enableColorScheme
+            >
+              <TooltipProvider delayDuration={0}>
+                <a href="#main-content" className="skip-link">
+                  Skip to main content
+                </a>
+                <Suspense>{children}</Suspense>
+                <Toaster />
+              </TooltipProvider>
+            </ThemeProvider>
+          </ApolloRealtimeProvider>
         </IntlProvider>
       </body>
     </html>

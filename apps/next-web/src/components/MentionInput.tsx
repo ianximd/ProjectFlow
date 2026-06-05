@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { mentionToken } from '@/lib/mentions';
 
 export interface MentionMember { userId: string; name: string }
@@ -16,6 +16,11 @@ export function MentionInput({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [query, setQuery] = useState<string | null>(null);
+
+  // Close the suggestion dropdown when the parent clears the field (e.g. after
+  // a successful submit) — otherwise a mid-mention dropdown lingers over the
+  // now-empty textarea until the next keystroke.
+  useEffect(() => { if (!value) setQuery(null); }, [value]);
 
   function recompute(next: string) {
     const m = /(^|\s)@([\p{L}0-9_]*)$/u.exec(next);
@@ -52,7 +57,7 @@ export function MentionInput({
       {suggestions.length > 0 && (
         <ul className="absolute z-50 mt-1 w-64 rounded-md border bg-popover p-1 shadow-md" role="listbox">
           {suggestions.map((m) => (
-            <li key={m.userId}>
+            <li key={m.userId} role="option" aria-selected={false}>
               <button
                 type="button"
                 className="flex w-full items-center rounded px-2 py-1 text-left text-sm hover:bg-accent"

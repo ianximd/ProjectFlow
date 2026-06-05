@@ -27,6 +27,7 @@ const TYPE_META: Record<string, {
   tone: 'blue' | 'amber' | 'emerald' | 'violet' | 'slate';
 }> = {
   TASK_ASSIGNED: { icon: UserPlus,      label: 'Task assigned',      tone: 'blue'    },
+  COMMENT_ASSIGNED: { icon: MessageSquare, label: 'Comment assigned',  tone: 'blue'    },
   COMMENT_ADDED: { icon: MessageSquare, label: 'New comment',         tone: 'emerald' },
   MENTION:       { icon: AtSign,        label: 'You were mentioned',  tone: 'amber'   },
   TASK_UPDATED:  { icon: FileText,      label: 'Task updated',        tone: 'violet'  },
@@ -250,6 +251,8 @@ function NotificationItem({
     switch (row.type) {
       case 'TASK_ASSIGNED':
         return <>You were assigned to{' '}<strong className="text-foreground">{taskTitle ?? 'a task'}</strong>.</>;
+      case 'COMMENT_ASSIGNED':
+        return <>A comment was assigned to you on{' '}<strong className="text-foreground">{taskTitle ?? 'a task'}</strong>.</>;
       case 'COMMENT_ADDED':
         return <>A new comment was added on{' '}<strong className="text-foreground">{taskTitle ?? 'a task you follow'}</strong>.</>;
       case 'MENTION':

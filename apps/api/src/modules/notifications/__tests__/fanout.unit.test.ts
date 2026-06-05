@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { computeRecipients } from '../fanout.js';
 
 const R = 'aaaaaaaa-0000-0000-0000-000000000001'; // reporter
@@ -31,5 +31,26 @@ describe('computeRecipients', () => {
 
   it('handles empty/missing inputs', () => {
     expect(computeRecipients({ reporterId: null, assigneeIds: [], watcherIds: [], actorId: ACTOR })).toEqual([]);
+  });
+});
+
+describe('debounceGate', () => {
+  it('emits when redis SET NX succeeds, suppresses when it fails', async () => {
+    vi.resetModules();
+    const set = vi.fn()
+      .mockResolvedValueOnce('OK')   // first call: key absent → emit
+      .mockResolvedValueOnce(null);  // second call: key present → suppress
+    vi.doMock('../../../shared/lib/redis.js', () => ({ getRedis: () => ({ set }) }));
+    const { debounceGate } = await import('../fanout.js');
+    expect(await debounceGate('k', 60)).toBe(true);
+    expect(await debounceGate('k', 60)).toBe(false);
+    expect(set).toHaveBeenCalledWith('k', '1', 'EX', 60, 'NX');
+  });
+
+  it('fails open (emits) when redis throws', async () => {
+    vi.resetModules();
+    vi.doMock('../../../shared/lib/redis.js', () => ({ getRedis: () => ({ set: vi.fn().mockRejectedValue(new Error('down')) }) }));
+    const { debounceGate } = await import('../fanout.js');
+    expect(await debounceGate('k', 60)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 import { TaskRepository } from '../tasks/task.repository.js';
 import { watcherService } from '../watchers/watcher.service.js';
 import { notificationService } from './notification.service.js';
+import { getRedis } from '../../shared/lib/redis.js';
 import { subLogger } from '../../shared/lib/logger.js';
 
 const log = subLogger('fanout');
@@ -66,5 +67,19 @@ export async function fanOutTaskEvent(
     await notificationService.notify({ recipientIds, actorId: norm(actorId) ?? actorId, type, payload });
   } catch (err: any) {
     log.error({ err: err?.message, taskId, type }, 'fanOutTaskEvent failed');
+  }
+}
+
+/**
+ * Returns true at most once per `ttlSeconds` for a given key (Redis SET NX EX).
+ * Fails OPEN (returns true) if Redis is unavailable — better to notify than to
+ * silently drop. Used to coalesce noisy TASK_UPDATED bursts.
+ */
+export async function debounceGate(key: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const res = await getRedis().set(key, '1', 'EX', ttlSeconds, 'NX');
+    return res === 'OK';
+  } catch {
+    return true;
   }
 }

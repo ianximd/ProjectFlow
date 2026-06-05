@@ -1,4 +1,4 @@
-import { test, expect, request as pwRequest, type APIRequestContext } from '@playwright/test';
+import { test, expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
 
 /**
  * Phase 3 (Views Engine) headline e2e — E6.
@@ -133,6 +133,24 @@ async function uiLogin(page: any, email: string, password: string) {
 
 const viewsUrl = (seed: Seed) => `/views/SPACE/${seed.spaceId}?viewId=${seed.viewId}`;
 
+/**
+ * Open the collapsible filter-builder panel, tolerant of the SSR→CSR hydration
+ * gap. Right after a navigation/reload the toggle button is already in the DOM
+ * and "clickable" to Playwright, but its React onClick may not be wired up yet,
+ * so a single click can silently no-op (the panel never opens). We retry the
+ * click until the button reports aria-pressed="true". The toggle is idempotent
+ * once open — re-clicks before hydration land are harmless — and a genuine
+ * failure to open still surfaces as a toPass timeout, so this hides no real bug.
+ */
+async function openFilterBuilder(page: Page): Promise<void> {
+  const toggle = page.getByTestId('filter-builder-toggle');
+  await expect(toggle).toBeVisible({ timeout: 15000 });
+  await expect(async () => {
+    if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+    expect(await toggle.getAttribute('aria-pressed')).toBe('true');
+  }).toPass({ timeout: 15000, intervals: [150, 300, 600, 1000] });
+}
+
 // ── (a) Filter + group on a Table view, save, reload → persists ────────────────
 test('saved view: build a filter + grouping via the builder, persist across reload', async ({ page }) => {
   const seed = await apiSetup();
@@ -148,7 +166,7 @@ test('saved view: build a filter + grouping via the builder, persist across relo
 
   // Open the filter-builder, add a rule (defaults to the first field/`is`/empty),
   // then set grouping to a field so the saved config is non-trivial.
-  await page.getByTestId('filter-builder-toggle').click();
+  await openFilterBuilder(page);
   await expect(page.getByTestId('filter-builder')).toBeVisible();
   await page.getByTestId('add-filter-rule').click();
   await expect(page.getByTestId('filter-rule').first()).toBeVisible();
@@ -157,13 +175,23 @@ test('saved view: build a filter + grouping via the builder, persist across relo
   // initial dash/Previewing state.
   await expect(page.getByTestId('filter-preview-count')).not.toHaveText('—', { timeout: 10000 });
 
-  // Persist.
+  // Persist. `save-view` dispatches the `updateSavedView` server action inside a
+  // React transition, so the click resolves BEFORE the write commits. Wait for the
+  // action's POST to round-trip; otherwise the reload below races the save and its
+  // SSR fetch reads the pre-save config (empty filter). The preview has already
+  // settled (assertion above) and the config is unchanged since, so the next
+  // server-action POST is the save, not a stray debounced preview.
+  const savePosted = page.waitForResponse(
+    (r) => r.request().method() === 'POST' && r.request().headers()['next-action'] != null,
+    { timeout: 15000 },
+  );
   await page.getByTestId('save-view').click();
+  await savePosted;
 
   // Reload: the table view tab + the builder's saved rule survive.
   await page.reload();
   await expect(page.getByTestId('view-tab').filter({ hasText: `Table ${seed.s}` })).toBeVisible({ timeout: 15000 });
-  await page.getByTestId('filter-builder-toggle').click();
+  await openFilterBuilder(page);
   await expect(page.getByTestId('filter-rule').first()).toBeVisible({ timeout: 10000 });
 
   await seed.api.dispose();

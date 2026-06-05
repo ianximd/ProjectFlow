@@ -10,17 +10,21 @@ export interface ParsedNotification {
   type: string;
   payload: Record<string, any>;
   isRead: boolean;
+  savedForLater: boolean;
+  savedAt: Date | null;
   createdAt: Date;
 }
 
 function parse(row: NotificationRow): ParsedNotification {
   return {
-    id:        row.Id,
-    userId:    row.UserId,
-    type:      row.Type,
-    payload:   JSON.parse(row.Payload),
-    isRead:    Boolean(row.IsRead),
-    createdAt: row.CreatedAt,
+    id:           row.Id,
+    userId:       row.UserId,
+    type:         row.Type,
+    payload:      JSON.parse(row.Payload),
+    isRead:       Boolean(row.IsRead),
+    savedForLater: Boolean(row.SavedForLater),
+    savedAt:      row.SavedAt ?? null,
+    createdAt:    row.CreatedAt,
   };
 }
 
@@ -52,8 +56,8 @@ export const notificationService = {
     await Promise.allSettled(tasks);
   },
 
-  async list(userId: string, page: number, pageSize: number, unreadOnly: boolean) {
-    const { notifications, unreadCount } = await repo.list(userId, page, pageSize, unreadOnly);
+  async list(userId: string, page: number, pageSize: number, unreadOnly: boolean, types?: string[], savedOnly = false) {
+    const { notifications, unreadCount } = await repo.list(userId, page, pageSize, unreadOnly, types, savedOnly);
     return {
       notifications: notifications.map(parse),
       unreadCount,
@@ -66,5 +70,9 @@ export const notificationService = {
 
   async markAllRead(userId: string): Promise<number> {
     return repo.markAllRead(userId);
+  },
+
+  async setSaved(id: string, userId: string, saved: boolean): Promise<void> {
+    await repo.setSaved(id, userId, saved);
   },
 };

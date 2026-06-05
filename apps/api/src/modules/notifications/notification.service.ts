@@ -1,5 +1,6 @@
 import { NotificationRepository } from './notification.repository.js';
 import type { NotificationRow } from './notification.repository.js';
+import { pubsub } from '../../graphql/pubsub.js';
 
 const repo = new NotificationRepository();
 
@@ -37,14 +38,18 @@ export const notificationService = {
     const unique = [...new Set(params.recipientIds)].filter(
       (id) => id !== params.actorId,
     );
-    await Promise.allSettled(
-      unique.map((userId) =>
-        repo.create(userId, params.type, {
-          ...params.payload,
-          actorId: params.actorId,
-        }),
-      ),
-    );
+    const tasks = unique.map(async (userId) => {
+      const row = await repo.create(userId, params.type, {
+        ...params.payload,
+        actorId: params.actorId,
+      });
+      try {
+        pubsub.publish('notification:added', userId, { notification: parse(row) });
+      } catch {
+        /* best-effort */
+      }
+    });
+    await Promise.allSettled(tasks);
   },
 
   async list(userId: string, page: number, pageSize: number, unreadOnly: boolean) {

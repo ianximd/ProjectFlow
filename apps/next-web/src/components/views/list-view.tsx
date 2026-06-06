@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,7 +39,18 @@ const PRIORITY_DOT: Record<string, string> = {
   LOWEST: 'bg-slate-400',
 };
 
+// Raw priority enum → Board namespace label key (reuse the Board catalog rather
+// than rendering the raw "HIGHEST"/"MEDIUM" enum in the aria-label/title).
+const PRIORITY_LABEL_KEY: Record<string, string> = {
+  HIGHEST: 'priorityHighest',
+  HIGH: 'priorityHigh',
+  MEDIUM: 'priorityMedium',
+  LOW: 'priorityLow',
+  LOWEST: 'priorityLowest',
+};
+
 export function ListView({ taskPage, activeView, customFields, onSelectionChange }: Props) {
+  const t = useTranslations('Views');
   const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
   // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
   // projectId arg is a required truthy placeholder only — `task:updated` is a
@@ -86,12 +98,12 @@ export function ListView({ taskPage, activeView, customFields, onSelectionChange
       const meta = groups.find((g) => g.key === key);
       return {
         key,
-        label: meta?.label ?? (key === '∅' ? '(empty)' : key),
+        label: meta?.label ?? (key === '∅' ? t('groupEmpty') : key),
         count: meta?.count ?? groupTasks.length,
         tasks: groupTasks,
       };
     });
-  }, [tasks, groups, config.groupBy, customFields]);
+  }, [tasks, groups, config.groupBy, customFields, t]);
 
   return (
     <div
@@ -99,7 +111,7 @@ export function ListView({ taskPage, activeView, customFields, onSelectionChange
       className="flex h-full flex-col overflow-auto rounded-lg border border-border bg-background"
     >
       {tasks.length === 0 ? (
-        <div className="px-3 py-6 text-center text-xs text-muted-foreground">No tasks.</div>
+        <div className="px-3 py-6 text-center text-xs text-muted-foreground">{t('noTasks')}</div>
       ) : (
         rowGroups.map((g) => (
           <div key={g.key ?? '__flat__'}>
@@ -137,7 +149,16 @@ function TaskRow({
   selected: boolean;
   onToggle: () => void;
 }) {
-  const dot = PRIORITY_DOT[(task.priority ?? '').toUpperCase()] ?? PRIORITY_DOT.MEDIUM;
+  const t = useTranslations('Views');
+  const tBoard = useTranslations('Board');
+  const upperPriority = (task.priority ?? '').toUpperCase();
+  const dot = PRIORITY_DOT[upperPriority] ?? PRIORITY_DOT.MEDIUM;
+  // Translated priority label (falls back to the raw value for unknown enums).
+  const priorityLabelKey = PRIORITY_LABEL_KEY[upperPriority];
+  const priorityLabel = priorityLabelKey
+    ? tBoard(priorityLabelKey as 'priorityHighest')
+    : (task.priority ?? '');
+  const priorityAria = tBoard('taskPriorityAriaLabel', { priority: priorityLabel });
   const due = task.dueDate ? formatShortDate(new Date(task.dueDate)) : null;
 
   return (
@@ -153,16 +174,16 @@ function TaskRow({
         size="sm"
         checked={selected}
         onCheckedChange={onToggle}
-        aria-label={`Select ${task.title}`}
+        aria-label={t('selectRow', { title: task.title || t('untitled') })}
         data-testid="row-select"
       />
       <span
         className={cn('inline-block size-2 shrink-0 rounded-full', dot)}
-        aria-label={`Priority: ${task.priority}`}
-        title={`Priority: ${task.priority}`}
+        aria-label={priorityAria}
+        title={priorityAria}
       />
       <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-        {task.title || <span className="italic text-muted-foreground">(untitled)</span>}
+        {task.title || <span className="italic text-muted-foreground">{t('untitled')}</span>}
       </span>
       {task.issueKey && (
         <span className="shrink-0 font-mono text-[11px] text-muted-foreground/80">{task.issueKey}</span>

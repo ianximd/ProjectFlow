@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Plus, Trash2, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -52,18 +53,23 @@ interface Props {
 
 // The operator set offered in the builder. The API validates/rejects field+op
 // combinations it doesn't allow; failures surface via the preview error toast.
-const OPERATORS: { value: FilterOperator; label: string }[] = [
-  { value: '=', label: 'is' },
-  { value: '!=', label: 'is not' },
-  { value: '>', label: '>' },
-  { value: '>=', label: '≥' },
-  { value: '<', label: '<' },
-  { value: '<=', label: '≤' },
-  { value: 'in', label: 'is any of' },
-  { value: 'not_in', label: 'is none of' },
-  { value: 'contains', label: 'contains' },
-  { value: 'is_empty', label: 'is empty' },
-  { value: 'is_not_empty', label: 'is not empty' },
+// `labelKey` maps to a `Views.filters.*` catalog entry — labels can't be resolved
+// here (module scope), so they're translated at the RuleEditor render site.
+type OperatorLabelKey =
+  | 'opIs' | 'opIsNot' | 'opGt' | 'opGte' | 'opLt' | 'opLte'
+  | 'opIn' | 'opNotIn' | 'opContains' | 'opIsEmpty' | 'opIsNotEmpty';
+const OPERATORS: { value: FilterOperator; labelKey: OperatorLabelKey }[] = [
+  { value: '=', labelKey: 'opIs' },
+  { value: '!=', labelKey: 'opIsNot' },
+  { value: '>', labelKey: 'opGt' },
+  { value: '>=', labelKey: 'opGte' },
+  { value: '<', labelKey: 'opLt' },
+  { value: '<=', labelKey: 'opLte' },
+  { value: 'in', labelKey: 'opIn' },
+  { value: 'not_in', labelKey: 'opNotIn' },
+  { value: 'contains', labelKey: 'opContains' },
+  { value: 'is_empty', labelKey: 'opIsEmpty' },
+  { value: 'is_not_empty', labelKey: 'opIsNotEmpty' },
 ];
 
 const VALUELESS_OPS = new Set<FilterOperator>(['is_empty', 'is_not_empty']);
@@ -74,6 +80,7 @@ function isGroup(node: FilterRule | FilterGroup): node is FilterGroup {
 
 export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, customFields, meMode }: Props) {
   const router = useRouter();
+  const t = useTranslations('Views.filters');
   const [pending, startTransition] = useTransition();
   // EVERYTHING views have no hierarchy node — send a null node scope + workspaceId.
   const nodeScopeId = scopeType === 'EVERYTHING' ? null : scopeId;
@@ -162,7 +169,7 @@ export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, cus
       {/* ── Filters ─────────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-semibold uppercase tracking-wide text-muted-foreground">Filters</span>
+          <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionFilters')}</span>
           <ConjunctionToggle
             value={config.filter.conjunction}
             onChange={(conjunction) => setFilter({ ...config.filter, conjunction })}
@@ -170,7 +177,7 @@ export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, cus
         </div>
 
         {config.filter.rules.length === 0 ? (
-          <div className="text-muted-foreground">No filters — all tasks in scope.</div>
+          <div className="text-muted-foreground">{t('noFilters')}</div>
         ) : (
           <div className="flex flex-col gap-2">
             {config.filter.rules.map((node, i) =>
@@ -206,22 +213,22 @@ export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, cus
 
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" variant="dashed" onClick={addRule} data-testid="add-filter-rule">
-            <Plus className="size-3.5" /> Add filter
+            <Plus className="size-3.5" /> {t('addFilter')}
           </Button>
           <Button type="button" size="sm" variant="ghost" onClick={addNestedGroup} data-testid="add-filter-group">
-            <Plus className="size-3.5" /> Add group
+            <Plus className="size-3.5" /> {t('addGroup')}
           </Button>
         </div>
       </section>
 
       {/* ── Group by ────────────────────────────────────────────────────── */}
       <section className="flex items-center gap-2">
-        <span className="w-16 shrink-0 font-semibold uppercase tracking-wide text-muted-foreground">Group</span>
+        <span className="w-16 shrink-0 font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionGroup')}</span>
         <FieldSelect
           value={config.groupBy ?? null}
           options={options}
           allowNone
-          noneLabel="No grouping"
+          noneLabel={t('noGrouping')}
           onChange={(ref) => setConfig((c) => ({ ...c, groupBy: ref ?? undefined }))}
         />
       </section>
@@ -248,10 +255,10 @@ export function FilterBuilder({ activeView, scopeType, scopeId, workspaceId, cus
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
         <span data-testid="filter-preview-count" className="text-muted-foreground">
           {previewing || pending
-            ? 'Previewing…'
+            ? t('previewing')
             : previewCount == null
               ? '—'
-              : `${previewCount} matching`}
+              : t('matching', { count: previewCount })}
         </span>
         <SaveControls
           activeView={activeView}
@@ -306,6 +313,7 @@ function RuleEditor({
   onChange: (r: FilterRule) => void;
   onRemove: () => void;
 }) {
+  const t = useTranslations('Views.filters');
   const valueless = VALUELESS_OPS.has(rule.op);
   return (
     <div className="flex items-center gap-2" data-testid="filter-rule">
@@ -323,7 +331,7 @@ function RuleEditor({
         <SelectContent>
           {OPERATORS.map((o) => (
             <SelectItem key={o.value} value={o.value}>
-              {o.label}
+              {t(o.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -333,11 +341,11 @@ function RuleEditor({
           variant="sm"
           className="w-[160px]"
           value={stringifyValue(rule.value)}
-          placeholder="Value"
+          placeholder={t('valuePlaceholder')}
           onChange={(e) => onChange({ ...rule, value: e.target.value })}
         />
       )}
-      <Button type="button" size="sm" variant="ghost" mode="icon" onClick={onRemove} aria-label="Remove filter">
+      <Button type="button" size="sm" variant="ghost" mode="icon" onClick={onRemove} aria-label={t('removeFilter')}>
         <X className="size-3.5" />
       </Button>
     </div>
@@ -358,6 +366,7 @@ function NestedGroupEditor({
   onChange: (g: FilterGroup) => void;
   onRemove: () => void;
 }) {
+  const t = useTranslations('Views.filters');
   // Only flat rules inside a nested group (one level of grouping).
   const rules = group.rules.filter((r): r is FilterRule => !isGroup(r));
 
@@ -381,7 +390,7 @@ function NestedGroupEditor({
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-border bg-background/60 p-2" data-testid="filter-group">
       <div className="flex items-center justify-between gap-2">
         <ConjunctionToggle value={group.conjunction} onChange={(conjunction) => onChange({ ...group, conjunction })} />
-        <Button type="button" size="sm" variant="ghost" mode="icon" onClick={onRemove} aria-label="Remove group">
+        <Button type="button" size="sm" variant="ghost" mode="icon" onClick={onRemove} aria-label={t('removeGroup')}>
           <Trash2 className="size-3.5" />
         </Button>
       </div>
@@ -404,7 +413,7 @@ function NestedGroupEditor({
         variant="dashed"
         onClick={addRule}
       >
-        <Plus className="size-3.5" /> Add filter
+        <Plus className="size-3.5" /> {t('addFilter')}
       </Button>
     </div>
   );
@@ -428,9 +437,10 @@ function SortEditor({
   onAddSortKey: () => void;
   onRemoveSortKey: (i: number) => void;
 }) {
+  const t = useTranslations('Views.filters');
   return (
     <section className="flex flex-col gap-2">
-      <span className="font-semibold uppercase tracking-wide text-muted-foreground">Sort</span>
+      <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionSort')}</span>
       {sort.map((k, i) => (
         <div key={sortKeys[i]} className="flex items-center gap-2" data-testid="sort-key">
           <div className="min-w-[140px]">
@@ -457,8 +467,8 @@ function SortEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ASC">Ascending</SelectItem>
-              <SelectItem value="DESC">Descending</SelectItem>
+              <SelectItem value="ASC">{t('ascending')}</SelectItem>
+              <SelectItem value="DESC">{t('descending')}</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -467,7 +477,7 @@ function SortEditor({
             variant="ghost"
             mode="icon"
             onClick={() => { onChange(sort.filter((_, j) => j !== i)); onRemoveSortKey(i); }}
-            aria-label="Remove sort key"
+            aria-label={t('removeSortKey')}
           >
             <X className="size-3.5" />
           </Button>
@@ -480,7 +490,7 @@ function SortEditor({
         className="w-fit"
         onClick={() => { onChange([...sort, { field: firstField, dir: 'ASC' }]); onAddSortKey(); }}
       >
-        <Plus className="size-3.5" /> Add sort
+        <Plus className="size-3.5" /> {t('addSort')}
       </Button>
     </section>
   );
@@ -496,6 +506,7 @@ function ColumnsEditor({
   options: FieldOption[];
   onChange: (c: FieldRef[]) => void;
 }) {
+  const t = useTranslations('Views.filters');
   const selected = new Set(columns.map(fieldRefToken));
   const toggle = (ref: FieldRef) => {
     const tok = fieldRefToken(ref);
@@ -504,7 +515,7 @@ function ColumnsEditor({
   };
   return (
     <section className="flex flex-col gap-2">
-      <span className="font-semibold uppercase tracking-wide text-muted-foreground">Columns</span>
+      <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t('sectionColumns')}</span>
       <div className="flex flex-wrap gap-x-4 gap-y-1.5">
         {options.map((o) => {
           const tok = fieldRefToken(o.ref);
@@ -536,6 +547,7 @@ function SaveControls({
   config: ViewConfig;
   onSaved: () => void;
 }) {
+  const t = useTranslations('Views.filters');
   const [pending, startTransition] = useTransition();
   const [asNewName, setAsNewName] = useState('');
   const [showAsNew, setShowAsNew] = useState(false);
@@ -573,7 +585,7 @@ function SaveControls({
           className="w-[160px]"
           autoFocus
           value={asNewName}
-          placeholder="New view name"
+          placeholder={t('newViewNamePlaceholder')}
           onChange={(e) => setAsNewName(e.target.value)}
         />
       )}
@@ -585,10 +597,10 @@ function SaveControls({
         onClick={() => (showAsNew ? saveAsNew() : setShowAsNew(true))}
         data-testid="save-view-as-new"
       >
-        Save as new
+        {t('saveAsNew')}
       </Button>
       <Button type="button" size="sm" variant="primary" disabled={pending} onClick={save} data-testid="save-view">
-        Save
+        {t('save')}
       </Button>
     </div>
   );
@@ -600,7 +612,7 @@ function FieldSelect({
   options,
   onChange,
   allowNone,
-  noneLabel = 'None',
+  noneLabel,
 }: {
   value: FieldRef | null;
   options: FieldOption[];
@@ -608,6 +620,8 @@ function FieldSelect({
   allowNone?: boolean;
   noneLabel?: string;
 }) {
+  const t = useTranslations('Views.filters');
+  const resolvedNoneLabel = noneLabel ?? t('none');
   const NONE = '__none__';
   return (
     <Select
@@ -618,7 +632,7 @@ function FieldSelect({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {allowNone && <SelectItem value={NONE}>{noneLabel}</SelectItem>}
+        {allowNone && <SelectItem value={NONE}>{resolvedNoneLabel}</SelectItem>}
         {options.map((o) => (
           <SelectItem key={fieldRefToken(o.ref)} value={fieldRefToken(o.ref)}>
             {o.label}

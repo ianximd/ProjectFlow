@@ -2,6 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,15 @@ interface Props {
 // Calendar v1 keys placement on the task's due date by default.
 const DEFAULT_DATE_FIELD: FieldRef = { kind: 'builtin', key: 'dueDate' };
 
-const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/**
+ * Locale-correct short weekday labels for a Sunday-start week (the grid is built
+ * Sunday → Saturday). 2024-01-07 is a Sunday, so iterating the next 7 local days
+ * yields Sun…Sat in the active locale via Intl.DateTimeFormat.
+ */
+function weekdayLabels(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2024, 0, 7 + i)));
+}
 
 // ── Local date helpers ──────────────────────────────────────────────────────────
 // We work in LOCAL calendar terms (the grid is a wall-calendar). YYYY-MM-DD keys
@@ -124,6 +133,9 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const tr = useTranslations('Views');
+  const locale = useLocale();
+  const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
 
   const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
   // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
@@ -208,7 +220,7 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
             variant="outline"
             onClick={() => shiftMonth(-1)}
             data-testid="calendar-prev-month"
-            aria-label="Previous month"
+            aria-label={tr('prevMonth')}
             className="size-8 p-0"
           >
             <ChevronLeft className="size-4" />
@@ -219,7 +231,7 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
             variant="outline"
             onClick={() => shiftMonth(1)}
             data-testid="calendar-next-month"
-            aria-label="Next month"
+            aria-label={tr('nextMonth')}
             className="size-8 p-0"
           >
             <ChevronRight className="size-4" />
@@ -229,9 +241,9 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
 
       {/* Weekday header */}
       <div className="grid grid-cols-7 border-b border-border bg-muted/20">
-        {WEEKDAY_LABELS.map((label) => (
+        {weekdays.map((label, i) => (
           <div
-            key={label}
+            key={i}
             className="px-2 py-1 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
           >
             {label}
@@ -243,7 +255,7 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
       <div className="flex-1 overflow-auto">
         {weeks.length === 0 ? (
           // Pre-mount neutral paint (no param): nothing to render deterministically.
-          <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">{tr('loading')}</div>
         ) : (
           weeks.map((week, wi) => (
             <div key={wi} className="grid grid-cols-7 border-b border-border/60 last:border-b-0">
@@ -269,7 +281,7 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
                         title={t.title}
                         className="truncate rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-foreground"
                       >
-                        {t.title || <span className="italic text-muted-foreground">(untitled)</span>}
+                        {t.title || <span className="italic text-muted-foreground">{tr('untitled')}</span>}
                       </div>
                     ))}
                   </div>

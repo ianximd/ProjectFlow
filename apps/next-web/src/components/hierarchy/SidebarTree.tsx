@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import {
   DndContext,
@@ -14,7 +15,7 @@ import {
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { ChevronRight, ChevronDown, Plus, Globe } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { HIERARCHY_ICONS, HIERARCHY_LABELS_PLURAL } from '@/config/hierarchy.config';
+import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 import type { Project, Folder, List } from '@/server/queries/normalize';
 import {
   createFolder, createList, renameFolder, renameList,
@@ -36,6 +37,7 @@ const FolderIcon = HIERARCHY_ICONS.folder;
 type Adding = { kind: 'folder' | 'list'; spaceId: string; folderId: string | null } | null;
 
 export function SidebarTree({ data }: { data: HierarchyTreeData }) {
+  const t = useTranslations('Hierarchy');
   const [, startTransition] = useTransition();
   // When the current route is a List page, reveal that list in the tree by
   // seeding the expanded set with its ancestry (space + folder). Client-only
@@ -103,7 +105,7 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
         if (e.key === 'Escape') { setAdding(null); setAddName(''); }
       }}
       className="w-full h-7 bg-transparent outline-none border-b border-primary text-[13px] ps-6"
-      placeholder="Name…"
+      placeholder={t('namePlaceholder')}
     />
   );
 
@@ -126,11 +128,11 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
         )}
       >
         <Globe className="size-4 shrink-0 text-muted-foreground" />
-        <span className="grow truncate">Everything</span>
+        <span className="grow truncate">{t('everything')}</span>
       </Link>
 
       <div className="uppercase text-xs font-medium text-muted-foreground/70 pt-2 pb-px px-1">
-        {HIERARCHY_LABELS_PLURAL.space}
+        {t('spaces')}
       </div>
       {data.spaces.map((space) => {
         const folders = data.foldersBySpace[space.id] ?? [];
@@ -169,21 +171,21 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
                         <span
                           className="grow truncate"
                           onDoubleClick={() => {
-                            const n = window.prompt('Rename folder', folder.name);
+                            const n = window.prompt(t('renameFolder'), folder.name);
                             if (n && n.trim() && n !== folder.name) run(renameFolder(folder.id, n.trim()));
                           }}
                         >
                           {folder.name}
                         </span>
                         <button
-                          type="button" data-testid="list-add" aria-label="Add list"
+                          type="button" data-testid="list-add" aria-label={t('addList')}
                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
                           onClick={() => { expand(folder.id); setAdding({ kind: 'list', spaceId: space.id, folderId: folder.id }); setAddName(''); }}
                         >
                           <Plus className="size-3.5" />
                         </button>
                         <button
-                          type="button" aria-label="Delete folder"
+                          type="button" aria-label={t('deleteFolder')}
                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
                           onClick={() => run(deleteFolder(folder.id))}
                         >
@@ -219,6 +221,7 @@ function SpaceBlock({
   space: Project; open: boolean; onToggle: () => void;
   onAddFolder: () => void; onAddList: () => void; children: React.ReactNode;
 }) {
+  const t = useTranslations('Hierarchy');
   return (
     <div>
       <div
@@ -231,14 +234,14 @@ function SpaceBlock({
         <SpaceIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="grow truncate">{space.name}</span>
         <button
-          type="button" data-testid="folder-add" aria-label="Add folder"
+          type="button" data-testid="folder-add" aria-label={t('addFolder')}
           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
           onClick={onAddFolder}
         >
           <FolderIcon className="size-3.5" />
         </button>
         <button
-          type="button" data-testid="list-add" aria-label="Add list"
+          type="button" data-testid="list-add" aria-label={t('addList')}
           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
           onClick={onAddList}
         >

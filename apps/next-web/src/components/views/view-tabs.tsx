@@ -2,6 +2,7 @@
 
 import { useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import {
   DndContext,
   closestCenter,
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId }: Props) {
+  const t = useTranslations('Views.tabs');
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -82,7 +84,7 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId 
         scopeType,
         scopeId: scopeType === 'EVERYTHING' ? null : scopeId,
         type: 'list',
-        name: 'New view',
+        name: t('newViewDefaultName'),
         isShared: true,
         isDefault: false,
         config: { filter: { conjunction: 'AND', rules: [] }, sort: [] },
@@ -96,7 +98,7 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId 
   const ordered = [...views].sort((a, b) => a.position - b.position);
 
   return (
-    <div className="flex items-center gap-1 border-b border-border" role="tablist" aria-label="Saved views">
+    <div className="flex items-center gap-1 border-b border-border" role="tablist" aria-label={t('savedViews')}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={ordered.map((v) => v.id)} strategy={horizontalListSortingStrategy}>
           {ordered.map((v) => (
@@ -118,7 +120,7 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId 
         data-testid="view-new"
         className="h-8 px-2 text-xs text-muted-foreground"
       >
-        <Plus className="size-3.5" /> New view
+        <Plus className="size-3.5" /> {t('newView')}
       </Button>
     </div>
   );

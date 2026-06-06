@@ -34,6 +34,7 @@
 
 import { useCallback, useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Search, Filter, X } from 'lucide-react';
 
 import { Board } from '@/components/Board';
@@ -92,6 +93,20 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
+  const t            = useTranslations('Views');
+  const tBoard       = useTranslations('Board');
+
+  // Enum → translated label maps (reuse the Board namespace's type/priority keys
+  // so the filter dropdowns match TaskCard rather than rendering raw enum values).
+  const TYPE_LABELS: Record<string, string> = {
+    EPIC: tBoard('typeEpic'), STORY: tBoard('typeStory'), TASK: tBoard('typeTask'),
+    BUG: tBoard('typeBug'), SUBTASK: tBoard('typeSubtask'), IMPROVEMENT: tBoard('typeImprovement'),
+    FEATURE: tBoard('typeFeature'), TEST: tBoard('typeTest'),
+  };
+  const PRIORITY_LABELS: Record<string, string> = {
+    HIGHEST: tBoard('priorityHighest'), HIGH: tBoard('priorityHigh'), MEDIUM: tBoard('priorityMedium'),
+    LOW: tBoard('priorityLow'), LOWEST: tBoard('priorityLowest'),
+  };
 
   const tasks = useMemo<Task[]>(() => taskPage?.tasks ?? [], [taskPage]);
 
@@ -250,9 +265,9 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
             ref={searchInputRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title or key…  (Ctrl/⌘+K)"
+            placeholder={t('searchPlaceholder')}
             className="h-8 pl-7 pr-12 text-xs"
-            aria-label="Filter tasks by title or issue key"
+            aria-label={t('searchAriaLabel')}
           />
           <kbd
             aria-hidden="true"
@@ -266,11 +281,11 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
           value={typeFilter}
           onValueChange={(v) => { setTypeFilter(v); writeFiltersToUrl({ type: v }); }}
         >
-          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue placeholder={t('typePlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All types</SelectItem>
-            {TYPE_OPTIONS.map((t) => (
-              <SelectItem key={t} value={t}>{t.charAt(0) + t.slice(1).toLowerCase()}</SelectItem>
+            <SelectItem value="ALL">{t('allTypes')}</SelectItem>
+            {TYPE_OPTIONS.map((opt) => (
+              <SelectItem key={opt} value={opt}>{TYPE_LABELS[opt] ?? opt}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -279,11 +294,11 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
           value={priorityFilter}
           onValueChange={(v) => { setPriorityFilter(v); writeFiltersToUrl({ priority: v }); }}
         >
-          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder="Priority" /></SelectTrigger>
+          <SelectTrigger className="h-8 w-[140px] text-xs"><SelectValue placeholder={t('priorityPlaceholder')} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="ALL">All priorities</SelectItem>
-            {PRIORITY_OPTIONS.map((p) => (
-              <SelectItem key={p} value={p}>{p.charAt(0) + p.slice(1).toLowerCase()}</SelectItem>
+            <SelectItem value="ALL">{t('allPriorities')}</SelectItem>
+            {PRIORITY_OPTIONS.map((opt) => (
+              <SelectItem key={opt} value={opt}>{PRIORITY_LABELS[opt] ?? opt}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -305,14 +320,18 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
               }}
               className="h-8 px-2 text-xs"
             >
-              <X className="size-3.5" /> Clear
+              <X className="size-3.5" /> {t('clear')}
             </Button>
           </>
         )}
 
         <div className="ml-auto text-xs text-muted-foreground">
           {optimisticTasks.length > 0
-            ? <>Showing <strong className="text-foreground">{filteredTasks.length}</strong> of <strong className="text-foreground">{optimisticTasks.length}</strong></>
+            ? t.rich('showingOf', {
+                shown: filteredTasks.length,
+                total: optimisticTasks.length,
+                strong: (chunks) => <strong className="text-foreground">{chunks}</strong>,
+              })
             : ' '}
         </div>
       </div>

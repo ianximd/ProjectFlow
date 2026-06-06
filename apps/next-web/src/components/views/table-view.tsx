@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,7 @@ interface RowGroup {
 }
 
 export function TableView({ taskPage, activeView, customFields, onSelectionChange }: Props) {
+  const t = useTranslations('Views');
   const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
   // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
   // projectId arg is a required truthy placeholder only — `task:updated` is a
@@ -96,12 +98,12 @@ export function TableView({ taskPage, activeView, customFields, onSelectionChang
       const meta = groups.find((g) => g.key === key);
       return {
         key,
-        label: meta?.label ?? (key === '∅' ? '(empty)' : key),
+        label: meta?.label ?? (key === '∅' ? t('groupEmpty') : key),
         count: meta?.count ?? groupTasks.length,
         tasks: groupTasks,
       };
     });
-  }, [tasks, groups, config.groupBy, customFields]);
+  }, [tasks, groups, config.groupBy, customFields, t]);
 
   const colCount = columns.length + 1; // + selection column
 
@@ -118,7 +120,7 @@ export function TableView({ taskPage, activeView, customFields, onSelectionChang
                 size="sm"
                 checked={allSelected}
                 onCheckedChange={toggleAll}
-                aria-label="Select all rows"
+                aria-label={t('selectAllRows')}
                 data-testid="row-select-all"
               />
             </th>
@@ -133,7 +135,7 @@ export function TableView({ taskPage, activeView, customFields, onSelectionChang
           {tasks.length === 0 ? (
             <tr>
               <td colSpan={colCount} className="px-3 py-6 text-center text-muted-foreground">
-                No tasks.
+                {t('noTasks')}
               </td>
             </tr>
           ) : (
@@ -146,6 +148,7 @@ export function TableView({ taskPage, activeView, customFields, onSelectionChang
                 customFields={customFields}
                 selected={selected}
                 onToggle={toggle}
+                selectRowLabel={(title) => t('selectRow', { title })}
               />
             ))
           )}
@@ -162,6 +165,7 @@ function GroupBlock({
   customFields,
   selected,
   onToggle,
+  selectRowLabel,
 }: {
   group: RowGroup;
   columns: FieldRef[];
@@ -169,6 +173,7 @@ function GroupBlock({
   customFields: CustomField[];
   selected: Set<string>;
   onToggle: (id: string) => void;
+  selectRowLabel: (title: string) => string;
 }) {
   return (
     <>
@@ -194,7 +199,7 @@ function GroupBlock({
               size="sm"
               checked={selected.has(t.id)}
               onCheckedChange={() => onToggle(t.id)}
-              aria-label={`Select ${t.title}`}
+              aria-label={selectRowLabel(t.title)}
               data-testid="row-select"
             />
           </td>

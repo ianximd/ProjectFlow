@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { LayoutGrid, SlidersHorizontal } from 'lucide-react';
 
 import { ViewTabs } from '@/components/views/view-tabs';
@@ -49,6 +50,7 @@ export function ViewSurface({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const t = useTranslations('Views');
 
   const activeView = views.find((v) => v.id === activeViewId) ?? null;
 
@@ -109,7 +111,7 @@ export function ViewSurface({
               aria-pressed={builderOpen}
               className="h-8 text-xs"
             >
-              <SlidersHorizontal className="size-3.5" /> Customize
+              <SlidersHorizontal className="size-3.5" /> {t('customize')}
             </Button>
           )}
           <Button
@@ -121,7 +123,7 @@ export function ViewSurface({
             aria-pressed={meMode}
             className="h-8 text-xs"
           >
-            Me mode
+            {t('meMode')}
           </Button>
         </div>
       </div>
@@ -244,6 +246,7 @@ function ViewBody({
 }
 
 function EmptyViewsState() {
+  const t = useTranslations('Views');
   return (
     <div
       data-testid="views-empty"
@@ -254,9 +257,9 @@ function EmptyViewsState() {
     >
       <LayoutGrid className="size-10 text-muted-foreground/50" aria-hidden="true" />
       <div className="space-y-1">
-        <div className="text-sm font-medium text-foreground">No views yet</div>
+        <div className="text-sm font-medium text-foreground">{t('noViewsTitle')}</div>
         <div className="max-w-sm text-xs text-muted-foreground">
-          Create a view to start exploring tasks in this scope.
+          {t('noViewsBody')}
         </div>
       </div>
     </div>

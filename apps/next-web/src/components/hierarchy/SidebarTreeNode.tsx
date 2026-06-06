@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
@@ -19,6 +20,7 @@ export function ListNode({
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const t = useTranslations('Hierarchy');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: list.id });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
@@ -67,7 +69,7 @@ export function ListNode({
           {!list.isDefault && (
             <button
               type="button"
-              aria-label="Delete list"
+              aria-label={t('deleteList')}
               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
               onClick={(e) => { e.preventDefault(); onDelete(list.id); }}
             >

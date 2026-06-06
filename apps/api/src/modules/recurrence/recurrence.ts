@@ -146,6 +146,14 @@ export function computeNextOccurrence(rule: RecurrenceRuleShape, from: Date | st
           // Determine which "week stride" this candidate falls in relative to start.
           // Week boundaries are Sunday-based (getUTCDay 0=Sun). Compute the count
           // of week-starts crossed; require it to be a multiple of interval.
+          //
+          // `from` (start) is the PREVIOUS occurrence, so its own week is an ACTIVE
+          // week of the schedule. A byWeekday day that falls LATER in that same
+          // week (weeksAhead===0) is therefore a legitimate next occurrence even
+          // when interval>1 — e.g. biweekly Mon/Wed from a Monday yields the Wed
+          // of the SAME week, then jumps two weeks to the next Monday. Accepting
+          // weeksAhead===0 is intentional; rejecting it (weeksAhead>0 && ...) would
+          // wrongly skip the same-week-ahead day for both interval=1 AND interval>1.
           const weeksAhead = weekIndexDelta(start, cand);
           if (weeksAhead === 0 || weeksAhead % interval === 0) {
             next = cand;
@@ -214,5 +222,10 @@ function weekIndexDelta(a: Date, b: Date): number {
   };
   const wa = startOfWeek(a);
   const wb = startOfWeek(b);
-  return Math.round((wb - wa) / (7 * 24 * 60 * 60 * 1000));
+  // Math.floor (not round): both endpoints are snapped to a UTC week-start
+  // midnight so the quotient is normally an exact integer, but DST-free UTC math
+  // can still leave a hair of float error. floor takes the completed-week count
+  // and can never round a partial week UP onto the next interval stride (which
+  // round() could, mis-classifying a candidate's week and skipping a valid day).
+  return Math.floor((wb - wa) / (7 * 24 * 60 * 60 * 1000));
 }

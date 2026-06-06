@@ -108,6 +108,44 @@ describe('computeNextOccurrence — weekly', () => {
     const r: RecurrenceRuleShape = { freq: 'weekly', interval: 2, byWeekday: [1] };
     expect(iso(computeNextOccurrence(r, '2026-06-05T08:00:00.000Z'))).toBe('2026-06-15T08:00:00.000Z');
   });
+
+  // ── FIX 4: biweekly (interval=2) + byWeekday active-week semantics ───────────
+  // `from` is the PREVIOUS occurrence, so its week is an ACTIVE week. A byWeekday
+  // day later in that SAME week (weeksAhead===0) is a valid next occurrence even
+  // for interval>1. These tests pin the intended sequence so a future "fix" that
+  // rejects weeksAhead===0 (which would break interval=1 same-week-ahead too) is
+  // caught. The current code already produces these — KEPT, comment added in src.
+  describe('FIX 4 — biweekly Mon/Wed active-week semantics', () => {
+    // 2026-06-01 is a Monday, 2026-06-03 Wednesday, 2026-06-15 the Monday 2wk later.
+    const biweeklyMonWed: RecurrenceRuleShape = { freq: 'weekly', interval: 2, byWeekday: [1, 3] };
+
+    it('from Mon → Wed of the SAME week (weeksAhead===0 accepted)', () => {
+      expect(iso(computeNextOccurrence(biweeklyMonWed, '2026-06-01T08:00:00.000Z')))
+        .toBe('2026-06-03T08:00:00.000Z');
+    });
+
+    it('from Wed → Mon TWO weeks later (the immediately-next Mon is skipped)', () => {
+      expect(iso(computeNextOccurrence(biweeklyMonWed, '2026-06-03T08:00:00.000Z')))
+        .toBe('2026-06-15T08:00:00.000Z');
+    });
+
+    it('full biweekly chain Mon→Wed→Mon(+2wk)→Wed(+2wk) stays on stride', () => {
+      let cur = '2026-06-01T08:00:00.000Z'; // Mon
+      cur = iso(computeNextOccurrence(biweeklyMonWed, cur))!;
+      expect(cur).toBe('2026-06-03T08:00:00.000Z'); // Wed same week
+      cur = iso(computeNextOccurrence(biweeklyMonWed, cur))!;
+      expect(cur).toBe('2026-06-15T08:00:00.000Z'); // Mon +2 weeks
+      cur = iso(computeNextOccurrence(biweeklyMonWed, cur))!;
+      expect(cur).toBe('2026-06-17T08:00:00.000Z'); // Wed same week
+    });
+
+    it('interval=1 from Thu byWeekday=[Fri] → Fri SAME week (sanity: weeksAhead===0 path)', () => {
+      // 2026-06-04 is a Thursday; Friday is 2026-06-05.
+      const r: RecurrenceRuleShape = { freq: 'weekly', interval: 1, byWeekday: [5] };
+      expect(iso(computeNextOccurrence(r, '2026-06-04T08:00:00.000Z')))
+        .toBe('2026-06-05T08:00:00.000Z');
+    });
+  });
 });
 
 describe('computeNextOccurrence — monthly', () => {

@@ -135,6 +135,10 @@ export class TaskService {
     if (isDoneGroupStatus(newStatus)) {
       await dependencyService.assertNoOpenBlockers(taskId); // throws DependencyWarningError
     }
+    // Capture the status BEFORE the transition so recurrence only fires on a true
+    // crossing INTO the done-group from a non-done status (see spawn guard below).
+    const beforeTransition = await this.repo.getById(taskId);
+    const previousStatus = (beforeTransition as any)?.status ?? (beforeTransition as any)?.Status ?? null;
     const task = await this.repo.transition(taskId, newStatus, actorId);
     // A transition may flip this task's resolved state — recompute the PARENT's progress_auto.
     const parentId = parentIdOf(task);
@@ -156,7 +160,12 @@ export class TaskService {
     // next occurrence if an active recurrence covers on_complete. Fire-and-forget
     // AFTER the transition has committed — a spawn error is logged but never
     // faults the transition the user asked for.
-    if (isDoneGroupStatus(newStatus)) {
+    //
+    // Idempotency: only spawn when the task CROSSES INTO the done-group from a
+    // NON-done status. Done→Done or Done→Resolved (both done-group) must NOT
+    // re-spawn — without this gate, re-confirming/moving between done statuses
+    // would mint a duplicate occurrence each time.
+    if (isDoneGroupStatus(newStatus) && !isDoneGroupStatus(previousStatus ?? '')) {
       void (async () => {
         try {
           const rec = await recurrenceService.getForTask(taskId);

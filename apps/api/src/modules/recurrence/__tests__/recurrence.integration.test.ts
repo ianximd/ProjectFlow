@@ -260,6 +260,136 @@ describe('Phase 5c — recurring tasks (integration)', () => {
     expect((await listTasks(ctx.listId)).length).toBe(2); // source + the single spawn
   });
 
+  it('FIX 1 (atomic claim): two spawnNext calls for the same pre-read occurrence produce exactly ONE clone + one advance', async () => {
+    const ctx = await seedGraph();
+    const source = await makeTask(ctx, 'Race me');
+    const due = new Date('2026-07-01T08:00:00.000Z');
+    await setDates(source, due, due);
+
+    // schedule mode + a forced past NextRunAt so the recurrence is "due" and the
+    // two callers (on-complete trigger vs. sweep) both read the SAME row state.
+    const rec = await recurrenceService.setForTask(source, { rule: { freq: 'daily', interval: 1 }, regenerateMode: 'both' });
+    await forceNextRunAt(rec.id, new Date(Date.now() - 60_000));
+
+    // Re-read so both racing callers start from the identical pre-read object
+    // (same observed NextRunAt — exactly the double-spawn race scenario).
+    const preRead = (await recurrenceService.getForTask(source))!;
+    expect(preRead.nextRunAt).not.toBeNull();
+
+    const before = await listTasks(ctx.listId);
+    expect(before).toHaveLength(1);
+
+    // Fire both with the SAME object. The atomic claim must let only one win.
+    const [a, b] = await Promise.all([
+      recurrenceService.spawnNext(preRead),
+      recurrenceService.spawnNext(preRead),
+    ]);
+
+    // Exactly one returned a new task id; the other was rejected by the claim.
+    const winners = [a, b].filter((x) => x !== null);
+    expect(winners).toHaveLength(1);
+
+    // Exactly ONE new task in the list (source + one clone), not two.
+    const after = await listTasks(ctx.listId);
+    expect(after).toHaveLength(2);
+
+    // The recurrence advanced exactly ONCE. The spawn clones for the 2026-07-02
+    // occurrence (one daily step past the 2026-07-01 due) and sets NextRunAt to
+    // the FOLLOWING occurrence, 2026-07-03. A double-advance would have skipped to
+    // 2026-07-04 — assert it landed on 07-03 (exactly one advance).
+    const rr = (await recurrenceService.getForTask(source))!;
+    expect(rr.active).toBe(true);
+    expect(rr.nextRunAt).not.toBeNull();
+    expect(rr.lastSpawnedTaskId?.toUpperCase()).toBe(winners[0]!.toUpperCase());
+    const advancedDay = new Date(rr.nextRunAt as any);
+    expect(advancedDay.getTime()).toBe(new Date('2026-07-03T08:00:00.000Z').getTime());
+  });
+
+  it('FIX 1 (count + atomic claim): a double spawn of a count:2 occurrence decrements the count exactly once', async () => {
+    const ctx = await seedGraph();
+    const source = await makeTask(ctx, 'Counted race');
+    const due = new Date('2026-08-01T08:00:00.000Z');
+    await setDates(source, due, due);
+
+    const rec = await recurrenceService.setForTask(source, { rule: { freq: 'daily', interval: 1, count: 2 }, regenerateMode: 'both' });
+    await forceNextRunAt(rec.id, new Date(Date.now() - 60_000));
+    const preRead = (await recurrenceService.getForTask(source))!;
+
+    const [a, b] = await Promise.all([
+      recurrenceService.spawnNext(preRead),
+      recurrenceService.spawnNext(preRead),
+    ]);
+    expect([a, b].filter((x) => x !== null)).toHaveLength(1);
+
+    // Count must have decremented from 2 → 1 (NOT 2 → 0): still active, one spawn.
+    const rr = (await recurrenceService.getForTask(source))!;
+    expect(rr.active).toBe(true);
+    expect((rr.rule as any).count).toBe(1);
+    expect((await listTasks(ctx.listId)).length).toBe(2); // source + 1 clone
+  });
+
+  it('FIX 2 (idempotency): Done→Done and Done→Resolved do NOT re-spawn; only the first into-done crossing spawns', async () => {
+    const ctx = await seedGraph();
+
+    // Extend the seeded DEFAULT workflow with a second DONE-category status
+    // ("Resolved") + a Done→Resolved transition so we can drive a done→done
+    // (cross-status, both DONE-category) transition through the workflow gate.
+    const pool = await getPool();
+    const wf = await pool.request()
+      .input('ProjectId', sql.UniqueIdentifier, ctx.space.Id)
+      .execute('usp_Workflow_GetByProject');
+    const workflowId = (wf.recordset[0] as any).Id ?? (wf.recordset[0] as any).id;
+    await pool.request()
+      .input('WorkflowId', sql.UniqueIdentifier, workflowId)
+      .input('Name', sql.NVarChar(100), 'Resolved')
+      .input('Category', sql.NVarChar(20), 'DONE')
+      .input('Color', sql.NVarChar(20), '#16a34a')
+      .execute('usp_Workflow_AddStatus');
+    await pool.request()
+      .input('WorkflowId', sql.UniqueIdentifier, workflowId)
+      .input('FromStatus', sql.NVarChar(100), 'Done')
+      .input('ToStatus', sql.NVarChar(100), 'Resolved')
+      .input('Name', sql.NVarChar(100), 'Mark Resolved')
+      .execute('usp_Workflow_AddTransition');
+
+    const source = await makeTask(ctx, 'Once only');
+    const due = new Date('2026-09-01T08:00:00.000Z');
+    await setDates(source, due, due);
+
+    // Infinite (no count) on_complete recurrence — only the crossing gate stops re-spawns.
+    await recurrenceService.setForTask(source, { rule: { freq: 'daily', interval: 1 }, regenerateMode: 'on_complete' });
+
+    // First crossing INTO done: To Do → In Progress → Done → spawns ONE occurrence.
+    await taskService.transitionTask(source, 'In Progress', actorIdOf(ctx));
+    await taskService.transitionTask(source, 'Done', actorIdOf(ctx));
+    const spawned = await waitForSpawn(ctx.listId, source);
+    expect(spawned.Title).toBe('Once only');
+    expect((await listTasks(ctx.listId)).length).toBe(2); // source + 1 clone
+
+    // Done → Done (no-op, same done-group status) must NOT spawn again.
+    await taskService.transitionTask(source, 'Done', actorIdOf(ctx));
+    await new Promise((res) => setTimeout(res, 500));
+    expect((await listTasks(ctx.listId)).length).toBe(2);
+
+    // Done → Resolved (cross-status, but BOTH done-group) must NOT spawn again.
+    await taskService.transitionTask(source, 'Resolved', actorIdOf(ctx));
+    await new Promise((res) => setTimeout(res, 500));
+    expect((await listTasks(ctx.listId)).length).toBe(2);
+  });
+
+  it('FIX 3 (past-due seed clamp): a past source due does not seed a NextRunAt in the past', async () => {
+    const ctx = await seedGraph();
+    const source = await makeTask(ctx, 'Stale due');
+    // Source due well in the past.
+    const pastDue = new Date(Date.now() - 30 * 86_400_000);
+    await setDates(source, pastDue, pastDue);
+
+    const rec = await recurrenceService.setForTask(source, { rule: { freq: 'weekly', interval: 1 }, regenerateMode: 'schedule' });
+    expect(rec.nextRunAt).not.toBeNull();
+    // The seeded NextRunAt must be in the FUTURE (re-seeded from now), not the past.
+    expect(new Date(rec.nextRunAt as any).getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('clear: getForTask returns null after clear and completing no longer spawns', async () => {
     const ctx = await seedGraph();
     const source = await makeTask(ctx, 'Cleared task');

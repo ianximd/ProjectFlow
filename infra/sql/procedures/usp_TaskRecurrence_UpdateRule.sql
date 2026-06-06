@@ -1,6 +1,10 @@
--- Phase 5c: patch the Rule JSON of an active recurrence in place. Used by the
--- spawn path to persist a decremented `count` so the countdown survives across
--- occurrences without creating a new row (which would reset count tracking).
+-- Phase 5c: patch the Rule JSON of an active recurrence in place.
+--
+-- DEPRECATED (FIX 1, 2026): the spawn path no longer calls this. The decremented
+-- `count` is now folded into the ATOMIC CLAIM (usp_TaskRecurrence_AdvanceAfterSpawn
+-- @Rule param) so the count persist + schedule advance happen in ONE conditional
+-- UPDATE with no read-then-write race. Kept (deployed but unreferenced) for any
+-- ad-hoc/manual rule patching; safe to drop in a later cleanup.
 CREATE OR ALTER PROCEDURE dbo.usp_TaskRecurrence_UpdateRule
     @Id   UNIQUEIDENTIFIER,
     @Rule NVARCHAR(MAX)

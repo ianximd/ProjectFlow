@@ -2,7 +2,7 @@ import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { recurrenceService, InvalidRecurrenceRuleError } from '../modules/recurrence/recurrence.service.js';
 import { TaskRepository } from '../modules/tasks/task.repository.js';
-import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
+import { notFound, requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import type { TaskRecurrence } from '@projectflow/types';
 
 const taskRepo = new TaskRepository();
@@ -33,6 +33,10 @@ export function registerRecurrenceGraphql(): void {
       nullable: true,
       args: { taskId: t.arg.string({ required: true }) },
       resolve: async (_, a, ctx) => {
+        // A missing/unresolvable task is a 404, not a permission error — check
+        // existence (via workspace lookup) before the object-level VIEW gate.
+        const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
+        if (!workspaceId) notFound('Task not found');
         await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'VIEW');
         return recurrenceService.getForTask(a.taskId);
       },
@@ -49,7 +53,9 @@ export function registerRecurrenceGraphql(): void {
         includeDependencies: t.arg.boolean({ required: false }),
       },
       resolve: async (_, a, ctx) => {
-        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
+        if (!workspaceId) notFound('Task not found');
+        await requireWorkspacePermission(ctx, workspaceId, 'task.update');
         let parsedRule: unknown;
         try { parsedRule = JSON.parse(a.rule); }
         catch { throw new GraphQLError('rule must be a JSON object string', { extensions: { code: 'INVALID_RECURRENCE_RULE' } }); }
@@ -74,7 +80,9 @@ export function registerRecurrenceGraphql(): void {
       type: 'Boolean',
       args: { taskId: t.arg.string({ required: true }) },
       resolve: async (_, a, ctx) => {
-        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
+        if (!workspaceId) notFound('Task not found');
+        await requireWorkspacePermission(ctx, workspaceId, 'task.update');
         await recurrenceService.clear(a.taskId);
         return true;
       },

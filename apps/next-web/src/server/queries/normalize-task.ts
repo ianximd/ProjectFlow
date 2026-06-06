@@ -23,6 +23,7 @@ export interface TaskAssignee {
 
 export interface Task {
   id: string;
+  listId: string | null;
   issueKey: string | null;
   title: string;
   description: string | null;
@@ -82,6 +83,7 @@ function parseCustomFieldValues(raw: unknown): Record<string, unknown> {
 export function normalizeTask(r: any): Task {
   return {
     id:          String(r?.Id          ?? r?.id          ?? ''),
+    listId:      s(r?.ListId           ?? r?.listId),
     issueKey:    s(r?.IssueKey         ?? r?.issueKey),
     title:       String(r?.Title       ?? r?.title       ?? '(untitled)'),
     description: s(r?.Description      ?? r?.description),

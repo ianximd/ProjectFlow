@@ -11,6 +11,7 @@ import { pubsub } from '../../graphql/pubsub.js';
 import { publishTaskEvent, publishTaskMove } from '../../graphql/task-events.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
+import { DependencyWarningError } from '../dependencies/dependency.service.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { watcherService } from '../watchers/watcher.service.js';
@@ -353,6 +354,9 @@ taskRoutes.patch(
   } catch (err: any) {
     if (err instanceof RequiredFieldsUnmetError) {
       return c.json({ error: { code: 'CUSTOM_FIELD_REQUIRED', message: err.message, missing: err.missing } }, 422);
+    }
+    if (err instanceof DependencyWarningError) {
+      return c.json({ error: { code: err.code, message: err.message, details: { blockers: err.blockers } } }, 409);
     }
     if (err.number === 50003 || err.number === 50004) {
       return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);

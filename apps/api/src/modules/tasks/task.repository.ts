@@ -70,6 +70,20 @@ export class TaskRepository {
     return rows[0]?.WorkspaceId ?? null;
   }
 
+  /** Snapshot a task's schedule dates before an update so the dependency
+   *  reschedule can compute a delta. Reuses usp_Task_GetById (SELECT *). */
+  async getDates(taskId: string): Promise<{ startDate: Date | null; dueDate: Date | null } | null> {
+    const rows = await execSpOne<any>('usp_Task_GetById', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+    ]);
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      startDate: (r.StartDate ?? r.startDate) ?? null,
+      dueDate:   (r.DueDate ?? r.dueDate) ?? null,
+    };
+  }
+
   async list(
     filters: TaskFilters,
   ): Promise<{

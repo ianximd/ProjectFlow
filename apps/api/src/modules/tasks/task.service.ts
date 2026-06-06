@@ -4,11 +4,25 @@ import { fanOutTaskEvent, debounceGate, taskUpdatedDebounceKey } from '../notifi
 import { watcherService } from '../watchers/watcher.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
 import { customFieldService } from '../customfields/customfield.service.js';
+import { dependencyService, computeDateDelta } from '../dependencies/dependency.service.js';
+import { publishTaskEvent } from '../../graphql/task-events.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
 
 const log = subLogger('tasks');
+
+// Status names that count as a DONE-group target when no workflow lookup is
+// cheaply available — mirrors the fallback in usp_Task_HasOpenBlockers.
+const DONE_GROUP_STATUSES = new Set(['Done', 'Resolved', 'Closed', 'Completed']);
+function isDoneGroupStatus(status: string): boolean {
+  return DONE_GROUP_STATUSES.has(status);
+}
+
+function projectIdOf(task: unknown): string | null {
+  const t = task as any;
+  return t?.projectId ?? t?.ProjectId ?? null;
+}
 
 /** Parent-task id, casing-tolerant: task SPs return PascalCase (SELECT *) in
  *  some paths and camelCase in others. */
@@ -114,6 +128,12 @@ export class TaskService {
   async transitionTask(taskId: string, newStatus: string, actorId: string): Promise<Task> {
     // Block DONE-category transitions while required custom fields are unfilled.
     await customFieldService.assertRequiredMetForStatus(taskId, newStatus); // throws RequiredFieldsUnmetError
+    // Dependency Warning: refuse to close a task that still has open blockers.
+    // The SP only returns rows when blockers are open, so the guard is safe
+    // even if the done-group gate is slightly too broad.
+    if (isDoneGroupStatus(newStatus)) {
+      await dependencyService.assertNoOpenBlockers(taskId); // throws DependencyWarningError
+    }
     const task = await this.repo.transition(taskId, newStatus, actorId);
     // A transition may flip this task's resolved state — recompute the PARENT's progress_auto.
     const parentId = parentIdOf(task);
@@ -145,6 +165,26 @@ export class TaskService {
   }
 
   async updateTask(taskId: string, input: UpdateTaskInput, actorId: string): Promise<Task | null> {
-    return this.repo.update(taskId, input, actorId);
+    // Snapshot the schedule dates BEFORE the update so we can detect a date move
+    // and cascade-reschedule dependents by the same whole-day delta.
+    const before = await this.repo.getDates(taskId);
+    const task = await this.repo.update(taskId, input, actorId);
+    if (task) {
+      const delta = computeDateDelta(before, task as any); // whole days; 0 if no date change
+      if (delta !== 0) {
+        try {
+          const shifted = await dependencyService.rescheduleDependents(taskId, delta);
+          const projectId = projectIdOf(task);
+          if (projectId) {
+            for (const id of shifted) {
+              await publishTaskEvent('updated', { projectId, taskId: id });
+            }
+          }
+        } catch (err: any) {
+          log.error({ err: err?.message }, 'reschedule dependents failed');
+        }
+      }
+    }
+    return task;
   }
 }

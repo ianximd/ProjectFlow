@@ -260,6 +260,25 @@ export interface TaskDependency {
   type: string;
 }
 
+// ─── Dependencies (Phase 5a) ──────────────────────────────────────────────
+// The legacy `TaskDependency` above is the raw edge row. Phase 5a exposes a
+// display-oriented view (joined task title/status) plus the waiting-on/blocking
+// pair. `TaskDependencyRef` is named distinctly to avoid colliding with the
+// legacy `TaskDependency` interface.
+export type DependencyRelation = 'waiting_on' | 'blocking';
+
+export interface TaskDependencyRef {
+  taskId: string;
+  title: string;
+  status: string;
+  issueKey?: string | null;
+}
+
+export interface TaskDependencyLists {
+  waitingOn: TaskDependencyRef[]; // tasks this task waits on (blockers)
+  blocking: TaskDependencyRef[];  // tasks blocked by this task
+}
+
 // Ordered left-to-right as they appear on a kanban board.
 // IDEA = pre-commit brainstorm/discovery; TESTING = QA gate before DONE.
 // DB column has no CHECK constraint, so adding values is forward-compatible —

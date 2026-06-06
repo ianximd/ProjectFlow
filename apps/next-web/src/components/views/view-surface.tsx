@@ -17,6 +17,31 @@ import { cn } from '@/lib/utils';
 import type { ViewTaskPageResult } from '@/server/queries/views';
 import type { CustomField, SavedView, ViewScopeType, ViewType } from '@projectflow/types';
 
+/**
+ * Live-subscription scope for the view surfaces, resolved SSR in the views page
+ * and threaded down to each view component's `useLiveTasks` call.
+ *
+ *   - `projectId`   — the owning project (= owning Space) id for SPACE/FOLDER/LIST
+ *                     scopes. Drives the project-keyed `taskEvents` subscription.
+ *                     Undefined for EVERYTHING, or for a node scope whose SSR page
+ *                     was empty (no task to derive the owning project from) → the
+ *                     surface then skips the subscription until the next re-seed.
+ *   - `workspaceId` — the workspace feed for EVERYTHING scope.
+ *   - `acceptKind`  — which live `created` events belong in this surface:
+ *       'all'  → SPACE / EVERYTHING (every event on the scope belongs).
+ *       'list' → LIST (keep only tasks whose listId === `listScopeId`).
+ *       'none' → FOLDER (no live add: the client can't cheaply verify folder
+ *                membership across nested lists, so new cards arrive on the next
+ *                SSR re-seed; live UPDATE + DELETE of already-shown tasks still work).
+ *   - `listScopeId` — the LIST node id, set only when `acceptKind === 'list'`.
+ */
+export type LiveScopeProp = {
+  projectId?: string;
+  workspaceId?: string;
+  acceptKind: 'all' | 'list' | 'none';
+  listScopeId?: string;
+};
+
 interface Props {
   views: SavedView[];
   activeViewId: string | null;
@@ -34,6 +59,9 @@ interface Props {
   /** The scope's effective workflow statuses (board views only), resolved SSR.
    *  Null when not a board view, EVERYTHING scope, or the project has no workflow. */
   boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
+  /** Live-subscription scope (created/updated/deleted) for the active surface,
+   *  resolved SSR in the page. See {@link LiveScopeProp}. */
+  live: LiveScopeProp;
 }
 
 export function ViewSurface({
@@ -46,6 +74,7 @@ export function ViewSurface({
   taskPage,
   customFields,
   boardWorkflowStatuses,
+  live,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -160,6 +189,7 @@ export function ViewSurface({
             scopeId={scopeId}
             boardWorkflowStatuses={boardWorkflowStatuses}
             onSelectionChange={onSelectionChange}
+            live={live}
           />
         ) : (
           <EmptyViewsState />
@@ -190,6 +220,7 @@ function ViewBody({
   scopeId,
   boardWorkflowStatuses,
   onSelectionChange,
+  live,
 }: {
   type: ViewType;
   taskPage: ViewTaskPageResult | null;
@@ -199,6 +230,7 @@ function ViewBody({
   scopeId: string;
   boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
   onSelectionChange?: (ids: string[]) => void;
+  live: LiveScopeProp;
 }) {
   switch (type) {
     case 'table':
@@ -208,6 +240,7 @@ function ViewBody({
           activeView={activeView}
           customFields={customFields}
           onSelectionChange={onSelectionChange}
+          live={live}
         />
       );
     case 'list':
@@ -217,11 +250,12 @@ function ViewBody({
           activeView={activeView}
           customFields={customFields}
           onSelectionChange={onSelectionChange}
+          live={live}
         />
       );
     case 'calendar':
       return (
-        <CalendarView taskPage={taskPage} activeView={activeView} customFields={customFields} />
+        <CalendarView taskPage={taskPage} activeView={activeView} customFields={customFields} live={live} />
       );
     case 'board':
       return (
@@ -231,6 +265,7 @@ function ViewBody({
           scopeType={scopeType}
           scopeId={scopeId}
           workflowStatuses={boardWorkflowStatuses}
+          live={live}
         />
       );
     default:
@@ -240,6 +275,7 @@ function ViewBody({
           activeView={activeView}
           customFields={customFields}
           onSelectionChange={onSelectionChange}
+          live={live}
         />
       );
   }

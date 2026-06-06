@@ -12,6 +12,21 @@ export interface LiveScope {
 }
 
 /**
+ * Build the `accepts` predicate for a views-engine surface from its `acceptKind`:
+ *   - 'list' → accept only created tasks whose `listId` matches `listScopeId`.
+ *   - 'none' → accept none (FOLDER: live update/delete only; new cards on re-seed).
+ *   - 'all'  → accept every created task (SPACE / EVERYTHING).
+ */
+export function buildAccepts(
+  acceptKind: 'all' | 'list' | 'none',
+  listScopeId?: string,
+): (task: Task) => boolean {
+  if (acceptKind === 'list') return (task) => task.listId === listScopeId;
+  if (acceptKind === 'none') return () => false;
+  return () => true;
+}
+
+/**
  * SSR-provided `base` with live `taskEvents` (created/updated/deleted) merged in.
  * SSR stays the source of truth (`base` re-seeds on change). Exactly one of
  * `scope.projectId` / `scope.workspaceId` drives the (server-keyed) subscription;

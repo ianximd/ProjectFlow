@@ -97,6 +97,8 @@ const VIEW_TASKS_QUERY = /* GraphQL */ `
       groups { key label count }
       tasks {
         id
+        projectId
+        listId
         issueKey
         title
         description
@@ -187,6 +189,8 @@ const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
       groups { key label count }
       tasks {
         id
+        projectId
+        listId
         issueKey
         title
         description

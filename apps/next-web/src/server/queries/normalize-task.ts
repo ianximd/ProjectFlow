@@ -23,6 +23,10 @@ export interface TaskAssignee {
 
 export interface Task {
   id: string;
+  /** Owning project (= owning Space) id. Populated by the Views engine task
+   *  projection and the live `taskEvents` payload; null for REST rows that don't
+   *  carry it. Used to resolve the live-subscription scope for node-scoped views. */
+  projectId: string | null;
   listId: string | null;
   issueKey: string | null;
   title: string;
@@ -83,6 +87,7 @@ function parseCustomFieldValues(raw: unknown): Record<string, unknown> {
 export function normalizeTask(r: any): Task {
   return {
     id:          String(r?.Id          ?? r?.id          ?? ''),
+    projectId:   s(r?.ProjectId         ?? r?.projectId),
     listId:      s(r?.ListId           ?? r?.listId),
     issueKey:    s(r?.IssueKey         ?? r?.issueKey),
     title:       String(r?.Title       ?? r?.title       ?? '(untitled)'),

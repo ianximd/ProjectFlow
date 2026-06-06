@@ -41,7 +41,8 @@ import { Board } from '@/components/Board';
 import type { BoardColumn } from '@/components/Column';
 import type { AssigneeRow } from '@/components/TaskCard';
 import { reorderTask } from '@/server/actions/tasks';
-import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
+import { useLiveTasks, buildAccepts } from '@/lib/realtime/useLiveTasks';
+import type { LiveScopeProp } from '@/components/views/view-surface';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -87,9 +88,11 @@ interface Props {
   /** The scope's effective workflow statuses, resolved SSR. Null/empty falls back
    *  to deriving columns from the task set (e.g. EVERYTHING scope). */
   workflowStatuses?: BoardWorkflowStatus[] | null;
+  /** Live-subscription scope (created/updated/deleted), resolved SSR in the page. */
+  live: LiveScopeProp;
 }
 
-export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, scopeType: _scopeType, workflowStatuses }: Props) {
+export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _scopeId, scopeType: _scopeType, workflowStatuses, live }: Props) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
@@ -110,13 +113,15 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, sc
 
   const tasks = useMemo<Task[]>(() => taskPage?.tasks ?? [], [taskPage]);
 
-  // Live `taskUpdated` deltas merged onto the SSR task set. `scopeId` is passed as
-  // the subscription's projectId arg, but the server channel `task:updated` is
-  // GLOBAL — the arg is just a required truthy placeholder; real scoping happens
-  // client-side via mergeTaskDelta's id-match against the visible tasks. Using a
-  // stable shared key (scopeId here, activeView.id on the other surfaces) lets
-  // Apollo dedupe the single subscription across views.
-  const liveTasks = useLiveTasks(scopeId, tasks);
+  // Live task events (created/updated/deleted) merged onto the SSR task set. The
+  // subscription is keyed by the resolved owning project (SPACE/LIST/FOLDER) or
+  // the workspace (EVERYTHING); `buildAccepts` decides whether a live `created`
+  // task belongs in THIS surface (list-scoped, none for FOLDER, all otherwise).
+  const liveTasks = useLiveTasks(
+    tasks,
+    live.projectId ? { projectId: live.projectId } : { workspaceId: live.workspaceId },
+    buildAccepts(live.acceptKind, live.listScopeId),
+  );
 
   // ── Filter state (URL-persisted) — mirrors board-view.tsx ──────────────────
   const initialQ        = searchParams.get('q')        ?? '';

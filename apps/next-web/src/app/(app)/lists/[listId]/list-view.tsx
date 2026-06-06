@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
-import { useSubscription } from '@apollo/client/react';
 import { createTaskInList } from '@/server/actions/hierarchy';
-import { TASK_UPDATED } from '@/lib/realtime/operations';
-import type { TaskDelta } from '@/lib/realtime/merge-task-delta';
+import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
+import { normalizeTask } from '@/server/queries/normalize-task';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 
 const ListIcon = HIERARCHY_ICONS.list;
@@ -28,29 +27,15 @@ export function ListView({
   const [, startTransition] = useTransition();
   const [title, setTitle] = useState('');
 
-  // Live task updates: SSR rows stay the base; a `taskUpdated` delta patches the
-  // matching row's title/key in place. Rows are PascalCase REST shapes, so write
-  // both casings. Update-only (no live add/remove) — re-seeds from SSR on nav.
-  const [rows, setRows] = useState<any[]>(tasks);
-  useEffect(() => { setRows(tasks); }, [tasks]);
+  // SSR rows are PascalCase REST shapes; normalize to the stable camelCase `Task`
+  // so the live hook's `accepts`/merge (which operate on normalized tasks) line up.
+  const baseTasks = useMemo(() => (tasks ?? []).map(normalizeTask), [tasks]);
 
-  useSubscription<{ taskUpdated: TaskDelta }>(TASK_UPDATED, {
-    variables: { projectId: projectId ?? '' },
-    skip: !projectId,
-    onData: ({ data }) => {
-      const d = data.data?.taskUpdated;
-      if (!d) return;
-      setRows((prev) => prev.map((r) =>
-        (r.Id ?? r.id) === d.id
-          ? {
-              ...r,
-              ...(d.title    != null ? { Title: d.title, title: d.title } : {}),
-              ...(d.issueKey != null ? { IssueKey: d.issueKey, issueKey: d.issueKey } : {}),
-            }
-          : r,
-      ));
-    },
-  });
+  // Live task events (created/updated/deleted) for this list. Project-scoped
+  // subscription (`projectId` = the owning Space); the `accepts` gate keeps only
+  // created tasks that belong to THIS list. `projectId` may be null when no
+  // project context — the hook then skips the subscription and just shows SSR.
+  const rows = useLiveTasks(baseTasks, { projectId }, (t) => t.listId === listId);
 
   function add() {
     const t = title.trim();
@@ -79,14 +64,14 @@ export function ListView({
       />
 
       <ul className="space-y-1 max-w-xl">
-        {rows.map((task: any) => (
+        {rows.map((task) => (
           <li
-            key={task.Id ?? task.id}
+            key={task.id}
             data-testid="list-task"
             className="flex items-center gap-2 h-9 px-3 rounded border border-border text-sm"
           >
-            <span className="text-xs text-muted-foreground">{task.IssueKey ?? task.issueKey ?? ''}</span>
-            <span className="grow truncate">{task.Title ?? task.title}</span>
+            <span className="text-xs text-muted-foreground">{task.issueKey ?? ''}</span>
+            <span className="grow truncate">{task.title}</span>
           </li>
         ))}
         {rows.length === 0 && (

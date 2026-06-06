@@ -8,7 +8,8 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatMonthYear } from '@/lib/date';
-import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
+import { useLiveTasks, buildAccepts } from '@/lib/realtime/useLiveTasks';
+import type { LiveScopeProp } from '@/components/views/view-surface';
 import { taskFieldValue } from './field-options';
 import type { ViewTaskPageResult } from '@/server/queries/views';
 import type { Task } from '@/server/queries/normalize-task';
@@ -21,6 +22,8 @@ interface Props {
   activeView: SavedView;
   /** The scope's custom fields (kept for parity / taskFieldValue resolution). */
   customFields?: CustomField[];
+  /** Live-subscription scope (created/updated/deleted), resolved SSR in the page. */
+  live: LiveScopeProp;
 }
 
 // Calendar v1 keys placement on the task's due date by default.
@@ -129,7 +132,7 @@ function buildWeeks(monthStart: Date, tasksByDay: Map<string, Task[]>): DayCell[
 // client. Used to defer the `new Date()` "current month" fallback to the browser.
 const subscribeNoop = () => () => {};
 
-export function CalendarView({ taskPage, activeView, customFields = [] }: Props) {
+export function CalendarView({ taskPage, activeView, customFields = [], live }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -138,13 +141,15 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
   const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
 
   const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
-  // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
-  // projectId arg is a required truthy placeholder only — `task:updated` is a
-  // GLOBAL channel and scoping is done client-side by mergeTaskDelta's id-match
-  // against these visible tasks; `activeView.id` is a stable truthy key (and the
-  // same value Apollo can dedupe across the other view surfaces). A live dueDate
-  // change is patched by mergeTaskDelta, so the chip re-buckets to the new day.
-  const tasks = useLiveTasks(activeView.id, baseTasks);
+  // Live task events (created/updated/deleted) merged onto the SSR page. Keyed by
+  // the resolved owning project (SPACE/LIST/FOLDER) or workspace (EVERYTHING);
+  // `buildAccepts` gates which live `created` tasks belong in this surface. A live
+  // dueDate change is patched in place, so the chip re-buckets to the new day.
+  const tasks = useLiveTasks(
+    baseTasks,
+    live.projectId ? { projectId: live.projectId } : { workspaceId: live.workspaceId },
+    buildAccepts(live.acceptKind, live.listScopeId),
+  );
   const dateField = activeView.config.dateField ?? DEFAULT_DATE_FIELD;
 
   // Hydration safety: the displayed month is parsed from the SSR-stable ?month=

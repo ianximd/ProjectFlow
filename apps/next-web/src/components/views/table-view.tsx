@@ -5,7 +5,8 @@ import { useTranslations } from 'next-intl';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
+import { useLiveTasks, buildAccepts } from '@/lib/realtime/useLiveTasks';
+import type { LiveScopeProp } from '@/components/views/view-surface';
 import { fieldRefLabel, taskFieldValue } from './field-options';
 import type { ViewTaskPageResult } from '@/server/queries/views';
 import type { Task } from '@/server/queries/normalize-task';
@@ -20,6 +21,8 @@ interface Props {
   customFields: CustomField[];
   /** Bulk-bar wiring (E6): fires with the selected task ids whenever selection changes. */
   onSelectionChange?: (ids: string[]) => void;
+  /** Live-subscription scope (created/updated/deleted), resolved SSR in the page. */
+  live: LiveScopeProp;
 }
 
 // Default columns when a view has none configured. Mirrors the columns a typical
@@ -40,15 +43,17 @@ interface RowGroup {
   tasks: Task[];
 }
 
-export function TableView({ taskPage, activeView, customFields, onSelectionChange }: Props) {
+export function TableView({ taskPage, activeView, customFields, onSelectionChange, live }: Props) {
   const t = useTranslations('Views');
   const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
-  // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
-  // projectId arg is a required truthy placeholder only — `task:updated` is a
-  // GLOBAL channel and scoping is done client-side by mergeTaskDelta's id-match
-  // against these visible tasks; `activeView.id` is a stable truthy key (and the
-  // same value Apollo can dedupe across the other view surfaces).
-  const tasks = useLiveTasks(activeView.id, baseTasks);
+  // Live task events (created/updated/deleted) merged onto the SSR page. Keyed by
+  // the resolved owning project (SPACE/LIST/FOLDER) or workspace (EVERYTHING);
+  // `buildAccepts` gates which live `created` tasks belong in this surface.
+  const tasks = useLiveTasks(
+    baseTasks,
+    live.projectId ? { projectId: live.projectId } : { workspaceId: live.workspaceId },
+    buildAccepts(live.acceptKind, live.listScopeId),
+  );
   const groups = useMemo(() => taskPage?.groups ?? [], [taskPage]);
   const config = activeView.config;
 

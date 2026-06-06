@@ -3,7 +3,7 @@ import { requireSession } from '@/server/session';
 import { getSavedViews, getViewTasks, getViewWorkflowStatuses, type ViewTaskPageResult } from '@/server/queries/views';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
-import { ViewSurface } from '@/components/views/view-surface';
+import { ViewSurface, type LiveScopeProp } from '@/components/views/view-surface';
 import { ensureBoardView } from './seed-board-view';
 
 // Mirrors board/page.tsx: gate the session first, then read the (async, Next 16)
@@ -77,6 +77,18 @@ export default async function ViewsPage({
       ? await getViewWorkflowStatuses(scopeType, scopeId)
       : null;
 
+  // Live-subscription scope for the surface (drives useLiveTasks):
+  //   - SPACE       → scopeId IS the owning project (a Space is a project here).
+  //   - LIST/FOLDER → the owning Space (project) id. There is no client-reachable
+  //                   read that maps a node to its owning Space, so we derive it
+  //                   from the SSR task page (every task carries its projectId =
+  //                   owning Space id). An EMPTY scope yields no project id → the
+  //                   surface skips the subscription until SSR re-seeds with a task.
+  //   - EVERYTHING  → workspaceId (cross-project workspace feed).
+  // accepts: SPACE/EVERYTHING accept every event; LIST keeps only its own list's
+  // created tasks; FOLDER accepts NONE of them (see view-surface's `none` note).
+  const live = resolveLiveScope(scopeType, scopeId, workspaceId, taskPage);
+
   return (
     <ViewSurface
       views={views}
@@ -88,6 +100,34 @@ export default async function ViewsPage({
       taskPage={taskPage}
       customFields={customFields}
       boardWorkflowStatuses={boardWorkflowStatuses}
+      live={live}
     />
   );
+}
+
+/** Map a view scope to the live-subscription scope + accept kind threaded into
+ *  the surface. The owning project (Space) id for node scopes is the first task's
+ *  `projectId` on the SSR page (all tasks under a node share the owning Space). */
+function resolveLiveScope(
+  scopeType: ViewScopeType,
+  scopeId: string,
+  workspaceId: string | undefined,
+  taskPage: ViewTaskPageResult | null,
+): LiveScopeProp {
+  switch (scopeType) {
+    case 'EVERYTHING':
+      return { workspaceId, acceptKind: 'all' };
+    case 'SPACE':
+      return { projectId: scopeId, acceptKind: 'all' };
+    case 'LIST':
+      return {
+        projectId: taskPage?.tasks[0]?.projectId ?? undefined,
+        acceptKind: 'list',
+        listScopeId: scopeId,
+      };
+    case 'FOLDER':
+      return { projectId: taskPage?.tasks[0]?.projectId ?? undefined, acceptKind: 'none' };
+    default:
+      return { acceptKind: 'all' };
+  }
 }

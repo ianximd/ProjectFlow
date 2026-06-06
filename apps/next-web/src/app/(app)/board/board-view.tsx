@@ -113,10 +113,12 @@ export function BoardView({ ctx, tasks, assigneesByTaskId, columns: rawColumns }
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // ── Live task updates (board taskUpdated subscription) ─────────────────────
-  // SSR `tasks` stays the base; live deltas patch existing cards in place. This
-  // feeds the optimistic-reorder layer so a drag still overrides the live value.
-  const liveTasks = useLiveTasks(ctx.activeProjectId, tasks);
+  // ── Live task events (created/updated/deleted) ────────────────────────────
+  // Project-keyed: every event on this project belongs on the board, so `accepts`
+  // defaults to true. SSR `tasks` stays the base; live deltas patch/add/remove
+  // cards. This feeds the optimistic-reorder layer so a drag still overrides the
+  // live value. `ctx.activeProjectId` is the real (Space=)project id.
+  const liveTasks = useLiveTasks(tasks, { projectId: ctx.activeProjectId });
 
   // ── Optimistic reorder ─────────────────────────────────────────────────────
   const [optimisticTasks, applyMove] = useOptimistic(

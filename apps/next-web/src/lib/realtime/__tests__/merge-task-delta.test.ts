@@ -4,6 +4,7 @@ import type { Task } from '@/server/queries/normalize-task';
 
 function task(overrides: Partial<Task> & { id: string }): Task {
   return {
+    projectId: null,
     listId: null,
     issueKey: 'PF-1',
     title: 'Original title',

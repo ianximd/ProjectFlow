@@ -8,9 +8,9 @@ BEGIN
         -- Transitive cycle: would (TaskId waits_on DependsOn) let DependsOn already reach TaskId?
         DECLARE @cnt INT = 0;
         ;WITH reach AS (
-            SELECT DependsOn AS NodeId FROM dbo.TaskDependencies WHERE TaskId = @DependsOn
+            SELECT DependsOn AS NodeId FROM dbo.TaskDependencies WHERE TaskId = @DependsOn AND WorkspaceId = @WorkspaceId
             UNION ALL
-            SELECT d.DependsOn FROM dbo.TaskDependencies d JOIN reach r ON d.TaskId = r.NodeId
+            SELECT d.DependsOn FROM dbo.TaskDependencies d JOIN reach r ON d.TaskId = r.NodeId WHERE d.WorkspaceId = @WorkspaceId
         )
         SELECT @cnt = COUNT(*) FROM reach WHERE NodeId = @TaskId OPTION (MAXRECURSION 1000);
         IF @cnt > 0 THROW 51501, 'Circular dependency detected', 1;

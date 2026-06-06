@@ -144,6 +144,31 @@ describe('Phase 5a — dependency service (integration)', () => {
     await expect(dependencyService.assertNoOpenBlockers(a)).resolves.toBeUndefined();
   });
 
+  it('rejects a cross-workspace dependency with 404 (IDOR guard at the route)', async () => {
+    // Two independent graphs → two distinct workspaces, each with its own task.
+    const ctxA = await seedGraph();
+    const ctxB = await seedGraph();
+    const a   = await makeTask(ctxA, 'WS-A Task');
+    const bForeign = await makeTask(ctxB, 'WS-B Task');
+
+    // A's owner has task.update on workspace A (passes the permission gate), but
+    // bForeign lives in workspace B → the route's same-workspace guard must 404
+    // BEFORE the service/SP runs (no existence leak across workspaces).
+    const res = await request(`/tasks/${encodeURIComponent(a)}/dependencies`, {
+      method: 'POST',
+      token:  ctxA.token,
+      json:   { dependsOnId: bForeign },
+    });
+    expect(res.status).toBe(404);
+    const body = await json<{ error: { code: string } }>(res);
+    expect(body.error.code).toBe('NOT_FOUND');
+
+    // And nothing was written for A.
+    const aLists = await dependencyService.list(a);
+    expect(aLists.waitingOn).toHaveLength(0);
+    expect(aLists.blocking).toHaveLength(0);
+  });
+
   it('reschedule: moving B due date by N days shifts dependent A start/due by N', async () => {
     const ctx = await seedGraph();
     const a = await makeTask(ctx, 'Sched A');

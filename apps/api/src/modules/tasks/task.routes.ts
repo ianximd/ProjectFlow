@@ -315,6 +315,11 @@ taskRoutes.post(
     try {
       const workspaceId = await taskRepo.getWorkspaceId(taskId);
       if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      // Cross-workspace IDOR guard: the dependsOn task must live in the SAME
+      // workspace as the task. A missing/foreign target is reported as 404 (we
+      // do not leak the existence of tasks in other workspaces).
+      const depWs = await taskRepo.getWorkspaceId(dependsOnId);
+      if (!depWs || depWs !== workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
       const row = await dependencyService.add(taskId, dependsOnId, relation, workspaceId);
       await invalidateTaskCaches();
       return c.json({ data: row }, 201);

@@ -27,7 +27,7 @@ function forbidden(message = 'You do not have access'): never {
   throw new GraphQLError(message, { extensions: { code: 'FORBIDDEN' } });
 }
 
-function notFound(message = 'Resource not found'): never {
+export function notFound(message = 'Resource not found'): never {
   throw new GraphQLError(message, { extensions: { code: 'NOT_FOUND' } });
 }
 

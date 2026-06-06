@@ -183,3 +183,28 @@ export async function loadTaskTypes(workspaceId: string): Promise<TaskType[]> {
     return [];
   }
 }
+
+/**
+ * Ordered effective status names for a task's transition picker.
+ *
+ * The drawer opens from many surfaces and isn't threaded a workflow, so it can't
+ * assume the default template. We resolve the task's List (GET /tasks/:id) then
+ * read the List's effective workflow (GET /lists/:id/effective-statuses, which
+ * walks List → Folder → Space.WorkflowId), returning the status names ordered by
+ * Position. Returns [] on any failure (no list, no workflow, fetch error); the
+ * caller falls back to the current status so the select always round-trips.
+ */
+export async function loadTaskStatuses(taskId: string): Promise<string[]> {
+  await requireSession();
+  try {
+    const task = await serverFetch<Record<string, unknown>>(`/tasks/${encodeURIComponent(taskId)}`);
+    const listId = (task?.listId ?? task?.ListId) as string | undefined | null;
+    if (!listId) return [];
+    const statuses = await serverFetch<{ name: string }[]>(
+      `/lists/${encodeURIComponent(listId)}/effective-statuses`,
+    );
+    return (statuses ?? []).map((s) => s.name).filter(Boolean);
+  } catch {
+    return [];
+  }
+}

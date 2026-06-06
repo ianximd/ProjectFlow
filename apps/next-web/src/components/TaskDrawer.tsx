@@ -15,6 +15,7 @@ import {
   updateTaskSchedule,
   setTaskAssignees,
   loadTaskTypes,
+  loadTaskStatuses,
   transitionTask,
 } from '@/server/actions/tasks';
 import { loadWorkspaceMembers } from '@/server/actions/members';
@@ -89,11 +90,13 @@ const PRIORITY_COLOR: Record<string, string> = {
 
 const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
-// The drawer has no workflow-status list threaded in (it opens from many
-// surfaces). Offer the default-template statuses for the transition control and
-// always include the task's CURRENT status so it round-trips on a non-template
-// workflow. The 409 DEPENDENCY_BLOCKED guard lives on the API's /transition
-// endpoint regardless of which status set the picker offers.
+// The drawer opens from many surfaces and isn't threaded a workflow, so on open
+// it fetches the task's EFFECTIVE statuses (loadTaskStatuses → List → Folder →
+// Space workflow). These default-template statuses are only a FALLBACK for when
+// that fetch returns empty (no list / no workflow / error); the task's CURRENT
+// status is always included so it round-trips on any workflow. The 409
+// DEPENDENCY_BLOCKED guard lives on the API's /transition endpoint regardless of
+// which status set the picker offers.
 const DEFAULT_STATUS_OPTIONS = ['Ideas', 'To Do', 'In Progress', 'Testing', 'Done'] as const;
 
 type Blocker = { taskId: string; title: string; status: string };
@@ -176,6 +179,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   );
   // DEPENDENCY_BLOCKED warning: the blockers returned by the 409, shown in a modal.
   const [blockers, setBlockers] = useState<Blocker[] | null>(null);
+  // The task's effective workflow statuses, fetched on open (empty until loaded
+  // or when the task has no workflow — the select then uses DEFAULT_STATUS_OPTIONS).
+  const [statusOptions, setStatusOptions] = useState<string[]>([]);
 
   // Members list is fetched lazily — only when the picker opens — so opening a
   // drawer for a task on a busy workspace doesn't fire an extra round-trip the
@@ -236,6 +242,18 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     loadTaskCustomFields(mutationTaskId)
       .then((fs) => { if (!cancelled) setEffectiveFields(fs); })
       .catch(() => { if (!cancelled) setEffectiveFields([]); });
+    return () => { cancelled = true; };
+  }, [mutationTaskId]);
+
+  // Effective workflow statuses for the transition <select>. Loaded on open /
+  // task switch (mirrors the custom-fields lazy-load). Empty on failure or a
+  // workflow-less list → the select falls back to DEFAULT_STATUS_OPTIONS.
+  useEffect(() => {
+    if (!mutationTaskId) { setStatusOptions([]); return; }
+    let cancelled = false;
+    loadTaskStatuses(mutationTaskId)
+      .then((s) => { if (!cancelled) setStatusOptions(s); })
+      .catch(() => { if (!cancelled) setStatusOptions([]); });
     return () => { cancelled = true; };
   }, [mutationTaskId]);
 
@@ -304,7 +322,10 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   // listing them. Other failures fall back to the standard toast.
   const doTransition = (status: string) =>
     startStatus(async () => {
-      const prev = task?.Status ?? task?.status ?? '';
+      // Capture the value BEFORE the optimistic set (the select already updated
+      // statusValue in onChange) so a failure rolls back to the prior selection,
+      // not a stale parent snapshot.
+      const prev = statusValue;
       const r = await transitionTask(mutationTaskId, status);
       if (!r.ok) {
         setStatusValue(prev); // roll back the optimistic select
@@ -472,9 +493,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
                 colorScheme:   'dark',
               }}
             >
-              {/* Always include the current status so a non-template workflow
-                  value still renders, then the default-template statuses. */}
-              {Array.from(new Set([statusValue, ...DEFAULT_STATUS_OPTIONS].filter(Boolean))).map((s) => (
+              {/* Prefer the task's effective workflow statuses; fall back to the
+                  default-template list when none loaded (no workflow / fetch
+                  failed). Always include the current status so a value outside
+                  the set still renders and round-trips. */}
+              {Array.from(new Set([
+                statusValue,
+                ...(statusOptions.length > 0 ? statusOptions : DEFAULT_STATUS_OPTIONS),
+              ].filter(Boolean))).map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
             </select>

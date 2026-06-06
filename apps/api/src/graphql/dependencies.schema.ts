@@ -1,7 +1,7 @@
 import { builder } from './builder.js';
 import { dependencyService } from '../modules/dependencies/dependency.service.js';
 import { TaskRepository } from '../modules/tasks/task.repository.js';
-import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
+import { notFound, requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import type { DependencyRelation, TaskDependencyRef, TaskDependencyLists } from '@projectflow/types';
 
 const taskRepo = new TaskRepository();
@@ -50,6 +50,10 @@ export function registerDependenciesGraphql(): void {
       },
       resolve: async (_, a, ctx) => {
         const workspaceId = await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        // Cross-workspace IDOR guard: dependsOn must live in the same workspace.
+        // A missing/foreign target is reported as NOT_FOUND (fail-closed, no leak).
+        const depWs = await taskRepo.getWorkspaceId(a.dependsOnId);
+        if (!depWs || depWs !== workspaceId) notFound('Task not found');
         await dependencyService.add(a.taskId, a.dependsOnId, relationOf(a.relation), workspaceId);
         return dependencyService.list(a.taskId);
       },

@@ -507,6 +507,8 @@
     "issueTitle": "Issue title",
     "untitled": "Untitled",
     "priorityLabel": "Priority",
+    "statusLabel": "Status",
+    "dependenciesSection": "Dependencies",
     "storyPoints": "{points} pts",
     "failedUpdatePriority": "Failed to update priority.",
     "scheduleSection": "Schedule",
@@ -1353,5 +1355,29 @@
   "Presence": {
     "viewing": "{count, plural, one {# person viewing} other {# people viewing}}",
     "typing": "{count, plural, one {# person typing…} other {# people typing…}}"
+  },
+  "Dependencies": {
+    "section": "Dependencies",
+    "waitingOn": "Waiting on",
+    "blocking": "Blocking",
+    "waitingOnEmpty": "Not waiting on anything.",
+    "blockingEmpty": "Not blocking anything.",
+    "addWaitingOn": "+ Add blocker",
+    "addBlocking": "+ Add blocked task",
+    "removeWaitingOn": "Remove {title} from blockers",
+    "removeBlocking": "Stop blocking {title}",
+    "pickerTitle": "Link a task",
+    "searchPlaceholder": "Search tasks by title…",
+    "searching": "Searching…",
+    "noResults": "No tasks match.",
+    "typeToSearch": "Type to search for a task.",
+    "loadFailed": "Failed to load dependencies.",
+    "circularError": "That link would create a circular dependency.",
+    "invalidError": "A task can't depend on itself.",
+    "addFailed": "Failed to add dependency.",
+    "removeFailed": "Failed to remove dependency.",
+    "blockedTitle": "Task has open blockers",
+    "blockedBody": "This task can't be closed until the following blocker{count, plural, one {} other {s}} {count, plural, one {is} other {are}} done:",
+    "blockedDismiss": "OK"
   }
 }

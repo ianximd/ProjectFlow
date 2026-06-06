@@ -161,6 +161,19 @@ export async function setTaskType(taskId: string, taskTypeId: string): Promise<A
   );
 }
 
+/** PATCH /tasks/:id/transition { status } — move a task through its workflow.
+ *  On a 409 DEPENDENCY_BLOCKED the ActionFail carries `details.blockers` so the
+ *  caller can warn the user which open blockers prevent closing the task. */
+export async function transitionTask(id: string, status: string): Promise<ActionResult> {
+  return run(
+    () => serverFetch(`/tasks/${encodeURIComponent(id)}/transition`, {
+      method: 'PATCH',
+      body:   JSON.stringify({ status }),
+    }),
+    TASK_LIST_PATHS,
+  );
+}
+
 /** Client-callable loader for the task-type picker (mirrors loadTaskCustomFields). */
 export async function loadTaskTypes(workspaceId: string): Promise<TaskType[]> {
   await requireSession();

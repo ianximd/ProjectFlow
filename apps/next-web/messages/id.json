@@ -507,6 +507,8 @@
     "issueTitle": "Judul isu",
     "untitled": "Tanpa Judul",
     "priorityLabel": "Prioritas",
+    "statusLabel": "Status",
+    "dependenciesSection": "Ketergantungan",
     "storyPoints": "{points} poin",
     "failedUpdatePriority": "Gagal memperbarui prioritas.",
     "scheduleSection": "Jadwal",
@@ -1353,5 +1355,29 @@
   "Presence": {
     "viewing": "{count, plural, other {# orang melihat}}",
     "typing": "{count, plural, other {# orang sedang mengetik…}}"
+  },
+  "Dependencies": {
+    "section": "Ketergantungan",
+    "waitingOn": "Menunggu",
+    "blocking": "Menghambat",
+    "waitingOnEmpty": "Tidak menunggu apa pun.",
+    "blockingEmpty": "Tidak menghambat apa pun.",
+    "addWaitingOn": "+ Tambah penghambat",
+    "addBlocking": "+ Tambah tugas terhambat",
+    "removeWaitingOn": "Hapus {title} dari penghambat",
+    "removeBlocking": "Berhenti menghambat {title}",
+    "pickerTitle": "Tautkan tugas",
+    "searchPlaceholder": "Cari tugas berdasarkan judul…",
+    "searching": "Mencari…",
+    "noResults": "Tidak ada tugas yang cocok.",
+    "typeToSearch": "Ketik untuk mencari tugas.",
+    "loadFailed": "Gagal memuat ketergantungan.",
+    "circularError": "Tautan itu akan membuat ketergantungan melingkar.",
+    "invalidError": "Tugas tidak dapat bergantung pada dirinya sendiri.",
+    "addFailed": "Gagal menambahkan ketergantungan.",
+    "removeFailed": "Gagal menghapus ketergantungan.",
+    "blockedTitle": "Tugas memiliki penghambat aktif",
+    "blockedBody": "Tugas ini tidak dapat ditutup sampai penghambat berikut selesai:",
+    "blockedDismiss": "Oke"
   }
 }

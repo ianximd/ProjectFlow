@@ -15,6 +15,7 @@ import {
   updateTaskSchedule,
   setTaskAssignees,
   loadTaskTypes,
+  transitionTask,
 } from '@/server/actions/tasks';
 import { loadWorkspaceMembers } from '@/server/actions/members';
 import { getCurrentUserId } from '@/server/actions/auth';
@@ -23,6 +24,7 @@ import { CustomFieldCell } from './custom-fields/CustomFieldCell';
 import { TaskTypeSelector } from './TaskTypeSelector';
 import { TagPicker } from './TagPicker';
 import { WatcherControl } from './WatcherControl';
+import { DependenciesSection } from './tasks/dependencies-section';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -86,6 +88,15 @@ const PRIORITY_COLOR: Record<string, string> = {
 };
 
 const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
+
+// The drawer has no workflow-status list threaded in (it opens from many
+// surfaces). Offer the default-template statuses for the transition control and
+// always include the task's CURRENT status so it round-trips on a non-template
+// workflow. The 409 DEPENDENCY_BLOCKED guard lives on the API's /transition
+// endpoint regardless of which status set the picker offers.
+const DEFAULT_STATUS_OPTIONS = ['Ideas', 'To Do', 'In Progress', 'Testing', 'Done'] as const;
+
+type Blocker = { taskId: string; title: string; status: string };
 
 // <input type="date"> expects "YYYY-MM-DD". Used for both Start and Due — the
 // drawer is day-granular end-to-end now.
@@ -157,6 +168,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const [priorityError,   setPriorityError]  = useState(false);
   const [savingAssignees, startAssignees] = useTransition();
   const [assigneesError,  setAssigneesError] = useState(false);
+  const [savingStatus,    startStatus]    = useTransition();
+  // Local mirror of the status badge so the transition <select> stays responsive
+  // (the parent snapshot isn't refreshed on PATCH — same reason priority is mirrored).
+  const [statusValue,     setStatusValue]    = useState<string>(
+    task?.Status ?? task?.status ?? '',
+  );
+  // DEPENDENCY_BLOCKED warning: the blockers returned by the 409, shown in a modal.
+  const [blockers, setBlockers] = useState<Blocker[] | null>(null);
 
   // Members list is fetched lazily — only when the picker opens — so opening a
   // drawer for a task on a busy workspace doesn't fire an extra round-trip the
@@ -177,13 +196,14 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     setStartInput(toDateInput(task?.StartDate ?? task?.startDate ?? null));
     setDueInput  (toDateInput(task?.DueDate   ?? task?.dueDate   ?? null));
     setPriorityValue(task?.Priority ?? task?.priority ?? 'MEDIUM');
+    setStatusValue(task?.Status ?? task?.status ?? '');
     const tTitle = task?.Title ?? task?.title ?? '';
     const tDesc = task?.Description ?? task?.description ?? '';
     setTitleValue(tTitle);
     setDescriptionValue(tDesc);
     setDraftDescription(tDesc);
     setEditingDescription(false);
-  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Title, task?.title, task?.Description, task?.description]);
+  }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Status, task?.status, task?.Title, task?.title, task?.Description, task?.description]);
 
   // Resync local assignee chips when the parent prop changes (task switch or
   // refetch). Compared by stringified user-id list so re-rendering with an
@@ -279,6 +299,24 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       }
     });
 
+  // Status transition. On a 409 DEPENDENCY_BLOCKED the action returns the open
+  // blockers in `details.blockers`; we roll the select back and pop a modal
+  // listing them. Other failures fall back to the standard toast.
+  const doTransition = (status: string) =>
+    startStatus(async () => {
+      const prev = task?.Status ?? task?.status ?? '';
+      const r = await transitionTask(mutationTaskId, status);
+      if (!r.ok) {
+        setStatusValue(prev); // roll back the optimistic select
+        if (r.code === 'DEPENDENCY_BLOCKED') {
+          const list = (r.details?.blockers as Blocker[] | undefined) ?? [];
+          setBlockers(list);
+        } else {
+          notifyActionError(r);
+        }
+      }
+    });
+
   // PUT replaces the full assignee set. SP silently drops non-members so a stale
   // picker can't grant access to someone outside the workspace.
   const doSetAssignees = (userIds: string[]) =>
@@ -340,7 +378,6 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const issueKey    = task.IssueKey ?? task.issueKey;
   const title       = task.Title  ?? task.title  ?? '(untitled)';
   const description = task.Description ?? task.description;
-  const status      = task.Status ?? task.status ?? '';
   const priority    = task.Priority ?? task.priority ?? '';
   const type        = task.Type   ?? task.type   ?? '';
   const taskTypeId  = ((task as any).TaskTypeId ?? (task as any).taskTypeId ?? null) as string | null;
@@ -413,7 +450,34 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.meta}>
             <span className={styles.metaBadge}>{type}</span>
-            <span className={styles.metaBadge}>{status}</span>
+            <select
+              aria-label={t('statusLabel')}
+              value={statusValue}
+              onChange={(e) => {
+                const next = e.target.value;
+                setStatusValue(next); // optimistic; rolled back on failure
+                doTransition(next);
+              }}
+              disabled={savingStatus}
+              style={{
+                background:    '#2d3748',
+                border:        '1px solid #4a5568',
+                borderRadius:  6,
+                color:         '#e2e8f0',
+                padding:       '2px 8px',
+                fontSize:      12,
+                fontWeight:    600,
+                letterSpacing: '0.04em',
+                cursor:        savingStatus ? 'progress' : 'pointer',
+                colorScheme:   'dark',
+              }}
+            >
+              {/* Always include the current status so a non-template workflow
+                  value still renders, then the default-template statuses. */}
+              {Array.from(new Set([statusValue, ...DEFAULT_STATUS_OPTIONS].filter(Boolean))).map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
             <select
               aria-label={t('priorityLabel')}
               value={priorityValue}
@@ -941,6 +1005,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             </div>
           )}
 
+          <div className={styles.section}>
+            <p className={styles.sectionTitle}>{t('dependenciesSection')}</p>
+            <DependenciesSection taskId={taskId} workspaceId={workspaceId} />
+          </div>
+
           {effectiveFields.length > 0 && (
             <div className={styles.section}>
               <p className={styles.sectionTitle}>{t('customFieldsSection')}</p>
@@ -979,7 +1048,86 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
           </div>
         </div>
       </div>
+      {blockers && (
+        <BlockerDialog blockers={blockers} onClose={() => setBlockers(null)} />
+      )}
     </>
+  );
+}
+
+// Modal warning shown when a close transition is rejected with a 409
+// DEPENDENCY_BLOCKED. Lists the open blockers (issueKey is not on the 409
+// payload, so we show title + status). Inline-styled to match the drawer skin.
+function BlockerDialog({ blockers, onClose }: { blockers: Blocker[]; onClose: () => void }) {
+  const t = useTranslations('Dependencies');
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 60,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+    >
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-label={t('blockedTitle')}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(440px, 92vw)',
+          background: '#1a202c',
+          border: '1px solid #4a5568',
+          borderRadius: 8,
+          padding: 20,
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+          color: '#e2e8f0',
+        }}
+      >
+        <h2 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: '#fc8181' }}>
+          {t('blockedTitle')}
+        </h2>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#cbd5e0' }}>
+          {t('blockedBody', { count: blockers.length })}
+        </p>
+        <ul style={{ margin: '0 0 16px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {blockers.map((b) => (
+            <li
+              key={b.taskId}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: '#2d3748', border: '1px solid #4a5568',
+                borderRadius: 6, padding: '6px 10px', fontSize: 13,
+              }}
+            >
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {b.title}
+              </span>
+              {b.status && <span style={{ fontSize: 11, color: '#a0aec0' }}>{b.status}</span>}
+            </li>
+          ))}
+        </ul>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            style={{
+              background: '#3182ce', color: '#fff', border: 'none',
+              borderRadius: 6, padding: '6px 16px', fontSize: 13,
+              fontWeight: 500, cursor: 'pointer',
+            }}
+          >
+            {t('blockedDismiss')}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

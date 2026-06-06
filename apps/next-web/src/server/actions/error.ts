@@ -7,6 +7,6 @@ import type { ActionFail } from './result';
  *  that preserves the backend error code + status so the client can show curated toasts. */
 export function toActionError(e: unknown): ActionFail {
   unstable_rethrow(e);
-  if (e instanceof ApiError) return { ok: false, error: e.message, code: e.code, status: e.status };
+  if (e instanceof ApiError) return { ok: false, error: e.message, code: e.code, status: e.status, details: e.details };
   return { ok: false, error: e instanceof Error ? e.message : 'Request failed' };
 }

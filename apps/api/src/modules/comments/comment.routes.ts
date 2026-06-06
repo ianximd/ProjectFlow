@@ -99,6 +99,8 @@ commentRoutes.post(
       if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
       return c.json({ data: comment });
     } catch (err: any) {
+      if (String(err?.message).includes('51403') || err?.number === 51403)
+        return c.json({ error: { code: 'FORBIDDEN', message: 'Not a workspace member' } }, 403);
       if (String(err?.message).includes('51401') || err?.number === 51401)
         return c.json({ error: { code: 'ASSIGNEE_NOT_MEMBER', message: 'Assignee is not a member of the workspace' } }, 422);
       if (String(err?.message).includes('51400') || err?.number === 51400)
@@ -123,6 +125,8 @@ commentRoutes.post(
       if (!comment) return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
       return c.json({ data: comment });
     } catch (err: any) {
+      if (String(err?.message).includes('51403') || err?.number === 51403)
+        return c.json({ error: { code: 'FORBIDDEN', message: 'Not a workspace member' } }, 403);
       if (String(err?.message).includes('51402') || err?.number === 51402)
         return c.json({ error: { code: 'NOT_FOUND', message: 'Comment not found' } }, 404);
       throw err;

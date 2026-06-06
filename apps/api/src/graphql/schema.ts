@@ -541,7 +541,14 @@ builder.mutationType({
       args: { commentId: t.arg.string({ required: true }), assigneeId: t.arg.string({ required: true }) },
       resolve: async (_, { commentId, assigneeId }, ctx) => {
         await assertCanEditComment(ctx, commentId);
-        const updated = await commentService.assign(commentId, assigneeId, (ctx.user as any).userId);
+        let updated;
+        try {
+          updated = await commentService.assign(commentId, assigneeId, (ctx.user as any).userId);
+        } catch (err: any) {
+          if (err?.number === 51403 || String(err?.message).includes('51403'))
+            throw new GraphQLError('Not a workspace member', { extensions: { code: 'FORBIDDEN' } });
+          throw err;
+        }
         if (!updated) throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } });
         return updated as any;
       },
@@ -553,7 +560,14 @@ builder.mutationType({
       args: { commentId: t.arg.string({ required: true }), resolved: t.arg.boolean({ required: true }) },
       resolve: async (_, { commentId, resolved }, ctx) => {
         await assertCanEditComment(ctx, commentId);
-        const updated = await commentService.resolve(commentId, (ctx.user as any).userId, resolved);
+        let updated;
+        try {
+          updated = await commentService.resolve(commentId, (ctx.user as any).userId, resolved);
+        } catch (err: any) {
+          if (err?.number === 51403 || String(err?.message).includes('51403'))
+            throw new GraphQLError('Not a workspace member', { extensions: { code: 'FORBIDDEN' } });
+          throw err;
+        }
         if (!updated) throw new GraphQLError('Comment not found', { extensions: { code: 'NOT_FOUND' } });
         return updated as any;
       },

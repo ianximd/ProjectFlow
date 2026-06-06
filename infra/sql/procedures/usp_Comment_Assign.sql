@@ -20,6 +20,17 @@ BEGIN
         )
             THROW 51401, 'Assignee is not a member of the workspace', 1;
 
+        -- Actor must still be a member of the comment's task's workspace.
+        IF NOT EXISTS (
+            SELECT 1
+            FROM dbo.Comments c
+            JOIN dbo.Tasks t ON t.Id = c.TaskId
+            JOIN dbo.WorkspaceMembers wm
+                 ON wm.WorkspaceId = t.WorkspaceId AND wm.UserId = @ActorId
+            WHERE c.Id = @CommentId AND c.DeletedAt IS NULL
+        )
+            THROW 51403, 'Actor is not a member of the workspace', 1;
+
         UPDATE dbo.Comments SET AssignedToId = @AssigneeId, UpdatedAt = GETUTCDATE()
         WHERE Id = @CommentId AND DeletedAt IS NULL;
 

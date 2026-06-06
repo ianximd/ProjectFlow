@@ -11,10 +11,11 @@
  * with a short retry budget instead of reading once.
  */
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import sql from 'mssql';
 import { request, json } from '../../../__tests__/setup/testServer.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
-import { closePool } from '../../../shared/lib/db.js';
+import { closePool, getPool } from '../../../shared/lib/db.js';
 
 beforeEach(async () => { await truncateAll(); });
 afterAll(async () => { await closePool(); });
@@ -238,5 +239,41 @@ describe('collaboration — assign / resolve', () => {
       method: 'POST', token: owner.accessToken, json: { resolved: false },
     }), 200);
     expect(reopened.data.resolvedAt).toBeFalsy();
+  });
+
+  it('rejects assign and resolve by an author removed from the workspace (51403 -> 403)', async () => {
+    // Arrange: owner creates a comment, then is removed from workspace members.
+    // We use 'member' as the actor-under-test (removed from WS) to avoid
+    // the workspace-owner invariant; owner is kept as the requester for setup.
+    const { owner, member, ws, taskId } = await seedTaskWithMember();
+    const comment = await postComment(member.accessToken, taskId, 'I am about to be deprovisioned');
+
+    // Remove the comment author (member) from the workspace directly in the DB.
+    const pool = await getPool();
+    await pool.request()
+      .input('WorkspaceId', sql.UniqueIdentifier, ws.Id)
+      .input('UserId',      sql.UniqueIdentifier, member.user.Id)
+      .query('DELETE FROM dbo.WorkspaceMembers WHERE WorkspaceId = @WorkspaceId AND UserId = @UserId');
+
+    // Act + assert: assign by the now-removed member must return 403.
+    const assignRes = await request(`/comments/${comment.id}/assign`, {
+      method: 'POST', token: member.accessToken,
+      json: { assigneeId: owner.user.Id },
+    });
+    expect(assignRes.status).toBe(403);
+
+    // Act + assert: resolve by the now-removed member must return 403.
+    const resolveRes = await request(`/comments/${comment.id}/resolve`, {
+      method: 'POST', token: member.accessToken,
+      json: { resolved: true },
+    });
+    expect(resolveRes.status).toBe(403);
+
+    // Positive control: owner (still a workspace member) can still assign.
+    const ownerAssign = await request(`/comments/${comment.id}/assign`, {
+      method: 'POST', token: owner.accessToken,
+      json: { assigneeId: owner.user.Id },
+    });
+    expect(ownerAssign.status).toBe(200);
   });
 });

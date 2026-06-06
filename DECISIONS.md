@@ -598,3 +598,49 @@ extending the Phase-2 system.
 API **286 unit / 161 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
 green, e2e `relationships` **1/1** (rollup shows 8 = 3+5). Branch `feat/phase5b-relationships` (6 commits) →
 ff-merged to `main` locally (NOT pushed).
+
+## 2026-06-06 — Phase 5c Recurring Tasks
+
+Spec §5; plan `docs/superpowers/plans/2026-06-06-phase5c-recurring.md`.
+
+### Decisions
+- **`TaskRecurrences`** (migration `0036`): rule JSON (`[Rule]` bracketed — reserved word) + `RegenerateMode`
+  (`on_complete`|`schedule`|`both`) + `NextRunAt` + `Active` + `LastSpawnedTaskId` + `IncludeDependencies`;
+  a filtered UNIQUE index (one active recurrence per task) + an `(Active, NextRunAt)` sweep index.
+- **`computeNextOccurrence`** pure (daily/weekly`[byWeekday]`/monthly`[byMonthday` month-end clamp`]`/yearly,
+  interval, `endsAt`). **Weekly+interval uses from-anchored active-week semantics**: `from` is the previous
+  occurrence, so same-week later weekdays (`weeksAhead=0`) are the correct next occurrence; jumps of N weeks
+  must be interval-aligned. `validateRule` → 422. `count` is caller-enforced.
+- **`spawnNext` claim-first:** an ATOMIC conditional `usp_TaskRecurrence_AdvanceAfterSpawn`
+  (`WHERE Active=1 AND NextRunAt=@ExpectedNextRunAt`, count-decrement folded into the same UPDATE) claims the
+  occurrence; only the winner clones. Clone = `usp_Task_Create` (title/desc/type/priority/list/estimate,
+  dates remapped preserving start→due duration, status reset to the list's first effective status) + copy
+  custom-field values (SKIP relationship/rollup/progress_auto), assignees, watchers, tags; dependency edges
+  only when `IncludeDependencies`. `publishTaskEvent('created')`. Subtask/checklist cloning deferred (v1).
+- **Triggers:** on-complete in `transitionTask` (only when crossing **into** a done-group status from a
+  non-done status; fire-and-forget try/catch, never faults the transition) + a scheduled **BullMQ**
+  `recurrence-sweep` worker (15 min; `usp_TaskRecurrence_ListDue` = schedule|both, error-isolated per row)
+  bootstrapped next to the oauth worker (Redis-gated; on-complete works without Redis).
+- **Dual surface:** REST `GET/PUT/DELETE /tasks/:id/recurrence` + GraphQL
+  `taskRecurrence`/`setTaskRecurrence`/`clearTaskRecurrence`. VIEW read / `task.update` mutate; null workspace
+  → 404. **Frontend:** `RecurrenceEditor` in `TaskDrawer` (freq/interval/weekday/monthday/end-condition/mode/
+  carry-deps) + a drawer recurring badge (drawer-only — recurrence state isn't on list/board payloads). i18n
+  `Recurrence` en/id.
+
+### Review fixes
+- **REAL — double-spawn + count-decrement race:** on-complete + the scheduled sweep (mode `both`) could both
+  spawn from one occurrence (and both decrement count) because `AdvanceAfterSpawn` was last-writer-wins. Fixed
+  by the atomic claim above (only one path wins; the loser returns without spawning).
+- **REAL — idempotency:** `transitionTask` re-spawned on Done→Done / Done→Resolved; now only the first
+  into-done crossing spawns.
+- **Past-due seed** clamps `NextRunAt` to the future. Minors: `Math.floor` week-delta; assignee-copy warn log.
+- **Reviewer's "CRITICAL" weekly-interval claim was assessed NOT a bug** (from-anchored semantics; the
+  proposed `weeksAhead>0` fix would break interval=1 same-week) — code kept, 5 pinning unit tests added.
+
+### Deferrals
+Subtask/checklist cloning (v1); per-user timezone (server dates); `apps_enabled` (Phase 10).
+
+### Verification (local Docker `ProjectFlow_Test` + Redis)
+API **320 unit / 170 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
+green, e2e `recurring` **1/1**. Branch `feat/phase5c-recurring` (6 commits) → ff-merged to `main` locally
+(NOT pushed).

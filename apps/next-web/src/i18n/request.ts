@@ -16,5 +16,11 @@ export default getRequestConfig(async () => {
   return {
     locale,
     messages: await loadMessages(locale),
+    // Stable global default so server- and client-rendered date/time formatting
+    // agree — without this next-intl falls back to each environment's local tz,
+    // risking hydration mismatches (the ENVIRONMENT_FALLBACK advisory). The app
+    // has no per-user timezone yet; default to the primary business locale and
+    // make it per-user/per-workspace when that infra exists.
+    timeZone: 'Asia/Jakarta',
   };
 });

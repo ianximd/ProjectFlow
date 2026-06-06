@@ -807,10 +807,37 @@
     "typePeople": "People",
     "typeProgressManual": "Progress (manual)",
     "typeProgressAuto": "Progress (auto)",
+    "typeRelationship": "Relationship",
+    "typeRollup": "Rollup",
     "noOptions": "No options",
     "loadingMembers": "Loading members…",
     "noMembers": "No members",
-    "selectedCount": "{count} selected"
+    "selectedCount": "{count} selected",
+    "relTargetLabel": "Link to",
+    "relTargetAny": "Any task",
+    "relTargetList": "Tasks in a specific list",
+    "relListLabel": "Target list",
+    "relListPlaceholder": "Choose a list…",
+    "relListEmpty": "No lists in this space",
+    "rollupRelFieldLabel": "Relationship field",
+    "rollupRelFieldPlaceholder": "Choose a relationship field…",
+    "rollupNoRelFields": "Create a relationship field first",
+    "rollupSourceLabel": "Source field",
+    "rollupSourcePlaceholder": "Choose a field to aggregate…",
+    "rollupFunctionLabel": "Function",
+    "builtinField_storyPoints": "Story points",
+    "builtinField_priority": "Priority",
+    "builtinField_status": "Status",
+    "builtinField_dueDate": "Due date",
+    "builtinField_startDate": "Start date",
+    "builtinField_position": "Position",
+    "fn_sum": "Sum",
+    "fn_avg": "Average",
+    "fn_count": "Count",
+    "fn_min": "Minimum",
+    "fn_max": "Maximum",
+    "fn_first": "First",
+    "fn_concat": "Concatenate"
   },
   "Profile": {
     "settings": "Settings",
@@ -1355,6 +1382,23 @@
   "Presence": {
     "viewing": "{count, plural, one {# person viewing} other {# people viewing}}",
     "typing": "{count, plural, one {# person typing…} other {# people typing…}}"
+  },
+  "Relationships": {
+    "empty": "No linked tasks.",
+    "add": "+ Link task",
+    "remove": "Unlink {title}",
+    "addFailed": "Failed to link task.",
+    "removeFailed": "Failed to unlink task.",
+    "invalidError": "That task can't be linked here.",
+    "pickerTitle": "Link a task",
+    "searchPlaceholder": "Search tasks by title…",
+    "searching": "Searching…",
+    "typeToSearch": "Type to search for a task.",
+    "noResults": "No tasks match."
+  },
+  "Rollup": {
+    "computed": "Computed from linked tasks",
+    "empty": "—"
   },
   "Dependencies": {
     "section": "Dependencies",

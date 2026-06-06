@@ -807,10 +807,37 @@
     "typePeople": "Orang",
     "typeProgressManual": "Kemajuan (manual)",
     "typeProgressAuto": "Kemajuan (otomatis)",
+    "typeRelationship": "Relasi",
+    "typeRollup": "Rollup",
     "noOptions": "Tidak ada opsi",
     "loadingMembers": "Memuat anggota…",
     "noMembers": "Tidak ada anggota",
-    "selectedCount": "{count} dipilih"
+    "selectedCount": "{count} dipilih",
+    "relTargetLabel": "Tautkan ke",
+    "relTargetAny": "Tugas apa pun",
+    "relTargetList": "Tugas dalam daftar tertentu",
+    "relListLabel": "Daftar tujuan",
+    "relListPlaceholder": "Pilih daftar…",
+    "relListEmpty": "Tidak ada daftar di ruang ini",
+    "rollupRelFieldLabel": "Bidang relasi",
+    "rollupRelFieldPlaceholder": "Pilih bidang relasi…",
+    "rollupNoRelFields": "Buat bidang relasi terlebih dahulu",
+    "rollupSourceLabel": "Bidang sumber",
+    "rollupSourcePlaceholder": "Pilih bidang untuk diagregasi…",
+    "rollupFunctionLabel": "Fungsi",
+    "builtinField_storyPoints": "Story point",
+    "builtinField_priority": "Prioritas",
+    "builtinField_status": "Status",
+    "builtinField_dueDate": "Tanggal jatuh tempo",
+    "builtinField_startDate": "Tanggal mulai",
+    "builtinField_position": "Posisi",
+    "fn_sum": "Jumlah",
+    "fn_avg": "Rata-rata",
+    "fn_count": "Hitungan",
+    "fn_min": "Minimum",
+    "fn_max": "Maksimum",
+    "fn_first": "Pertama",
+    "fn_concat": "Gabungkan"
   },
   "Profile": {
     "settings": "Pengaturan",
@@ -1355,6 +1382,23 @@
   "Presence": {
     "viewing": "{count, plural, other {# orang melihat}}",
     "typing": "{count, plural, other {# orang sedang mengetik…}}"
+  },
+  "Relationships": {
+    "empty": "Belum ada tugas tertaut.",
+    "add": "+ Tautkan tugas",
+    "remove": "Lepas tautan {title}",
+    "addFailed": "Gagal menautkan tugas.",
+    "removeFailed": "Gagal melepas tautan tugas.",
+    "invalidError": "Tugas itu tidak dapat ditautkan di sini.",
+    "pickerTitle": "Tautkan tugas",
+    "searchPlaceholder": "Cari tugas berdasarkan judul…",
+    "searching": "Mencari…",
+    "typeToSearch": "Ketik untuk mencari tugas.",
+    "noResults": "Tidak ada tugas yang cocok."
+  },
+  "Rollup": {
+    "computed": "Dihitung dari tugas tertaut",
+    "empty": "—"
   },
   "Dependencies": {
     "section": "Ketergantungan",

@@ -22,6 +22,7 @@ import { loadWorkspaceMembers } from '@/server/actions/members';
 import { getCurrentUserId } from '@/server/actions/auth';
 import { loadTaskCustomFields } from '@/server/actions/custom-fields';
 import { CustomFieldCell } from './custom-fields/CustomFieldCell';
+import { RelationshipField } from './custom-fields/RelationshipField';
 import { TaskTypeSelector } from './TaskTypeSelector';
 import { TagPicker } from './TagPicker';
 import { WatcherControl } from './WatcherControl';
@@ -1042,11 +1043,26 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               {effectiveFields.map((ef) => (
                 <div
                   key={ef.field.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}
+                  style={{
+                    display:    'flex',
+                    // relationship fields can grow tall (chip list + picker), so
+                    // top-align the label rather than centring as the scalar cells do.
+                    alignItems: ef.field.type === 'relationship' ? 'flex-start' : 'center',
+                    gap:        12,
+                    marginBottom: 8,
+                  }}
                 >
-                  <label style={{ minWidth: 120, fontSize: 13, color: '#718096' }}>{ef.field.name}</label>
+                  <label style={{ minWidth: 120, fontSize: 13, color: '#718096', paddingTop: ef.field.type === 'relationship' ? 6 : 0 }}>
+                    {ef.field.name}
+                  </label>
                   <div style={{ flex: 1 }}>
-                    <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
+                    {ef.field.type === 'relationship' ? (
+                      <RelationshipField taskId={taskId} fieldId={ef.field.id} workspaceId={workspaceId} />
+                    ) : ef.field.type === 'rollup' ? (
+                      <RollupValue value={ef.value} />
+                    ) : (
+                      <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
+                    )}
                   </div>
                 </div>
               ))}
@@ -1154,6 +1170,35 @@ function BlockerDialog({ blockers, onClose }: { blockers: Blocker[]; onClose: ()
         </div>
       </div>
     </div>
+  );
+}
+
+// Read-only renderer for a `rollup`-type effective field. Rollup values are
+// computed server-side (they come back already aggregated on the effective-fields
+// payload) and writes are rejected, so there's no editor — just the value, with
+// a "computed" hint when empty/null. Inline-styled to match the drawer skin.
+function RollupValue({ value }: { value: unknown }) {
+  const t = useTranslations('Rollup');
+  const display =
+    value === null || value === undefined || value === ''
+      ? null
+      : typeof value === 'number'
+        ? String(value)
+        : typeof value === 'string'
+          ? value
+          : String(value);
+  return (
+    <span
+      title={t('computed')}
+      style={{
+        display:      'inline-block',
+        fontSize:     13,
+        color:        display === null ? '#718096' : '#e2e8f0',
+        fontStyle:    display === null ? 'italic' : 'normal',
+      }}
+    >
+      {display === null ? t('empty') : display}
+    </span>
   );
 }
 

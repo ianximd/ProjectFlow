@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { notifyApiError } from '@/lib/apiErrorToast';
+import { notifyApiError, notifyActionError } from '@/lib/apiErrorToast';
 import { formatShortDateYear } from '@/lib/date';
 import { createProject, archiveProject, deleteProject } from '@/server/actions/projects';
 import { useSelectionSwitch } from '@/app/(app)/_components/selection-bridge';
@@ -76,7 +76,11 @@ export function ProjectsView({
     startTransition(async () => {
       const res = await createProject({ workspaceId: activeWorkspaceId, ...input });
       if (res.ok) setCreateOpen(false);
-      else setCreateError(res.error);
+      // Keep the inline banner AND surface a curated toast (e.g. the W43
+      // freeze guard's WORKSPACE_FROZEN code → "Workspace is frozen"). The
+      // toast wiring lived in the CSR page's api() helper pre-SSR migration;
+      // it was dropped here when create moved to a server action.
+      else { setCreateError(res.error); notifyActionError(res); }
     });
   }
 

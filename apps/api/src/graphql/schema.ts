@@ -235,23 +235,30 @@ TaskAssigneeType.implement({
 
 TaskType.implement({
   description: 'A task / issue',
+  // Field resolvers read BOTH casings. Most callers (GraphQL queries, the Views
+  // projection) hand TaskType a camelCase row, but the live `taskEvents`
+  // subscription publishes the raw task SP row, which is PascalCase (Id, Title,
+  // Status, …). A bare `t.exposeString('id')` reads only `row.id`, so on the SP
+  // row every scalar resolved to null and the board's live `created`/`updated`
+  // payload arrived empty (no id/title/status → no card). Coalesce here, the
+  // same way `normalize-task.ts` does on the client, so both shapes serialize.
   fields: (t) => ({
-    id:          t.exposeString('id'),
-    projectId:   t.exposeString('projectId'),
-    workspaceId: t.exposeString('workspaceId'),
+    id:          t.string({ resolve: (x: any) => x.id ?? x.Id ?? null }),
+    projectId:   t.string({ nullable: true, resolve: (x: any) => x.projectId ?? x.ProjectId ?? null }),
+    workspaceId: t.string({ nullable: true, resolve: (x: any) => x.workspaceId ?? x.WorkspaceId ?? null }),
     listId:      t.string({ nullable: true, resolve: (x: any) => x.listId ?? x.ListId ?? null }),
-    issueKey:    t.exposeString('issueKey'),
-    title:       t.exposeString('title'),
-    description: t.string({ nullable: true, resolve: (tk) => tk.description ?? null }),
-    type:        t.exposeString('type'),
-    status:      t.exposeString('status'),
-    priority:    t.exposeString('priority'),
-    storyPoints: t.int({ nullable: true, resolve: (tk) => tk.storyPoints ?? null }),
-    sprintId:    t.string({ nullable: true, resolve: (tk) => tk.sprintId ?? null }),
-    reporterId:  t.exposeString('reporterId'),
-    dueDate:     t.field({ type: 'Date', nullable: true, resolve: (tk) => tk.dueDate ? new Date(tk.dueDate) : null }),
-    createdAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.createdAt) }),
-    updatedAt:   t.field({ type: 'Date', resolve: (tk) => new Date(tk.updatedAt) }),
+    issueKey:    t.string({ nullable: true, resolve: (x: any) => x.issueKey ?? x.IssueKey ?? null }),
+    title:       t.string({ resolve: (x: any) => x.title ?? x.Title ?? null }),
+    description: t.string({ nullable: true, resolve: (x: any) => x.description ?? x.Description ?? null }),
+    type:        t.string({ nullable: true, resolve: (x: any) => x.type ?? x.Type ?? null }),
+    status:      t.string({ nullable: true, resolve: (x: any) => x.status ?? x.Status ?? null }),
+    priority:    t.string({ nullable: true, resolve: (x: any) => x.priority ?? x.Priority ?? null }),
+    storyPoints: t.int({ nullable: true, resolve: (x: any) => x.storyPoints ?? x.StoryPoints ?? null }),
+    sprintId:    t.string({ nullable: true, resolve: (x: any) => x.sprintId ?? x.SprintId ?? null }),
+    reporterId:  t.string({ nullable: true, resolve: (x: any) => x.reporterId ?? x.ReporterId ?? null }),
+    dueDate:     t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.dueDate ?? x.DueDate; return v ? new Date(v) : null; } }),
+    createdAt:   t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.createdAt ?? x.CreatedAt; return v ? new Date(v) : null; } }),
+    updatedAt:   t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.updatedAt ?? x.UpdatedAt; return v ? new Date(v) : null; } }),
     // JSON object string of { [lowercasedFieldId]: rawStoredValue }. Mirrors how
     // SavedView.config is transported as a String. Null when the task carries no
     // custom values (or came from a non-views source that doesn't populate them).

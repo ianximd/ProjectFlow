@@ -487,3 +487,65 @@ SP throws 51403 (alongside the HTTP 403 test).
 production build green; e2e `live-board` green (full suite 15 pass / 2 fail = `board-categories` legacy flake
 + `freeze-toast`, both proven pre-existing on next@16.2.5, not regressions). DB only local Docker
 `ProjectFlow_Test` + local Redis. Final whole-implementation review: READY TO MERGE (no Critical/Important).
+
+## 2026-06-06 — Phase 5a Dependencies
+
+Spec `docs/superpowers/specs/2026-06-06-phase5-deps-relationships-recurring-templates-design.md` §3;
+plan `docs/superpowers/plans/2026-06-06-phase5a-dependencies.md`. Built batch-by-batch via implementer
+subagents + a consolidated review, verified on local Docker `ProjectFlow_Test` + Redis.
+
+### Decisions
+- **Canonical directed edge** `(TaskId waits_on DependsOn)` — `DependsOn` must finish first. Reused the
+  legacy `TaskDependencies` table (migration `0007`). Migration `0034` adds `WorkspaceId` (denormalized),
+  narrows the `Type` CHECK to `'waiting_on'`, and converts legacy rows: `BLOCKS` → swap direction,
+  `IS_BLOCKED_BY` → keep, `RELATES_TO`/`DUPLICATES` → deleted (move to 5b relationships). `WorkspaceId`
+  is backfilled AFTER the swap (review fix) so a swapped edge's tag reflects the new `TaskId`.
+- **The two "apps" are always-on** (the `apps_enabled` per-scope toggle is deferred to Phase 10).
+- **Dependency Warning:** `task.service.transitionTask` calls `dependencyService.assertNoOpenBlockers`
+  before transitioning to a done-group status; `usp_Task_HasOpenBlockers` returns blockers not in a DONE
+  group (done = `Projects.WorkflowId`→`WorkflowStatuses.Category='DONE'`, else the hardcoded names
+  `Done/Resolved/Closed/Completed` — mirrors `usp_Task_Transition`). Throws `DependencyWarningError`
+  (code `DEPENDENCY_BLOCKED`) → **HTTP 409** with `details.blockers`. The TS-side done-group gate uses the
+  same hardcoded name set; the SP is authoritative (only returns rows when blockers are truly open).
+- **Reschedule Dependencies:** `updateTask` captures before-dates, computes a **whole-DAY** delta
+  (`Tasks.StartDate`/`DueDate` are SQL `DATE`), and calls `usp_TaskDependency_RescheduleDependents`
+  (recursive CTE `UNION ALL` + `SELECT DISTINCT` into a PK table var — visited-safe), publishing a
+  `task:event 'updated'` per shifted dependent. Best-effort (try/catch; never fails the user's update).
+  Cascade is **synchronous** — BullMQ offload deferred.
+- **Transitive cycle detection** in `usp_TaskDependency_Add` (recursive CTE, **workspace-scoped**,
+  `MAXRECURSION 1000`; `THROW 51500` self-edge / `51501` cycle → mapped to **422**).
+- **Dual surface:** REST on `taskRoutes` (`GET/POST/DELETE /tasks/:id/dependencies`) + GraphQL mirror
+  (`taskDependencies` / `addTaskDependency` / `removeTaskDependency`). REST GET gated VIEW
+  (`requireObjectAccess`), mutations `requirePermission('task.update')`; GraphQL VIEW via
+  `requireObjectLevel` + `requireWorkspacePermission('task.update')`. Parity with watchers.
+- **Roadmap delegation:** `roadmap.service` add/remove now delegate to `dependencyService` — this also
+  fixed a latent bug where the legacy roadmap repo passed a `type` string into the SP's new
+  `@WorkspaceId` param. `usp_Roadmap_GetItems` (gantt edges) unchanged.
+- **Frontend:** `DependenciesSection` in `TaskDrawer` (Waiting-on / Blocking lists + a search picker over
+  `GET /search`); the drawer status badge became a `<select>` driving a new `transitionTask` action; a
+  `BlockerDialog` modal lists blockers on the 409. Drawer statuses load from `GET /lists/:id/effective-statuses`
+  via `loadTaskStatuses` (default-template fallback for projects with no workflow). i18n `Dependencies`
+  namespace (en/id parity).
+
+### Review fixes (1 Critical + several) applied before merge
+- **CRITICAL cross-workspace IDOR:** `dependsOnId` was not validated to share `taskId`'s workspace — an
+  attacker could link a foreign task as a blocker (block another workspace's task from closing + leak its
+  title/status). Fixed in BOTH the REST POST and the GraphQL `addTaskDependency` (resolve the dependsOn
+  workspace, 404 on mismatch). Cycle CTE + `usp_TaskDependency_ListForTask` additionally workspace-scoped.
+- **Real `/board` crash (e2e-found):** the dependencies server-action file re-exported `import type`
+  bindings → Next 16/Turbopack erased them at runtime → `ReferenceError` crashed every route importing the
+  actions. Removed the type re-export.
+- Drawer status select switched from a hardcoded list to real effective statuses; status rollback now uses
+  the current state, not a stale prop.
+
+### Known limitations / follow-ups (not blockers)
+- **Task object-level GET routes 404 when `Tasks.ListId IS NULL`** (board-created, project-scoped tasks):
+  a pre-existing systemic authz pattern (`taskListId(task) ? {LIST,id} : null`) affecting deps/watchers/
+  fields alike. The deps drawer shows empty for such tasks. Separate ticket: fall back to
+  `{SPACE, projectId}` when `ListId` is null.
+- Synchronous reschedule cascade (BullMQ offload later). `apps_enabled` toggle is Phase 10.
+
+### Verification (local Docker `ProjectFlow_Test` + Redis)
+API **268 unit / 150 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
+green, e2e `dependencies` **1/1**. Branch `feat/phase5a-dependencies` (9 commits) → ff-merged to `main`
+locally (NOT pushed).

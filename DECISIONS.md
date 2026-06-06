@@ -644,3 +644,46 @@ Subtask/checklist cloning (v1); per-user timezone (server dates); `apps_enabled`
 API **320 unit / 170 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
 green, e2e `recurring` **1/1**. Branch `feat/phase5c-recurring` (6 commits) → ff-merged to `main` locally
 (NOT pushed).
+
+## 2026-06-06 — Phase 5d Templates
+
+Spec §6; plan `docs/superpowers/plans/2026-06-06-phase5d-templates.md`. Save a task/list/folder/space as a
+reusable snapshot and apply it elsewhere.
+
+### Decisions
+- **`Templates`** (migration `0037`): scoped (`TASK|LIST|FOLDER|SPACE`) JSON `Snapshot` = subtree + settings;
+  **dates stored as day-offsets** from an anchor (earliest start/due in the subtree, else now). Each snapshot
+  node has a stable `nodeId` (path-like) for import-selection.
+- **Capture** (`template.service`) composes EXISTING reads — `usp_Hierarchy_DescendantTasks`, folder/list
+  lists, custom-field DEFINITIONS + `effectiveForTask` VALUES (skips `relationship`/`rollup`/`progress_auto` —
+  non-portable), tags, SHARED saved views. **Assignees dropped** (user-specific). Two minimal read SPs added
+  (`usp_List_GetById`, `usp_View_ListForScope`).
+- **Apply** (`template.apply`) recreates the subtree via existing create paths (project/folder/list/task +
+  custom-field create + `usp_View_Create`) with fresh ids + rebuilt `Path`; **per-list old→new field-id remap**
+  (orphan values skipped); **date remap** (due via `usp_Task_Create`, start via `usp_Task_UpdateDates` — the SP
+  has no `@StartDate`); tag reuse; subtask recursion; **import-selected** (a node is recreated iff it or a
+  descendant is selected — required ancestors kept); **cross-workspace target guard → 404**; best-effort
+  additive (no rollback). Recreated tasks default to `'To Do'` (no status in the snapshot).
+- **Dual surface:** REST `/templates` CRUD + `POST /:id/apply` + GraphQL. Capture → VIEW on source; apply →
+  create-permission at the target + workspace match; list/get/delete → workspace-scoped. **Frontend:**
+  save-as-template on the sidebar (space/folder/list) + task drawer; a scope-aware apply modal (target picker +
+  anchor date); a Template Center at `/templates` + nav entry. i18n `Templates` en/id.
+
+### Real bugs found by the e2e/review (fixed)
+- **CRITICAL — `/templates` REST routes were UNAUTHENTICATED** (the route group was mounted without
+  `authMiddleware` → every endpoint saw `userId: null` → 401; integration tests missed it by calling the
+  service directly). Added `app.use('/templates/*', authMiddleware)`.
+- **Template Center always empty** — `listTemplates()` omitted the required `workspaceId` query param.
+- **Re-delete returned 200** — `usp_Template_Delete` now returns a row only when this call deleted it (and drops
+  `Snapshot` from the projection) → repeat delete 404s. **`anchorDate` validated** (REST + GraphQL → 422 instead
+  of silently nulling every remapped date).
+
+### Deferrals
+Item-selection UI (apply-all default; backend accepts `selectedItemIds`; REST `getById` omits the snapshot —
+only GraphQL `template.snapshot` exposes it); recreated-task status `'To Do'`; assignees dropped; TASK-scope CF
+values reapply only on the same list; folder-capture over-fetches the space's lists (perf, no data leak).
+
+### Verification (local Docker `ProjectFlow_Test`)
+API **334 unit / 178 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build` green,
+e2e `templates` **1/1** (deps/relationships/recurring still green). Branch `feat/phase5d-templates` →
+ff-merged to `main` locally. **Phase 5 (5a–5d) then PUSHED to origin/main.**

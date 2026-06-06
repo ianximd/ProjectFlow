@@ -27,6 +27,7 @@ import { TaskTypeSelector } from './TaskTypeSelector';
 import { TagPicker } from './TagPicker';
 import { WatcherControl } from './WatcherControl';
 import { DependenciesSection } from './tasks/dependencies-section';
+import { RecurrenceEditor } from './tasks/recurrence-editor';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -184,6 +185,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   // or when the task has no workflow — the select then uses DEFAULT_STATUS_OPTIONS).
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
 
+  // Whether the task has an active recurrence rule — drives the header 🔁 badge.
+  // Owned here so the badge and the RecurrenceEditor stay in sync; the editor
+  // reports active-state changes (load / save / clear) up via onActiveChange.
+  const [recurrenceActive, setRecurrenceActive] = useState(false);
+
   // Members list is fetched lazily — only when the picker opens — so opening a
   // drawer for a task on a busy workspace doesn't fire an extra round-trip the
   // user never needed.
@@ -210,6 +216,7 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
     setDescriptionValue(tDesc);
     setDraftDescription(tDesc);
     setEditingDescription(false);
+    setRecurrenceActive(false); // re-derived by the editor's load for the new task
   }, [task?.Id, task?.id, task?.StartDate, task?.startDate, task?.DueDate, task?.dueDate, task?.Priority, task?.priority, task?.Status, task?.status, task?.Title, task?.title, task?.Description, task?.description]);
 
   // Resync local assignee chips when the parent prop changes (task switch or
@@ -415,6 +422,15 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       <div className={styles.drawer} ref={drawerRef} role="dialog" aria-modal="true">
         <div className={styles.header}>
           <span className={styles.issueKey}>{issueKey ?? taskId.slice(0, 8).toUpperCase()}</span>
+          {recurrenceActive && (
+            <span
+              aria-label={t('recurringBadge')}
+              title={t('recurringBadge')}
+              style={{ fontSize: 14, lineHeight: 1 }}
+            >
+              🔁
+            </span>
+          )}
           <PresenceBar viewers={viewers} currentUserId={currentUserId} />
           <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1035,6 +1051,11 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
           <div className={styles.section}>
             <p className={styles.sectionTitle}>{t('dependenciesSection')}</p>
             <DependenciesSection taskId={taskId} workspaceId={workspaceId} />
+          </div>
+
+          <div className={styles.section}>
+            <p className={styles.sectionTitle}>{t('recurrenceSection')}</p>
+            <RecurrenceEditor taskId={taskId} onActiveChange={setRecurrenceActive} />
           </div>
 
           {effectiveFields.length > 0 && (

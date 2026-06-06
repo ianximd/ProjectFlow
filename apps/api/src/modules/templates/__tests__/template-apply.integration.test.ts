@@ -14,7 +14,8 @@ import { TaskRepository } from '../../tasks/task.repository.js';
 import { offsetToDate } from '../offsets.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
-import { closePool } from '../../../shared/lib/db.js';
+import { closePool, getPool } from '../../../shared/lib/db.js';
+import sql from 'mssql';
 
 const cfRepo = new CustomFieldRepository();
 const hierarchy = new HierarchyRepository();
@@ -32,6 +33,17 @@ function dayMs(d: Date | string | null): number | null {
   if (!d) return null;
   const dt = d instanceof Date ? d : new Date(d);
   return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+}
+/** Set a source task's Start + Due dates directly (usp_Task_Create has no
+ *  StartDate param). StartDate is DATE-typed. */
+async function setDates(taskId: string, start: Date, due: Date): Promise<void> {
+  const pool = await getPool();
+  await pool.request()
+    .input('TaskId', sql.UniqueIdentifier, taskId)
+    .input('RequesterId', sql.UniqueIdentifier, null)
+    .input('StartDate', sql.Date, start)
+    .input('DueDate', sql.DateTime2, due)
+    .execute('usp_Task_UpdateDates');
 }
 
 describe('TemplateService.apply (Phase 5d Batch 2)', () => {
@@ -53,11 +65,15 @@ describe('TemplateService.apply (Phase 5d Batch 2)', () => {
       scopeType: 'LIST', scopeId: srcList.Id, type: 'number',
       name: 'Effort', config: null, required: false, position: 0,
     });
+    const start = new Date('2026-07-06T00:00:00.000Z');
     const due = new Date('2026-07-10T00:00:00.000Z');
     const dated = await taskService.createTask({
       workspaceId: ws.Id, listId: srcList.Id, title: 'Dated Task', reporterId: u.user.Id,
       dueDate: due.toISOString(),
     } as any, u.user.Id) as any;
+    // usp_Task_Create has no StartDate param → stamp the source's start date so
+    // capture records a startOffset that apply must remap (the regression fix).
+    await setDates(dated.Id ?? dated.id, start, due);
     await taskService.createTask({
       workspaceId: ws.Id, listId: srcList.Id, title: 'Plain Task', reporterId: u.user.Id,
     } as any, u.user.Id);
@@ -104,6 +120,13 @@ describe('TemplateService.apply (Phase 5d Batch 2)', () => {
     const datedNode = (snap.root.tasks as any[]).find((n) => n.title === 'Dated Task');
     const expectedDue = offsetToDate(datedNode.dueOffset, anchor)!;
     expect(dayMs(newDated.DueDate)).toBe(dayMs(expectedDue));
+
+    // Start date ALSO remapped (Batch 4 fix): usp_Task_Create can't set
+    // StartDate, so apply stamps it via usp_Task_UpdateDates post-create.
+    expect(datedNode.startOffset).not.toBeNull();
+    const expectedStart = offsetToDate(datedNode.startOffset, anchor)!;
+    expect(newDated.StartDate).not.toBeNull();
+    expect(dayMs(newDated.StartDate)).toBe(dayMs(expectedStart));
 
     // CF value carried onto the right task, mapped to the NEW field id.
     const eff = await customFieldService.effectiveForTask(newDated.Id);

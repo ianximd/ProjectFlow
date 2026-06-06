@@ -10,7 +10,9 @@ import { TaskRepository } from '../tasks/task.repository.js';
 import { spacePath, folderPath, listPath } from '../hierarchy/path.js';
 import { offsetToDate } from './offsets.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
+import { execSpOne } from '../../shared/lib/sqlClient.js';
 import { subLogger } from '../../shared/lib/logger.js';
+import sql from 'mssql';
 import type {
   TemplateSnapshot,
   TemplateTaskNode, TemplateListNode, TemplateFolderNode, TemplateSpaceNode,
@@ -235,9 +237,10 @@ export class TemplateApplier {
     if (!this.includeNode(node, ctx)) return null;
 
     const dueDate = offsetToDate(node.dueOffset, ctx.anchor);
-    // NOTE: usp_Task_Create has no StartDate param (Tasks.StartDate is set
-    // elsewhere); we remap dueOffset onto the deadline. startOffset is captured
-    // for completeness but the create SP does not accept a start date.
+    const startDate = offsetToDate(node.startOffset, ctx.anchor);
+    // NOTE: usp_Task_Create has no StartDate param, so it remaps dueOffset onto
+    // the deadline only. The remapped StartDate is stamped post-create via
+    // usp_Task_UpdateDates below (same pattern as recurrence.spawnNext).
     const created = await this.taskRepo.create({
       workspaceId,
       listId,
@@ -253,6 +256,23 @@ export class TemplateApplier {
     } as any);
     const newTaskId: string = (created as any).Id ?? (created as any).id;
     ctx.counts.tasks += 1;
+
+    // usp_Task_Create cannot set StartDate. When the node had a start offset,
+    // stamp the remapped StartDate (and re-confirm the remapped DueDate) via
+    // usp_Task_UpdateDates — the same post-create dates path recurrence uses.
+    // Best-effort: a failure logs and continues (templates are additive).
+    if (startDate) {
+      try {
+        await execSpOne('usp_Task_UpdateDates', [
+          { name: 'TaskId',      type: sql.UniqueIdentifier, value: newTaskId },
+          { name: 'RequesterId', type: sql.UniqueIdentifier, value: ctx.actorId },
+          { name: 'StartDate',   type: sql.Date,             value: startDate },
+          { name: 'DueDate',     type: sql.DateTime2,        value: dueDate },
+        ]);
+      } catch (err) {
+        log.warn({ err: (err as Error).message, task: node.title }, 'apply: set start date failed');
+      }
+    }
 
     // Live boards/views react to the recreated task.
     const projectId = (created as any).ProjectId ?? (created as any).projectId;

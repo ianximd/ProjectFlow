@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
+import { getWorkspaceProjectContext } from '../context';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
@@ -57,12 +58,19 @@ export async function createTemplate(input: {
  * Client-callable loader for the workspace's templates (optionally filtered to
  * one scope). List rows omit the snapshot. Returns [] on any failure so the
  * picker / center degrade gracefully (mirrors loadTaskDependencies).
+ *
+ * `GET /templates` REQUIRES a workspaceId (templates are workspace-scoped), so
+ * resolve the active workspace from context and pass it; without it the route
+ * 400s on validation and the Template Center renders empty.
  */
 export async function listTemplates(scopeType?: TemplateScopeType): Promise<Template[]> {
   await requireSession();
+  const { activeWorkspaceId } = await getWorkspaceProjectContext();
+  if (!activeWorkspaceId) return [];
   try {
-    const qs = scopeType ? `?scopeType=${encodeURIComponent(scopeType)}` : '';
-    return (await serverFetch<Template[]>(`/templates${qs}`)) ?? [];
+    const params = new URLSearchParams({ workspaceId: activeWorkspaceId });
+    if (scopeType) params.set('scopeType', scopeType);
+    return (await serverFetch<Template[]>(`/templates?${params.toString()}`)) ?? [];
   } catch {
     return [];
   }

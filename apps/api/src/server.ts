@@ -152,6 +152,7 @@ app.use('/labels/*',         authMiddleware);
 app.use('/epics/*',          authMiddleware);
 app.use('/git/*',            authMiddleware);
 app.use('/integrations/*',   authMiddleware);
+app.use('/templates/*',      authMiddleware);
 app.use('/outgoing-webhooks/*', authMiddleware);
 // incoming git webhooks are public — no authMiddleware
 app.use('/admin/*',         authMiddleware);

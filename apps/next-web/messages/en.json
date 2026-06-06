@@ -621,6 +621,7 @@
     "showingOf": "Showing <strong>{shown}</strong> of <strong>{total}</strong>",
     "noTasks": "No tasks.",
     "groupEmpty": "(empty)",
+    "table": { "yes": "Yes", "no": "No" },
     "untitled": "(untitled)",
     "selectRow": "Select {title}",
     "selectAllRows": "Select all rows",

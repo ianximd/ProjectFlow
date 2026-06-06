@@ -215,7 +215,8 @@ function GroupBlock({
 }
 
 function Cell({ task, field, customFields }: { task: Task; field: FieldRef; customFields: CustomField[] }) {
-  const display = formatCellValue(taskFieldValue(task, field, customFields));
+  const t = useTranslations('Views');
+  const display = formatCellValue(taskFieldValue(task, field, customFields), t);
   if (display === '') return <span className="text-muted-foreground/60">—</span>;
   if (field.kind === 'builtin' && field.key === 'title') {
     return <span className="font-medium">{display}</span>;
@@ -226,10 +227,10 @@ function Cell({ task, field, customFields }: { task: Task; field: FieldRef; cust
 /** Render a resolved field value as cell text. Custom-field values can be arrays
  *  (multi-select / people / labels) or booleans (checkbox); flatten both to a
  *  readable string. Empty / null / empty-array render as the "—" placeholder. */
-function formatCellValue(v: unknown): string {
+function formatCellValue(v: unknown, t: ReturnType<typeof useTranslations<'Views'>>): string {
   if (v == null) return '';
   if (Array.isArray(v)) return v.map((x) => String(x)).join(', ');
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (typeof v === 'boolean') return v ? t('table.yes') : t('table.no');
   return String(v);
 }
 

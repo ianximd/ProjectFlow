@@ -621,6 +621,7 @@
     "showingOf": "Menampilkan <strong>{shown}</strong> dari <strong>{total}</strong>",
     "noTasks": "Tidak ada tugas.",
     "groupEmpty": "(kosong)",
+    "table": { "yes": "Ya", "no": "Tidak" },
     "untitled": "(tanpa judul)",
     "selectRow": "Pilih {title}",
     "selectAllRows": "Pilih semua baris",

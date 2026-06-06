@@ -43,7 +43,8 @@ export class TemplateRepository {
   /** Soft-delete; returns the affected row mapped, or null when it was already gone. */
   async delete(id: string): Promise<Template | null> {
     const rows = await execSpOne('usp_Template_Delete', [{ name: 'Id', type: sql.UniqueIdentifier, value: id }]);
-    // The SP SELECTs the row regardless; treat an already-deleted/absent row as null.
+    // The SP returns a (Snapshot-less) row ONLY when THIS call deleted it; an
+    // already-deleted/absent id yields no rows → null (a repeat delete is a 404).
     const r = rows[0];
     if (!r) return null;
     return mapTemplateRow(r);

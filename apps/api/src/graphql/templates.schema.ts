@@ -20,6 +20,19 @@ function assertScopeType(s: string): TemplateScopeType {
   return s as TemplateScopeType;
 }
 
+/**
+ * Validate the anchorDate shape (mirrors the REST Zod regex): a full ISO datetime
+ * or a bare YYYY-MM-DD. A bad value must BAD_REQUEST, not silently null every
+ * remapped date downstream.
+ */
+const ANCHOR_DATE_RE = /^\d{4}-\d{2}-\d{2}(T.*)?$/;
+function assertAnchorDate(s: string): string {
+  if (!ANCHOR_DATE_RE.test(s)) {
+    throw new GraphQLError('anchorDate must be ISO date', { extensions: { code: 'BAD_REQUEST' } });
+  }
+  return s;
+}
+
 /** VIEW on the source node (SPACE/FOLDER/LIST directly; TASK via its list). */
 async function authzCaptureSource(ctx: GQLContext, scopeType: TemplateScopeType, sourceId: string): Promise<void> {
   if (scopeType === 'TASK') {
@@ -124,6 +137,7 @@ export function registerTemplatesGraphql(): void {
       },
       resolve: async (_, a, ctx) => {
         requireAuth(ctx);
+        assertAnchorDate(a.anchorDate);
         const tpl = await templateService.getById(a.id);
         if (!tpl) notFound('Template not found');
 

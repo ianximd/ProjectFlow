@@ -107,4 +107,29 @@ describe('TemplateService.captureTemplate (LIST)', () => {
     expect(root.nodeId).toBe('root');
     expect(root.tasks.every((t) => typeof t.nodeId === 'string' && t.nodeId.length > 0)).toBe(true);
   });
+
+  it('delete is idempotent-404: first delete returns the row (Snapshot omitted), a second delete returns null', async () => {
+    const u = await createTestUser();
+    const ws = await createTestWorkspace(u.accessToken);
+    const space = await createTestProject(ws.Id, u.accessToken);
+    const list = await listService.create({
+      workspaceId: ws.Id, spaceId: space.Id, folderId: null,
+      name: 'Disposable', position: 1000, parentPath: spacePath(space.Id)!,
+    }) as any;
+
+    const tpl = await templateService.captureTemplate('LIST', list.Id, 'To Delete', null, u.user.Id);
+
+    // First delete: succeeds, returns the mapped (metadata-only) row.
+    const first = await templateService.delete(tpl.id);
+    expect(first).not.toBeNull();
+    expect(String(first!.id).toLowerCase()).toBe(String(tpl.id).toLowerCase());
+    // The SP must NOT return the large Snapshot column.
+    expect((first as any).snapshot).toBeUndefined();
+    expect((first as any).Snapshot).toBeUndefined();
+
+    // Second delete of the SAME template: no row deleted → null (the route/GraphQL
+    // map this to a 404 / `false`, not a silent 200/true).
+    const second = await templateService.delete(tpl.id);
+    expect(second).toBeNull();
+  });
 });

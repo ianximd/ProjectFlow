@@ -120,7 +120,9 @@ templateRoutes.delete('/:id', async (c) => {
 // The cross-workspace guard (template.ws === target.ws) lives in the service.
 const applySchema = z.object({
   targetParentId:  z.string().uuid(),
-  anchorDate:      z.string().min(1),
+  // Accept a full ISO datetime or a bare YYYY-MM-DD; a bad value must 422, not
+  // silently null out every remapped date.
+  anchorDate:      z.string().regex(/^\d{4}-\d{2}-\d{2}(T.*)?$/, 'anchorDate must be ISO date'),
   selectedItemIds: z.array(z.string()).optional(),
 });
 templateRoutes.post('/:id/apply', zValidator('json', applySchema), async (c) => {

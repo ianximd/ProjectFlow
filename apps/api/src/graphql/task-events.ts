@@ -1,6 +1,9 @@
 import { pubsub } from './pubsub.js';
 import { withCache, TTL } from '../shared/lib/cache.js';
 import { ProjectRepository } from '../modules/projects/project.repository.js';
+import { subLogger } from '../shared/lib/logger.js';
+
+const log = subLogger('task-events');
 
 const projectRepo = new ProjectRepository();
 
@@ -24,7 +27,9 @@ export async function publishTaskEvent(
     pubsub.publish('task:event', projectKey(args.projectId), payload);
     const workspaceId = await resolveWorkspaceId(args.projectId);
     if (workspaceId) pubsub.publish('task:event', workspaceKey(workspaceId), payload);
-  } catch { /* best-effort */ }
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, 'publishTaskEvent failed');
+  }
 }
 
 /**

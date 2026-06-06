@@ -3,6 +3,8 @@ import { GraphQLError, GraphQLScalarType, Kind } from 'graphql';
 import { builder } from './builder.js';
 import { pubsub }  from './pubsub.js';
 import { notificationAddedSubscribe } from './subscriptions/notificationAdded.js';
+import { taskEventsSubscribe } from './subscriptions/taskEvents.js';
+import { publishTaskEvent, publishTaskMove } from './task-events.js';
 import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
@@ -237,6 +239,7 @@ TaskType.implement({
     id:          t.exposeString('id'),
     projectId:   t.exposeString('projectId'),
     workspaceId: t.exposeString('workspaceId'),
+    listId:      t.string({ nullable: true, resolve: (x: any) => x.listId ?? x.ListId ?? null }),
     issueKey:    t.exposeString('issueKey'),
     title:       t.exposeString('title'),
     description: t.string({ nullable: true, resolve: (tk) => tk.description ?? null }),
@@ -259,6 +262,17 @@ TaskType.implement({
     // Assignees for board avatar stacks (Views engine projection). Empty list
     // when the task has none, or came from a source that doesn't populate them.
     assignees: t.field({ type: [TaskAssigneeType], resolve: (tk) => tk.assignees ?? [] }),
+  }),
+});
+
+// A keyed live task lifecycle event. `kind` is created | updated | deleted;
+// `task` carries the full task for create/update, `taskId` identifies the
+// removed task on delete (when no task body is sent).
+const TaskEventType = builder.objectRef<{ kind: string; task?: unknown; taskId?: string }>('TaskEvent').implement({
+  fields: (t) => ({
+    kind:   t.string({ resolve: (e) => e.kind }),
+    task:   t.field({ type: TaskType, nullable: true, resolve: (e) => (e.task ?? null) as any }),
+    taskId: t.string({ nullable: true, resolve: (e) => e.taskId ?? null }),
   }),
 });
 
@@ -467,8 +481,7 @@ builder.mutationType({
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
         const task = await taskService.createTask(input as any, actorId);
-        // Publish to subscription channel
-        pubsub.publish('task:updated', { projectId: input.projectId, task });
+        await publishTaskEvent('created', { projectId: (task as any).projectId, task });
         return task as any;
       },
     }),
@@ -486,7 +499,7 @@ builder.mutationType({
         const actorId = (ctx.user as any).userId;
         const task = await taskService.updateTask(id, input as any, actorId);
         if (task) {
-          pubsub.publish('task:updated', { projectId: (task as any).projectId, task });
+          await publishTaskEvent('updated', { projectId: (task as any).projectId, task });
         }
         return task as any;
       },
@@ -503,7 +516,7 @@ builder.mutationType({
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
         const task = await taskService.transitionTask(id, status, actorId);
-        pubsub.publish('task:updated', { projectId: (task as any).projectId, task });
+        await publishTaskEvent('updated', { projectId: (task as any).projectId, task });
         return task as any;
       },
     }),
@@ -515,7 +528,8 @@ builder.mutationType({
       resolve: async (_, { id }, ctx) => {
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
-        await taskService.deleteTask(id, actorId);
+        const task = await taskService.deleteTask(id, actorId);
+        await publishTaskEvent('deleted', { projectId: (task as any).projectId, taskId: id });
         return true;
       },
     }),
@@ -612,19 +626,18 @@ builder.mutationType({
 builder.subscriptionType({
   fields: (t) => ({
     /**
-     * Emitted whenever a task in the given project is created,
-     * updated, or transitioned.
+     * Keyed live task lifecycle events. Subscribe by `projectId` (a Space —
+     * VIEW-gated) or `workspaceId` (RBAC `workspace.read`) — exactly one. The
+     * payload is the {kind, task?, taskId?} event the TaskEvent type reads.
      */
-    taskUpdated: t.field({
-      type:    TaskType,
+    taskEvents: t.field({
+      type: TaskEventType,
       args: {
-        projectId: t.arg.string({ required: true }),
+        projectId:   t.arg.string({ required: false }),
+        workspaceId: t.arg.string({ required: false }),
       },
-      subscribe: (_, { projectId }, ctx) => {
-        requireAuth(ctx);
-        return pubsub.subscribe('task:updated');
-      },
-      resolve: (payload: any) => payload.task,
+      subscribe: (_, args, ctx) => taskEventsSubscribe(args, ctx),
+      resolve: (payload: any) => payload,
     }),
 
     /** Emitted whenever a comment is posted on the given task */
@@ -664,8 +677,10 @@ builder.mutationFields((t) => ({
     },
     resolve: async (_, { taskId, listId, position }, ctx) => {
       requireAuth(ctx);
+      const before = await taskService.getTask(taskId);
+      const oldProjectId = (before as any)?.projectId ?? (before as any)?.ProjectId ?? null;
       const task = await taskService.moveTask(taskId, listId, position);
-      if (task) pubsub.publish('task:updated', { projectId: (task as any).projectId, task });
+      if (task) await publishTaskMove(oldProjectId, task);
       return task as any;
     },
   }),

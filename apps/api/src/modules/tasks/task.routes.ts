@@ -8,6 +8,7 @@ import { requireObjectAccess } from '../access/access.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import { pubsub } from '../../graphql/pubsub.js';
+import { publishTaskEvent, publishTaskMove } from '../../graphql/task-events.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
@@ -125,7 +126,7 @@ taskRoutes.put('/:id/fields/:fieldId', zValidator('json', setValueSchema),
       await customFieldService.setValue(taskId, c.req.param('fieldId')!, c.req.valid('json').value);
       const fields = await customFieldService.effectiveForTask(taskId);
       const t = await taskRepo.getById(taskId);
-      if (t) pubsub.publish('task:updated', { projectId: taskProjectId(t) as any, task: t });
+      if (t) await publishTaskEvent('updated', { projectId: taskProjectId(t) as string, task: t });
       return c.json({ data: fields });
     } catch (err: any) {
       if (err instanceof FieldValidationError)
@@ -161,7 +162,8 @@ taskRoutes.post(
         { ...body, reporterId: actorId },
         actorId
       );
-      await invalidateTaskCaches(body.projectId);
+      await invalidateTaskCaches(task.projectId);
+      await publishTaskEvent('created', { projectId: task.projectId, task });
       return c.json({ data: task }, 201);
     } catch (err: any) {
       // Hierarchy (0029) SP error mapping.
@@ -183,9 +185,11 @@ taskRoutes.patch(
     const id = c.req.param('id')!;
     const { listId, position } = c.req.valid('json');
     try {
+      const before = await taskService.getTask(id);
+      const oldProjectId = (before as any)?.projectId ?? (before as any)?.ProjectId ?? null;
       const task = await taskService.moveTask(id, listId, position);
       if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
-      pubsub.publish('task:updated', { projectId: task.projectId, task });
+      await publishTaskMove(oldProjectId, task);
       await invalidateTaskCaches(task.projectId);
       return c.json({ data: task });
     } catch (err: any) {
@@ -228,6 +232,8 @@ taskRoutes.put(
     try {
       const assignees = await taskService.setAssignees(id, userIds, user.userId);
       await invalidateTaskCaches();
+      const task = await taskService.getTask(id);
+      if (task) await publishTaskEvent('updated', { projectId: task.projectId, task });
       return c.json({ data: assignees });
     } catch (err: any) {
       if (err instanceof MultipleAssigneesDisabledError) {
@@ -293,6 +299,7 @@ taskRoutes.patch(
       const task = await taskService.setPosition(id, position, status ?? null);
       if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
       await invalidateTaskCaches(task.projectId);
+      await publishTaskEvent('updated', { projectId: task.projectId, task });
       return c.json({ data: task });
     } catch (err: any) {
       log.error({ err: (err as Error).message }, 'setPosition failed');
@@ -316,6 +323,7 @@ taskRoutes.patch(
     const task = await taskService.updateTask(id, body, actorId);
     if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
     await invalidateTaskCaches(task.projectId);
+    await publishTaskEvent('updated', { projectId: task.projectId, task });
     return c.json({ data: task });
   } catch (err: any) {
     if (err.number === 50003 || err.number === 50004) {
@@ -340,6 +348,7 @@ taskRoutes.patch(
     const task = await taskService.transitionTask(id, status, actorId);
     if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
     await invalidateTaskCaches(task.projectId);
+    await publishTaskEvent('updated', { projectId: task.projectId, task });
     return c.json({ data: task });
   } catch (err: any) {
     if (err instanceof RequiredFieldsUnmetError) {
@@ -364,7 +373,7 @@ taskRoutes.patch(
       if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task type not found' } }, 404);
       const projectId = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
       await invalidateTaskCaches(projectId);
-      pubsub.publish('task:updated', { projectId: projectId as any, task });
+      await publishTaskEvent('updated', { projectId: projectId as string, task });
       return c.json({ data: task });
     } catch (err: any) {
       if (err.number === 51322 || err.number === 51323) {
@@ -424,6 +433,7 @@ taskRoutes.delete(
   try {
     const task = await taskService.deleteTask(id, actorId);
     await invalidateTaskCaches(task?.projectId);
+    await publishTaskEvent('deleted', { projectId: (task as any)?.projectId, taskId: id });
     return c.json({ data: task });
   } catch (error: any) {
     if (error.number === 50004) {

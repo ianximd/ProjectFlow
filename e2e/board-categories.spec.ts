@@ -50,8 +50,12 @@ test('IDEA and TESTING categories show in the workflow editor and render on the 
   await page.getByRole('button', { name: /sign in/i }).click();
   await page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 15_000 });
 
-  // Workflow editor: a fresh project has no workflow yet. Create the
-  // default 3-column one first, then add an IDEA status on top.
+  // Workflow editor: a fresh project has no workflow yet. Create the default
+  // workflow first (it seeds Ideas/To Do/In Progress/Testing/Done), then add
+  // a NEW IDEA status with a non-colliding name on top. The default already
+  // seeds an "Ideas" status, so re-adding "Ideas" would 409 on the unique
+  // (workflow, name) key, leave the modal open, and the open modal would make
+  // the sidebar inert — the cause of the long-standing "Board link" timeout.
   //
   // NB: nav via sidebar link, NOT page.goto — the in-memory access
   // token (Zustand, not persisted) survives SPA nav but a hard reload
@@ -66,7 +70,7 @@ test('IDEA and TESTING categories show in the workflow editor and render on the 
   // Dialog is now open — scope all further locators to it so we don't
   // collide with the outer "Add status" button or other page chrome.
   const dialog = page.getByRole('dialog');
-  await dialog.locator('#st-name').fill('Ideas');
+  await dialog.locator('#st-name').fill('Discovery');
 
   // Category select shows 5 options now.
   await dialog.locator('#st-cat').click();
@@ -77,21 +81,26 @@ test('IDEA and TESTING categories show in the workflow editor and render on the 
 
   await dialog.getByRole('button', { name: /add status/i }).click();
 
-  // The new "Ideas" status appears under the IDEA section in the editor.
-  await expect(page.getByText('Ideas', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+  // The new "Discovery" status appears under the IDEA section in the editor.
+  await expect(page.getByText('Discovery', { exact: true }).first()).toBeVisible({ timeout: 10_000 });
 
   // Board: the new Idea column shows up with the amber accent.
   await page.getByRole('link', { name: /^board$/i }).first().click();
   await page.waitForURL(/\/board$/);
 
   // usp_Workflow_AddStatus appends new statuses to MAX(Position)+1, so the
-  // Ideas column lands after Done. Assert DOM presence (toHaveCount), not
-  // viewport visibility — what we care about is "Ideas column rendered".
-  await expect(page.locator('#col-Ideas')).toHaveCount(1, { timeout: 10_000 });
-  // The board now has an amber accent stripe (the new Idea column).
-  // Without the CATEGORY_ACCENT update, the column would silently fall
-  // back to TODO grey — that's the regression we want to catch.
-  await expect(page.locator('.bg-amber-400')).toHaveCount(1, { timeout: 5_000 });
+  // Discovery column lands after Done. Assert DOM presence (toHaveCount), not
+  // viewport visibility — what we care about is "Discovery column rendered".
+  const discoveryColumn = page
+    .locator('[role="listitem"]')
+    .filter({ has: page.locator('#col-Discovery') });
+  await expect(discoveryColumn).toHaveCount(1, { timeout: 10_000 });
+  // The new Idea column shows the amber accent stripe. Without the
+  // CATEGORY_ACCENT update the column would silently fall back to TODO grey —
+  // that's the regression we want to catch. Scope to this column: the default
+  // template already seeds an "Ideas" (IDEA) column, so a board-wide
+  // .bg-amber-400 count would be 2.
+  await expect(discoveryColumn.locator('.bg-amber-400')).toHaveCount(1, { timeout: 5_000 });
 
   // Cleanup.
   await apiCtx.delete(`${API_BASE}/workspaces/${wsId}`, {

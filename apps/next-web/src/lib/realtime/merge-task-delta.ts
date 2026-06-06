@@ -23,19 +23,27 @@ export interface TaskDelta {
 }
 
 /**
- * Apply a live `taskUpdated` delta onto a board task list, in place by id.
+ * Merge a partial task delta into a Task[] by id.
  *
- * Scope (v1): UPDATE-ONLY. A delta whose id isn't already shown is ignored — no
- * live add/remove (see DECISIONS §3.5b follow-ups). That also makes the merge
- * correct-by-construction for the active project: the board only holds that
- * project's tasks, so an id match can only be one of them, and the global
- * `task:updated` channel's cross-project chatter is dropped here.
+ * Role: called by `applyTaskEvent` for the `updated` kind and for the
+ * own-optimistic-`created` path (where the locally-created task is already
+ * present and only needs its server fields merged in). Add and hard-remove
+ * operations are handled entirely in `applyTaskEvent`; this function is
+ * id-keyed field-merge only.
  *
- * Fields merge DEFENSIVELY — only a non-null delta value overwrites the current
- * one, so a partial payload can never blank an existing title/status. `position`
- * is intentionally not touched (the GraphQL Task carries none; ordering stays
- * local/optimistic). The original array reference is returned unchanged when no
- * task matched, so React can skip a re-render.
+ * Behaviour when id is unknown: the original array reference is returned
+ * unchanged (same ref → React skips re-render). This is correct for
+ * `applyTaskEvent`'s `updated` path — an event for a task not currently in
+ * view is silently dropped.
+ *
+ * Fields merge DEFENSIVELY — only a non-null delta value overwrites the
+ * current one, so a partial payload (e.g. the custom-field publish site emits
+ * only `{ id }`) can never blank an existing title/status. `position` is
+ * intentionally not touched (the GraphQL Task carries none; ordering stays
+ * local/optimistic). Channel scoping (keyed `task:event` / `prj:`/`ws:`
+ * prefixes) is handled upstream in `taskEventsSubscribe`; by the time this
+ * function is called the event is already confirmed to belong to the active
+ * view.
  */
 export function mergeTaskDelta(tasks: Task[], delta: TaskDelta): Task[] {
   let matched = false;

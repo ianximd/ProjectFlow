@@ -101,13 +101,15 @@ const EXAMPLES: Array<{
   },
   {
     name: 'Task subscription (SSE)',
-    query: `subscription TaskUpdated($projectId: String!) {
-  taskUpdated(projectId: $projectId) {
-    id
-    issueKey
-    title
-    status
-    updatedAt
+    query: `subscription TaskEvents($projectId: String) {
+  taskEvents(projectId: $projectId) {
+    kind
+    taskId
+    task {
+      id
+      title
+      status
+    }
   }
 }`,
     variables: `{
@@ -148,7 +150,7 @@ const SCHEMA_DOCS = [
   {
     group: 'Subscriptions (SSE)',
     items: [
-      { sig: 'taskUpdated(projectId)', desc: 'Streamed when any task in the project updates' },
+      { sig: 'taskEvents(projectId, workspaceId)', desc: 'Streamed on task created / updated / deleted (kind + taskId + task)' },
       { sig: 'commentAdded(taskId)',   desc: 'Streamed when a comment is added' },
     ],
   },

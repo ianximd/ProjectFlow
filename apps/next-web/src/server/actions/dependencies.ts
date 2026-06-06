@@ -5,11 +5,7 @@ import { requireSession } from '../session';
 import { serverFetch, serverFetchEnvelope } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-import type {
-  DependencyRelation,
-  TaskDependencyLists,
-  TaskDependencyRef,
-} from '@projectflow/types';
+import type { DependencyRelation, TaskDependencyLists } from '@projectflow/types';
 
 // Dependency edits surface anywhere a task is listed — refresh every list route,
 // matching the watchers/tasks action pattern.
@@ -100,6 +96,3 @@ export async function searchTasksForDependency(
     return [];
   }
 }
-
-// Re-exported for component typing convenience.
-export type { TaskDependencyRef, TaskDependencyLists, DependencyRelation };

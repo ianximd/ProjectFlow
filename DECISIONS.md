@@ -343,3 +343,61 @@ Test-side: relaxed the realtime badge locator to `/unread notification/i` (the l
 ICU-pluralized — `Inbox.unreadAria`), and fixed the presence `TODO(live-run)` composer selector to
 `getByPlaceholder(/add a comment/i)` (the drawer has multiple textboxes). Presence delivery itself needed no
 change once the API stopped crashing — taskId-keyed topics already agreed.
+
+## 2026-06-06 — Phase 3.5 follow-ups (round 2): Views-Engine live wiring, i18n stragglers, Bug C proper fix, 3.5a correctness
+
+Branch `feat/phase3.5-followups-2` off `ca9ad51`. Four follow-ups carried over from the prior round's
+deferrals/notes. Lean flow: parallel implementers on disjoint packages, reviewed diffs, per-task commits.
+
+### 1. Views Engine surfaces now wired to live taskUpdated (closes the prior "NOT wired" note above)
+board/list/table/calendar `components/views/*` extracted `taskPage.tasks` directly and never received live
+deltas. Spliced `useLiveTasks()` onto the SSR set in all four — reusing the existing hook + `mergeTaskDelta`
+UNCHANGED (same normalized `Task` shape). The `projectId` subscription arg is a required TRUTHY PLACEHOLDER
+only (`task:updated` is a global channel; scoping is client-side via mergeTaskDelta id-match): board uses
+`scopeId`; list/table/calendar use `activeView.id` (already in their props — no prop-contract widening; Apollo
+dedupes the shared key). A live `dueDate` change re-buckets the calendar chip. `assigneesByTaskId` keeps
+reading the base set (merge is update-only → id set unchanged).
+
+### 2. Bug C — PROPER fix: surgical idempotent SSE stream at the bridge (replaces reliance on the global guard)
+Root cause: on SSE client disconnect both `@hono/node-server` and Yoga tear down the SAME web `ReadableStream`;
+the second close throws `ERR_INVALID_STATE: ReadableStream is already closed` from a floating microtask. The
+prior round swallowed it with a global `uncaughtException`/`unhandledRejection` guard. PROPER FIX: interpose
+`guardedEventStream` (`apps/api/src/graphql/sse-stream.ts`) at the `/graphql` bridge — for `text/event-stream`
+responses only, Yoga's body is re-wrapped in a single-shot, pull-based, try/catch-guarded passthrough so the
+stream `@hono/node-server` actually touches can never double-close. The race is removed AT THE BOUNDARY, not
+swallowed after the fact. Decided AGAINST bumping `@hono/node-server` to 2.x (large regression surface) in
+favor of this contained fix. The global guard is RETAINED as a documented defense-in-depth backstop
+(fail-fast for every non-benign error). 7 unit tests. **Live-verified:** ran the realtime SSE spec against
+Docker `ProjectFlow_Test` + Redis and grepped the full API log — the backstop NEVER fired and no
+`ERR_INVALID_STATE`/uncaught was logged: the double-close no longer happens at all.
+
+### 3. 3.5a correctness follow-ups
+- **TASK_UPDATED debounce key was too coarse.** `notif:debounce:TASK_UPDATED:${taskId}` keyed by taskId only,
+  so within the 60s window a status change and an assignee change on the same task collapsed and the second
+  distinct change was silently dropped. Fix: centralized `taskUpdatedDebounceKey(taskId, change)` keyed by
+  taskId AND change type — different change types each get their own gate; bursts of the SAME change type
+  still coalesce (intended). +3 unit tests.
+- **assertCanEditComment TOCTOU — investigated; accepted residual (no code change).** `requireObjectLevel`
+  fail-closes on a null listId (`authz.ts`: `if (!id) notFound()`), so there's no null-scope bypass. The gate
+  is the statement immediately preceding the SP write on every mutating comment path (GraphQL assign/resolve
+  + REST `/comments/:id/assign|resolve`, the latter gated by `requirePermission('task.update',
+  ownerFallback: comment.update.own)`). `usp_Comment_Assign`/`_Resolve` enforce row liveness
+  (`DeletedAt IS NULL`) so a concurrent delete can't be clobbered, and assign re-checks assignee workspace
+  membership. The only residual is a sub-second permission-revocation race over the app-layer ACL; closing it
+  atomically would mean duplicating the hierarchy ACL into SQL (or a cross-statement DB transaction over the
+  ACL) — explicitly rejected as ACL-logic duplication/drift. Residual accepted: bounded exposure, SP
+  guarantees existence + a valid assignee at write time.
+
+### 4. i18n stragglers closed
+Enum-derived priority labels (list/board/bulk now map to `Board.priority*` instead of raw enum), Views Engine
+UI (view-surface, board/list/table/calendar, filter-builder, bulk-bar, view-tabs), and hierarchy (SidebarTree
++ nodes; `HIERARCHY_LABELS` moved to a `Hierarchy` catalog namespace, `window.prompt` label translated).
+Calendar weekdays derive locale-correctly via native `Intl.DateTimeFormat` (no static array). New keys under
+`Views`/`Views.filters`/`Views.bulk`/`Views.tabs`/`Hierarchy` in BOTH `en.json` + `id.json` (real Indonesian);
+parity test green. INTENTIONALLY LEFT: free-text WorkflowStatus names (workspace-configured, not an enum) and
+`table-view` boolean Yes/No. Follow-up noted: set a global next-intl `timeZone` default in the i18n request
+config (pre-existing `ENVIRONMENT_FALLBACK` dev advisory surfaced in e2e logs).
+
+**Verification:** API 248 unit, web 98 unit + i18n parity, tsc clean (both packages), web production build OK;
+live e2e realtime+presence 2/2 (Bug C backstop never fired), views 6/6 + hierarchy 1/1. DB only local Docker
+`ProjectFlow_Test`.

@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatMonthYear } from '@/lib/date';
+import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
 import { taskFieldValue } from './field-options';
 import type { ViewTaskPageResult } from '@/server/queries/views';
 import type { Task } from '@/server/queries/normalize-task';
@@ -124,7 +125,14 @@ export function CalendarView({ taskPage, activeView, customFields = [] }: Props)
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const tasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
+  const baseTasks = useMemo(() => taskPage?.tasks ?? [], [taskPage]);
+  // Live `taskUpdated` deltas merged onto the SSR page. The subscription's
+  // projectId arg is a required truthy placeholder only — `task:updated` is a
+  // GLOBAL channel and scoping is done client-side by mergeTaskDelta's id-match
+  // against these visible tasks; `activeView.id` is a stable truthy key (and the
+  // same value Apollo can dedupe across the other view surfaces). A live dueDate
+  // change is patched by mergeTaskDelta, so the chip re-buckets to the new day.
+  const tasks = useLiveTasks(activeView.id, baseTasks);
   const dateField = activeView.config.dateField ?? DEFAULT_DATE_FIELD;
 
   // Hydration safety: the displayed month is parsed from the SSR-stable ?month=

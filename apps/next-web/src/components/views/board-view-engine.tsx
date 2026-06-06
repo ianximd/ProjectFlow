@@ -40,6 +40,7 @@ import { Board } from '@/components/Board';
 import type { BoardColumn } from '@/components/Column';
 import type { AssigneeRow } from '@/components/TaskCard';
 import { reorderTask } from '@/server/actions/tasks';
+import { useLiveTasks } from '@/lib/realtime/useLiveTasks';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -87,12 +88,20 @@ interface Props {
   workflowStatuses?: BoardWorkflowStatus[] | null;
 }
 
-export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _scopeId, scopeType: _scopeType, workflowStatuses }: Props) {
+export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId, scopeType: _scopeType, workflowStatuses }: Props) {
   const router       = useRouter();
   const pathname     = usePathname();
   const searchParams = useSearchParams();
 
   const tasks = useMemo<Task[]>(() => taskPage?.tasks ?? [], [taskPage]);
+
+  // Live `taskUpdated` deltas merged onto the SSR task set. `scopeId` is passed as
+  // the subscription's projectId arg, but the server channel `task:updated` is
+  // GLOBAL — the arg is just a required truthy placeholder; real scoping happens
+  // client-side via mergeTaskDelta's id-match against the visible tasks. Using a
+  // stable shared key (scopeId here, activeView.id on the other surfaces) lets
+  // Apollo dedupe the single subscription across views.
+  const liveTasks = useLiveTasks(scopeId, tasks);
 
   // ── Filter state (URL-persisted) — mirrors board-view.tsx ──────────────────
   const initialQ        = searchParams.get('q')        ?? '';
@@ -144,7 +153,7 @@ export function BoardViewEngine({ taskPage, activeView: _activeView, scopeId: _s
 
   // ── Optimistic reorder (same pattern as board-view.tsx) ────────────────────
   const [optimisticTasks, applyMove] = useOptimistic(
-    tasks,
+    liveTasks,
     (state: Task[], m: OptimisticMove) =>
       state.map((t) =>
         t.id === m.taskId

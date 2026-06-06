@@ -16,6 +16,7 @@ import { request, json } from '../../../__tests__/setup/testServer.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
 import { closePool, getPool } from '../../../shared/lib/db.js';
+import { commentService } from '../comment.service.js';
 
 beforeEach(async () => { await truncateAll(); });
 afterAll(async () => { await closePool(); });
@@ -275,5 +276,33 @@ describe('collaboration — assign / resolve', () => {
       json: { assigneeId: owner.user.Id },
     });
     expect(ownerAssign.status).toBe(200);
+  });
+
+  it('SP throws 51403 directly when assign/resolve called by a deprovisioned author (service-layer, bypasses HTTP middleware)', async () => {
+    // The REST-path test above verifies the end-to-end 403 mapping, but the
+    // removed-member is already blocked by the requirePermission middleware
+    // before the SP is reached.  This test calls commentService directly so
+    // the SP-level THROW 51403 guard is unambiguously exercised.
+    const { owner, member, ws, taskId } = await seedTaskWithMember();
+    const comment = await postComment(member.accessToken, taskId, 'SP guard target comment');
+
+    // Remove the comment author (member) from the workspace directly in the DB.
+    const pool = await getPool();
+    await pool.request()
+      .input('WorkspaceId', sql.UniqueIdentifier, ws.Id)
+      .input('UserId',      sql.UniqueIdentifier, member.user.Id)
+      .query('DELETE FROM dbo.WorkspaceMembers WHERE WorkspaceId = @WorkspaceId AND UserId = @UserId');
+
+    // assign: actor is the now-removed member; assignee is owner (still a member).
+    // The SP should THROW 51403 because the actor is no longer in WorkspaceMembers.
+    await expect(
+      commentService.assign(comment.id, owner.user.Id, member.user.Id),
+    ).rejects.toMatchObject({ number: 51403 });
+
+    // resolve: actor is the now-removed member.
+    // The SP should THROW 51403 for the same reason.
+    await expect(
+      commentService.resolve(comment.id, member.user.Id, true),
+    ).rejects.toMatchObject({ number: 51403 });
   });
 });

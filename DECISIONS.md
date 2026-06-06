@@ -549,3 +549,52 @@ subagents + a consolidated review, verified on local Docker `ProjectFlow_Test` +
 API **268 unit / 150 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
 green, e2e `dependencies` **1/1**. Branch `feat/phase5a-dependencies` (9 commits) → ff-merged to `main`
 locally (NOT pushed).
+
+## 2026-06-06 — Phase 5b Relationships + Rollup
+
+Spec §4; plan `docs/superpowers/plans/2026-06-06-phase5b-relationships.md`. Two new custom-field types
+extending the Phase-2 system.
+
+### Decisions
+- **`relationship`** (link tasks; `targetType: 'any'|'list'`) + **`rollup`** (read-only computed aggregate).
+  Migration `0035` adds the **`TaskRelationships`** link table (the **source of truth** for relationship
+  values — NOT `TaskCustomFieldValues` — so reverse lookups + rollup are clean SQL) and extends
+  `CK_CustomFields_Type` with both names (full prior list preserved).
+- **Value writes rejected on the generic path:** `relationship`/`rollup` writes via the custom-field value
+  endpoint throw `RELATIONSHIP_READONLY`/`ROLLUP_READONLY` (like `progress_auto`). Relationship values are
+  set via dedicated endpoints; rollup is computed.
+- **Rollup computed server-side** in `customfield.service.effectiveForTask` (the single read path the task
+  panel + `taskEffectiveFields` GraphQL use) via `relationshipService.computeRollup` + the pure
+  `aggregateRollup(fn, values)` (sum/avg/count/min/max/first/concat; empty → null, count → 0).
+- **`validateFieldConfig`** wired into field create/update: `relationship` requires `relationshipTargetType`
+  (+ `relationshipTargetListId` when `'list'`); `rollup` requires `rollupRelationshipFieldId` +
+  `rollupSourceField` (FieldRef builtin|custom) + `rollupFunction`. Bad config → 422.
+- **SPs:** `usp_TaskRelationship_Add/Remove/ListForField` (+ `usp_TaskCustomFieldValue_GetOne` for a single
+  value read). `Add` validates both tasks + the field ∈ `@WorkspaceId` (THROW 51600–51602).
+- **Dual surface:** REST `GET/POST/DELETE /tasks/:id/relationships/:fieldId` + GraphQL
+  `taskRelationships`/`addTaskRelationship`/`removeTaskRelationship`. VIEW to read, `task.update` to mutate.
+- **Frontend:** `FieldManager` config sub-forms for both types; `TaskDrawer` renders relationship → a
+  `RelationshipField` chip picker (search via `/search`), rollup → a read-only `RollupValue`. i18n
+  `Relationships`/`Rollup` namespaces (en/id parity).
+
+### Review fixes
+- **REAL crash — rollup-of-rollup recursion:** `readSourceValue` previously re-entered `effectiveForTask`
+  (which recomputes all rollups) → stack overflow if a rollup's source is another rollup. Now reads the one
+  custom value directly (`usp_TaskCustomFieldValue_GetOne`) and returns `null` if the source field is itself
+  a `rollup`. (Also removes most of the N+1.) Fan-out capped at 500 related tasks.
+- **Defense-in-depth (assessed NOT live-exploitable, hardened anyway):** the reviewer flagged the Remove/List
+  SPs lacking `@WorkspaceId` as cross-workspace CRITICALs. Traced: not exploitable — every op is keyed on
+  `FromTaskId = the ACL-gated route :taskId`, and a task's relationship rows are same-workspace by Add-time
+  validation, so a foreign `fieldId`/`toTaskId` matches no rows. Added `@WorkspaceId` to `Remove`/
+  `ListForField` + threaded it (consistency with `Add`); added the GraphQL `removeTaskRelationship`
+  `toTaskId` workspace guard and a `computeRollup` foreign-relationship-field guard.
+
+### Deferral (spec §4.8)
+- `relationship`/`rollup` are **not filterable/sortable/groupable** in the Views query compiler (display
+  only). Rollup shows in the **task panel**, not the Views table (the table custom-field-cell display is the
+  pre-existing Phase-3 v1 deferral).
+
+### Verification (local Docker `ProjectFlow_Test`)
+API **286 unit / 161 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build`
+green, e2e `relationships` **1/1** (rollup shows 8 = 3+5). Branch `feat/phase5b-relationships` (6 commits) →
+ff-merged to `main` locally (NOT pushed).

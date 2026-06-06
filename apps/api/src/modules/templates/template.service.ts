@@ -10,6 +10,7 @@ import { customFieldService } from '../customfields/customfield.service.js';
 import { ViewRepository } from '../views/view.repository.js';
 import { TagRepository } from '../tags/tag.repository.js';
 import { TaskRepository } from '../tasks/task.repository.js';
+import { TemplateApplier, templateApplier, type ApplyInput, type ApplyResult } from './template.apply.js';
 import type {
   Template, TemplateScopeType, TemplateSnapshot,
   TemplateTaskNode, TemplateListNode, TemplateFolderNode, TemplateSpaceNode,
@@ -51,6 +52,7 @@ export class TemplateService {
     private views: ViewRepository = new ViewRepository(),
     private tags: TagRepository = new TagRepository(),
     private taskRepo: TaskRepository = new TaskRepository(),
+    private applier: TemplateApplier = templateApplier,
   ) {}
 
   // ─── CRUD reads (metadata) ────────────────────────────────────────────────
@@ -75,6 +77,63 @@ export class TemplateService {
   async getSnapshotJson(id: string): Promise<string | null> {
     const row = await this.repo.getRowById(id);
     return row?.Snapshot ?? null;
+  }
+
+  // ─── Apply (Batch 2) ────────────────────────────────────────────────────────
+  /**
+   * Recreate a template's captured subtree under `targetParentId`, remapping all
+   * dates onto `anchorDate`. The WORKSPACE GUARD is enforced here (the IDOR
+   * lesson from 5a/5b): the template's workspace MUST equal the target's
+   * workspace, else we 404 — a caller may not splice a template from one
+   * workspace into another even if they happen to hold rights in both.
+   *
+   * Per-target CREATE permission is enforced by the route / GraphQL layer
+   * BEFORE this is called (SPACE → workspace project.create; FOLDER/LIST/TASK →
+   * object-level EDIT on the target). This method only carries the cross-
+   * workspace guard + the recreate.
+   */
+  async apply(templateId: string, input: ApplyInput, actorId: string): Promise<ApplyResult> {
+    const row = await this.repo.getRowById(templateId);
+    if (!row || row.DeletedAt != null) throw new TemplateNotFoundError();
+    const snapshot = JSON.parse(String(row.Snapshot)) as TemplateSnapshot;
+
+    const templateWorkspaceId = String(row.WorkspaceId);
+    const targetWorkspaceId = await this.resolveTargetWorkspaceId(snapshot.scopeType, input.targetParentId);
+    if (!targetWorkspaceId) throw new TemplateTargetNotFoundError();
+    if (targetWorkspaceId.toLowerCase() !== templateWorkspaceId.toLowerCase())
+      throw new TemplateWorkspaceMismatchError();
+
+    return this.applier.apply(snapshot, input, actorId, targetWorkspaceId);
+  }
+
+  /**
+   * The hierarchy object type of a FOLDER/LIST apply target — it lands under a
+   * SPACE or a FOLDER. Returns 'SPACE' when the id resolves as a Space, 'FOLDER'
+   * when it resolves as a Folder, else null (target not found → 404 at the
+   * route). Used by the route to pick the ACL object type for the EDIT check.
+   */
+  async resolveContainerTargetType(targetParentId: string): Promise<'SPACE' | 'FOLDER' | null> {
+    if (await this.cfRepo.getScopeNode('SPACE', targetParentId)) return 'SPACE';
+    if (await this.cfRepo.getScopeNode('FOLDER', targetParentId)) return 'FOLDER';
+    return null;
+  }
+
+  /**
+   * Workspace of an apply TARGET, by scope:
+   *   SPACE  → targetParentId IS the workspace id (the new Space lives there)
+   *   FOLDER → target is a SPACE or FOLDER; resolve its workspace
+   *   LIST   → target is a SPACE or FOLDER; resolve its workspace
+   *   TASK   → target is a LIST; resolve its workspace
+   * Used for the cross-workspace guard + handed to the route for authz.
+   */
+  async resolveTargetWorkspaceId(scopeType: TemplateScopeType, targetParentId: string): Promise<string | null> {
+    if (scopeType === 'SPACE') return targetParentId; // the workspace itself
+    if (scopeType === 'TASK') return this.lists.getWorkspaceId(targetParentId);
+    // FOLDER/LIST land under a SPACE or a FOLDER.
+    const asSpace = await this.cfRepo.getScopeNode('SPACE', targetParentId);
+    if (asSpace) return asSpace.workspaceId;
+    const asFolder = await this.cfRepo.getScopeNode('FOLDER', targetParentId);
+    return asFolder?.workspaceId ?? null;
   }
 
   // ─── Capture ──────────────────────────────────────────────────────────────
@@ -325,6 +384,21 @@ export class TemplateService {
 export class TemplateSourceNotFoundError extends Error {
   code = 'TEMPLATE_SOURCE_NOT_FOUND';
   constructor() { super('Template source node not found'); }
+}
+
+export class TemplateNotFoundError extends Error {
+  code = 'TEMPLATE_NOT_FOUND';
+  constructor() { super('Template not found'); }
+}
+
+export class TemplateTargetNotFoundError extends Error {
+  code = 'TEMPLATE_TARGET_NOT_FOUND';
+  constructor() { super('Apply target not found'); }
+}
+
+export class TemplateWorkspaceMismatchError extends Error {
+  code = 'TEMPLATE_WORKSPACE_MISMATCH';
+  constructor() { super('Template and target belong to different workspaces'); }
 }
 
 // ── Date utilities ──

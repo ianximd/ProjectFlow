@@ -1,6 +1,10 @@
 import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
-import { templateService, TemplateSourceNotFoundError } from '../modules/templates/template.service.js';
+import {
+  templateService, TemplateSourceNotFoundError,
+  TemplateNotFoundError, TemplateTargetNotFoundError, TemplateWorkspaceMismatchError,
+} from '../modules/templates/template.service.js';
+import { TemplateApplyError } from '../modules/templates/template.apply.js';
 import { roleService } from '../modules/roles/role.service.js';
 import { notFound, requireObjectLevel, requireWorkspacePermission, requireAuth } from './authz.js';
 import type { GQLContext } from './context.js';
@@ -27,10 +31,29 @@ async function authzCaptureSource(ctx: GQLContext, scopeType: TemplateScopeType,
   await requireObjectLevel(ctx, scopeType, sourceId, 'VIEW');
 }
 
+interface ApplyResultShape {
+  rootId: string;
+  counts: { lists: number; tasks: number; views: number; fields: number };
+}
+
 export function registerTemplatesGraphql(): void {
   // Snapshot is transported as a JSON string (mirrors SavedView.config /
   // TaskRecurrence.rule) — keeps the schema flat over the deep subtree.
   const TemplateType = builder.objectRef<Template>('Template');
+
+  // The apply result: the created root id + per-kind counts.
+  const ApplyCountsType = builder.objectRef<ApplyResultShape['counts']>('TemplateApplyCounts');
+  ApplyCountsType.implement({ fields: (t) => ({
+    lists:  t.exposeInt('lists'),
+    tasks:  t.exposeInt('tasks'),
+    views:  t.exposeInt('views'),
+    fields: t.exposeInt('fields'),
+  }) });
+  const ApplyResultType = builder.objectRef<ApplyResultShape>('TemplateApplyResult');
+  ApplyResultType.implement({ fields: (t) => ({
+    rootId: t.exposeString('rootId'),
+    counts: t.field({ type: ApplyCountsType, resolve: (r) => r.counts }),
+  }) });
   TemplateType.implement({ fields: (t) => ({
     id:          t.exposeString('id'),
     workspaceId: t.exposeString('workspaceId'),
@@ -87,6 +110,45 @@ export function registerTemplatesGraphql(): void {
         } catch (err) {
           if (err instanceof TemplateSourceNotFoundError)
             throw new GraphQLError(err.message, { extensions: { code: 'NOT_FOUND' } });
+          throw err;
+        }
+      },
+    }),
+    applyTemplate: t.field({
+      type: ApplyResultType,
+      args: {
+        id:              t.arg.string({ required: true }),
+        targetParentId:  t.arg.string({ required: true }),
+        anchorDate:      t.arg.string({ required: true }),
+        selectedItemIds: t.arg.stringList({ required: false }),
+      },
+      resolve: async (_, a, ctx) => {
+        requireAuth(ctx);
+        const tpl = await templateService.getById(a.id);
+        if (!tpl) notFound('Template not found');
+
+        // Scope-dependent create authz at the target (mirrors REST).
+        if (tpl!.scopeType === 'SPACE') {
+          await requireWorkspacePermission(ctx, a.targetParentId, 'project.create');
+        } else if (tpl!.scopeType === 'TASK') {
+          await requireObjectLevel(ctx, 'LIST', a.targetParentId, 'EDIT');
+        } else {
+          const objType = await templateService.resolveContainerTargetType(a.targetParentId);
+          if (!objType) notFound('Apply target not found');
+          await requireObjectLevel(ctx, objType, a.targetParentId, 'EDIT');
+        }
+
+        try {
+          return await templateService.apply(a.id, {
+            targetParentId: a.targetParentId,
+            anchorDate: a.anchorDate,
+            selectedItemIds: a.selectedItemIds ?? undefined,
+          }, ctx.user!.userId);
+        } catch (err) {
+          if (err instanceof TemplateNotFoundError || err instanceof TemplateTargetNotFoundError || err instanceof TemplateWorkspaceMismatchError)
+            throw new GraphQLError(err.message, { extensions: { code: 'NOT_FOUND' } });
+          if (err instanceof TemplateApplyError)
+            throw new GraphQLError(err.message, { extensions: { code: 'BAD_REQUEST' } });
           throw err;
         }
       },

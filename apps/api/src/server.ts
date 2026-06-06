@@ -52,6 +52,7 @@ import { ensureEnvAdminsPromoted } from './shared/lib/envAdminBootstrap.js';
 import { adminRoutes } from './modules/admin/admin.routes.js';
 import { ensureBucket } from './shared/lib/storage.js';
 import { yoga } from './graphql/yoga.js';
+import { guardedEventStream } from './graphql/sse-stream.js';
 
 /** Hono context Variables for authenticated routes */
 export type Variables = {
@@ -216,23 +217,51 @@ app.route('/outgoing-webhooks', webhookOutgoingRoutes);
 app.route('/admin',             adminRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
-// Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement)
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore – yoga type cascades from pre-existing schema.ts Pothos errors
-app.all('/graphql', async (c) => yoga.handle(c.req.raw, c));
+// Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).
+//
+// SSE bridge guard: for streaming subscription responses (text/event-stream) we
+// re-wrap Yoga's body in our own idempotent passthrough (`guardedEventStream`)
+// before handing it to @hono/node-server. That makes the stream @hono/node-server
+// pipes single-shot on teardown, so a routine SSE client disconnect can't trigger
+// the `ERR_INVALID_STATE: ReadableStream is already closed` double-close that used
+// to crash the API. Non-streaming JSON queries/mutations pass through UNCHANGED.
+app.all('/graphql', async (c) => {
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore – yoga type cascades from pre-existing schema.ts Pothos errors
+  const res: Response = await yoga.handle(c.req.raw, c);
+
+  const contentType = res.headers.get('content-type') ?? '';
+  const isSse = contentType.includes('text/event-stream');
+  if (isSse && res.body) {
+    return new Response(guardedEventStream(res.body), {
+      status:     res.status,
+      statusText: res.statusText,
+      headers:    res.headers,
+    });
+  }
+
+  return res;
+});
 
 // Boot side-effects (workers, MinIO bucket, env-admin promotion, HTTP
 // listener) only run when the process is actually a server. Tests import
 // `app` for in-process `app.request()` calls without paying for any of
 // this — and without binding port 3001 in vitest workers.
 if (process.env.NODE_ENV !== 'test') {
-  // ── SSE teardown guard ──────────────────────────────────────────────────────
+  // ── SSE teardown guard (DEFENSE-IN-DEPTH BACKSTOP) ───────────────────────────
   // graphql-yoga streams subscription responses as a web ReadableStream; when an
   // SSE client disconnects, @hono/node-server and Yoga can both close that stream,
   // and the second close throws `ERR_INVALID_STATE: ReadableStream is already
   // closed` from a microtask — an UNCAUGHT exception that would otherwise kill the
-  // whole API on a routine client disconnect. Swallow ONLY that benign race; keep
-  // fail-fast semantics for every other uncaught error.
+  // whole API on a routine client disconnect.
+  //
+  // The PRIMARY fix now lives at the /graphql bridge: `guardedEventStream` re-wraps
+  // every SSE body in a single-shot, exception-safe passthrough so the double-close
+  // is removed at the boundary @hono/node-server actually touches. This global
+  // handler is therefore now only a thin BACKSTOP — it should rarely or never fire.
+  // It still swallows ONLY that one benign race and keeps fail-fast (exit 1) for
+  // every other uncaught error, logging at warn-level so any residual fire is
+  // visible.
   const isBenignStreamTeardown = (err: any): boolean =>
     err?.code === 'ERR_INVALID_STATE' && /ReadableStream is already closed/.test(String(err?.message));
   process.on('uncaughtException', (err) => {

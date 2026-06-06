@@ -13,7 +13,8 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { ChevronRight, ChevronDown, Plus, Globe } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Globe, FileStack } from 'lucide-react';
+import type { TemplateScopeType } from '@projectflow/types';
 import { cn } from '@/lib/utils';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 import type { Project, Folder, List } from '@/server/queries/normalize';
@@ -23,6 +24,7 @@ import {
 } from '@/server/actions/hierarchy';
 import { midpoint } from '@/components/Board';
 import { ListNode } from './SidebarTreeNode';
+import { SaveAsTemplateModal } from '@/components/templates/SaveAsTemplateModal';
 
 export interface HierarchyTreeData {
   workspaceId: string;
@@ -38,6 +40,7 @@ type Adding = { kind: 'folder' | 'list'; spaceId: string; folderId: string | nul
 
 export function SidebarTree({ data }: { data: HierarchyTreeData }) {
   const t = useTranslations('Hierarchy');
+  const tt = useTranslations('Templates');
   const [, startTransition] = useTransition();
   // When the current route is a List page, reveal that list in the tree by
   // seeding the expanded set with its ancestry (space + folder). Client-only
@@ -61,6 +64,8 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
   });
   const [adding, setAdding] = useState<Adding>(null);
   const [addName, setAddName] = useState('');
+  // "Save as template" target for the shared modal (null = closed).
+  const [tplTarget, setTplTarget] = useState<{ scopeType: TemplateScopeType; id: string; name: string } | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const toggle = (id: string) =>
@@ -147,6 +152,7 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
             onToggle={() => toggle(space.id)}
             onAddFolder={() => { expand(space.id); setAdding({ kind: 'folder', spaceId: space.id, folderId: null }); setAddName(''); }}
             onAddList={() => { expand(space.id); setAdding({ kind: 'list', spaceId: space.id, folderId: null }); setAddName(''); }}
+            onSaveTemplate={() => setTplTarget({ scopeType: 'SPACE', id: space.id, name: space.name })}
           >
             {adding?.spaceId === space.id && adding.folderId === null && addInput}
             <DndContext
@@ -178,6 +184,13 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
                           {folder.name}
                         </span>
                         <button
+                          type="button" aria-label={tt('saveAsTemplate')} title={tt('saveAsTemplate')}
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+                          onClick={() => setTplTarget({ scopeType: 'FOLDER', id: folder.id, name: folder.name })}
+                        >
+                          <FileStack className="size-3.5" />
+                        </button>
+                        <button
                           type="button" data-testid="list-add" aria-label={t('addList')}
                           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
                           onClick={() => { expand(folder.id); setAdding({ kind: 'list', spaceId: space.id, folderId: folder.id }); setAddName(''); }}
@@ -196,7 +209,7 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
                         <>
                           {adding?.spaceId === space.id && adding.folderId === folder.id && addInput}
                           {folderLists.map((l) => (
-                            <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} />
+                            <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} onSaveTemplate={(id, n) => setTplTarget({ scopeType: 'LIST', id, name: n })} />
                           ))}
                         </>
                       )}
@@ -204,24 +217,35 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
                   );
                 })}
                 {folderless.map((l) => (
-                  <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} />
+                  <ListNode key={l.id} list={l} onRename={(id, n) => run(renameList(id, n))} onDelete={(id) => run(deleteList(id))} onSaveTemplate={(id, n) => setTplTarget({ scopeType: 'LIST', id, name: n })} />
                 ))}
               </SortableContext>
             </DndContext>
           </SpaceBlock>
         );
       })}
+
+      {tplTarget && (
+        <SaveAsTemplateModal
+          open={!!tplTarget}
+          onOpenChange={(o) => { if (!o) setTplTarget(null); }}
+          scopeType={tplTarget.scopeType}
+          sourceId={tplTarget.id}
+          defaultName={tplTarget.name}
+        />
+      )}
     </div>
   );
 }
 
 function SpaceBlock({
-  space, open, onToggle, onAddFolder, onAddList, children,
+  space, open, onToggle, onAddFolder, onAddList, onSaveTemplate, children,
 }: {
   space: Project; open: boolean; onToggle: () => void;
-  onAddFolder: () => void; onAddList: () => void; children: React.ReactNode;
+  onAddFolder: () => void; onAddList: () => void; onSaveTemplate: () => void; children: React.ReactNode;
 }) {
   const t = useTranslations('Hierarchy');
+  const tt = useTranslations('Templates');
   return (
     <div>
       <div
@@ -233,6 +257,13 @@ function SpaceBlock({
         </button>
         <SpaceIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="grow truncate">{space.name}</span>
+        <button
+          type="button" aria-label={tt('saveAsTemplate')} title={tt('saveAsTemplate')}
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+          onClick={onSaveTemplate}
+        >
+          <FileStack className="size-3.5" />
+        </button>
         <button
           type="button" data-testid="folder-add" aria-label={t('addFolder')}
           className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"

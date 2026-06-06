@@ -28,6 +28,7 @@ import { TagPicker } from './TagPicker';
 import { WatcherControl } from './WatcherControl';
 import { DependenciesSection } from './tasks/dependencies-section';
 import { RecurrenceEditor } from './tasks/recurrence-editor';
+import { SaveAsTemplateModal } from './templates/SaveAsTemplateModal';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -181,6 +182,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   );
   // DEPENDENCY_BLOCKED warning: the blockers returned by the 409, shown in a modal.
   const [blockers, setBlockers] = useState<Blocker[] | null>(null);
+  // "Save as template" dialog (captures this task as a TASK-scoped template).
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  const tTpl = useTranslations('Templates');
   // The task's effective workflow statuses, fetched on open (empty until loaded
   // or when the task has no workflow — the select then uses DEFAULT_STATUS_OPTIONS).
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
@@ -432,6 +436,18 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             </span>
           )}
           <PresenceBar viewers={viewers} currentUserId={currentUserId} />
+          <button
+            type="button"
+            className={styles.closeBtn}
+            onClick={() => setSaveTemplateOpen(true)}
+            aria-label={tTpl('saveAsTemplate')}
+            title={tTpl('saveAsTemplate')}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+              <path d="M8 4v6h8" />
+            </svg>
+          </button>
           <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -1113,6 +1129,15 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
       </div>
       {blockers && (
         <BlockerDialog blockers={blockers} onClose={() => setBlockers(null)} />
+      )}
+      {saveTemplateOpen && (
+        <SaveAsTemplateModal
+          open={saveTemplateOpen}
+          onOpenChange={setSaveTemplateOpen}
+          scopeType="TASK"
+          sourceId={taskId}
+          defaultName={title === '(untitled)' ? '' : title}
+        />
       )}
     </>
   );

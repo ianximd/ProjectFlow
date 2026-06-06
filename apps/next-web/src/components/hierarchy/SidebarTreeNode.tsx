@@ -5,22 +5,26 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { FileStack } from 'lucide-react';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 import type { List } from '@/server/queries/normalize';
 
 const ListIcon = HIERARCHY_ICONS.list;
 
-/** A single (sortable) List row: link + inline rename + delete. */
+/** A single (sortable) List row: link + inline rename + delete + save-as-template. */
 export function ListNode({
   list,
   onRename,
   onDelete,
+  onSaveTemplate,
 }: {
   list: List;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onSaveTemplate: (id: string, name: string) => void;
 }) {
   const t = useTranslations('Hierarchy');
+  const tt = useTranslations('Templates');
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: list.id });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
@@ -66,6 +70,15 @@ export function ListNode({
           <Link href={`/lists/${list.id}`} className="grow truncate" onDoubleClick={() => setEditing(true)}>
             {list.name}
           </Link>
+          <button
+            type="button"
+            aria-label={tt('saveAsTemplate')}
+            title={tt('saveAsTemplate')}
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+            onClick={(e) => { e.preventDefault(); onSaveTemplate(list.id, list.name); }}
+          >
+            <FileStack className="size-3.5" />
+          </button>
           {!list.isDefault && (
             <button
               type="button"

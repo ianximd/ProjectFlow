@@ -4,6 +4,7 @@ import {
   BookOpen,
   Braces,
   Building2,
+  FileStack,
   Folder,
   GitBranch,
   GitPullRequest,
@@ -30,6 +31,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { heading: 'Plan',          headingKey: 'headingPlan' },
   { title: 'Epics',     labelKey: 'epics',     icon: Layers,          path: '/epics' },
   { title: 'Versions',  labelKey: 'versions',  icon: BookOpen,        path: '/versions' },
+  { title: 'Templates', labelKey: 'templates', icon: FileStack,       path: '/templates' },
 
   { heading: 'Configure',     headingKey: 'headingConfigure' },
   { title: 'Workflows',     labelKey: 'workflows',     icon: Workflow,       path: '/workflows' },

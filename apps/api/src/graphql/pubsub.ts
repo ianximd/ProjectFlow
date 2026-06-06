@@ -7,7 +7,7 @@ import { registerCloser } from '../shared/lib/shutdown.js';
 const log = subLogger('pubsub');
 
 export type PubSubChannels = {
-  'task:updated':    [{ projectId: string; task: unknown }];
+  'task:event': [scopeKey: string, { kind: 'created' | 'updated' | 'deleted'; projectId: string; task?: unknown; taskId?: string }];
   'comment:created': [{ taskId: string;   comment: unknown }];
   'space:updated':   [{ workspaceId: string; space: unknown }];
   'folder:updated':  [{ spaceId: string; folder: unknown }];

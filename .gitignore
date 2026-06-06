@@ -36,3 +36,6 @@ test-results
 *.njsproj
 *.sln
 *.sw?
+
+# compiled script output (regenerable)
+dist-scripts/

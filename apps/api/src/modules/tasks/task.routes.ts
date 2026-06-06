@@ -11,7 +11,7 @@ import { pubsub } from '../../graphql/pubsub.js';
 import { publishTaskEvent, publishTaskMove } from '../../graphql/task-events.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
-import { DependencyWarningError } from '../dependencies/dependency.service.js';
+import { DependencyWarningError, dependencyService } from '../dependencies/dependency.service.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { watcherService } from '../watchers/watcher.service.js';
@@ -284,6 +284,56 @@ taskRoutes.delete(
     await invalidateTaskCaches();
     pubsub.publish('watcher:updated', { taskId: c.req.param('id')!, userId: c.req.param('userId')! });
     return c.json({ data: { taskId: c.req.param('id'), userId: c.req.param('userId') } });
+  });
+
+// ── Dependencies (Phase 5a) ──────────────────────────────────────────────────
+// Canonical task-scoped dependency edges. Mirrors the watchers sub-resource:
+// VIEW (requireObjectAccess) for the read, task.update (requirePermission) for
+// the writes. The service maps the relation to the directed (waitingOn, dependsOn)
+// edge; the SP enforces self/circular guards (51500 / 51501).
+
+// GET /api/v1/tasks/:id/dependencies — VIEW on the task's list (IDOR guard).
+taskRoutes.get('/:id/dependencies',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await dependencyService.list(c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/dependencies  { dependsOnId, relation? } — add an edge.
+taskRoutes.post(
+  '/:id/dependencies',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    const taskId = c.req.param('id')!;
+    const body = await c.req.json().catch(() => ({}));
+    const dependsOnId = body?.dependsOnId;
+    const relation = body?.relation === 'blocking' ? 'blocking' : 'waiting_on';
+    if (!dependsOnId || typeof dependsOnId !== 'string') {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'dependsOnId is required' } }, 400);
+    }
+    try {
+      const workspaceId = await taskRepo.getWorkspaceId(taskId);
+      if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      const row = await dependencyService.add(taskId, dependsOnId, relation, workspaceId);
+      await invalidateTaskCaches();
+      return c.json({ data: row }, 201);
+    } catch (err: any) {
+      if (err.number === 51500) return c.json({ error: { code: 'INVALID_DEPENDENCY', message: err.message } }, 422);
+      if (err.number === 51501) return c.json({ error: { code: 'CIRCULAR_DEPENDENCY', message: err.message } }, 422);
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/dependencies/:otherId?relation= — remove an edge.
+taskRoutes.delete(
+  '/:id/dependencies/:otherId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    const relation = c.req.query('relation') === 'blocking' ? 'blocking' : 'waiting_on';
+    await dependencyService.remove(c.req.param('id')!, c.req.param('otherId')!, relation);
+    await invalidateTaskCaches();
+    return c.body(null, 204);
   });
 
 // PATCH /api/v1/tasks/:id/position — drag-end persistence. Optional status

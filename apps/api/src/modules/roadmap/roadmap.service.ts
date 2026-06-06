@@ -1,7 +1,10 @@
 import { RoadmapRepository } from './roadmap.repository.js';
 import type { RoadmapItemRow } from './roadmap.repository.js';
+import { dependencyService } from '../dependencies/dependency.service.js';
+import { TaskRepository } from '../tasks/task.repository.js';
 
 const repo = new RoadmapRepository();
+const taskRepo = new TaskRepository();
 
 function toIsoDate(d: Date | null): string | null {
   if (!d) return null;
@@ -61,11 +64,18 @@ export class RoadmapService {
     return row;
   }
 
-  async addDependency(taskId: string, dependsOn: string, type?: string) {
-    return repo.addDependency(taskId, dependsOn, type);
+  // Phase 5a: delegate to the canonical dependency edge service. The roadmap's
+  // (taskId, dependsOn) pair means "taskId waits on dependsOn", which maps to
+  // relation 'waiting_on' — the same direction the SP hard-codes. The legacy
+  // `type` param is no longer carried by the edge (the SP fixes Type to
+  // 'waiting_on'); it's accepted-and-ignored to preserve the route contract.
+  async addDependency(taskId: string, dependsOn: string, _type?: string) {
+    const workspaceId = await taskRepo.getWorkspaceId(taskId);
+    if (!workspaceId) throw new Error('Task not found');
+    return dependencyService.add(taskId, dependsOn, 'waiting_on', workspaceId);
   }
 
   async removeDependency(taskId: string, dependsOn: string) {
-    return repo.removeDependency(taskId, dependsOn);
+    return dependencyService.remove(taskId, dependsOn, 'waiting_on');
   }
 }

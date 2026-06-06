@@ -10,6 +10,7 @@ import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
+import { registerDependenciesGraphql } from './dependencies.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { requireObjectLevel } from './authz.js';
@@ -737,6 +738,12 @@ registerTagsGraphql();
 // Watchers (Phase 2) — TaskWatcher type + taskWatchers query + add/remove.
 // ─────────────────────────────────────────
 registerWatchersGraphql();
+
+// ─────────────────────────────────────────
+// Dependencies (Phase 5a) — TaskDependencyRef/TaskDependencyLists types +
+// taskDependencies query + addTaskDependency/removeTaskDependency mutations.
+// ─────────────────────────────────────────
+registerDependenciesGraphql();
 
 // ─────────────────────────────────────────
 // Views (Phase 3) — SavedView/ViewTaskPage/ViewGroup types + savedViews/

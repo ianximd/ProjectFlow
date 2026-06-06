@@ -471,6 +471,11 @@ builder.queryType({
 // ─────────────────────────────────────────
 // Mutations
 // ─────────────────────────────────────────
+// Task SPs return PascalCase columns (Id, ProjectId, …) with no normalization,
+// so reading `.projectId` on an SP-returned task is undefined. The task:event
+// pubsub topic is keyed on projectId (prj:{projectId}); an undefined key
+// delivers to no subscriber. Coalesce both casings at every publish site.
+const eventProjectId = (t: any): string => (t?.projectId ?? t?.ProjectId ?? null) as string;
 builder.mutationType({
   fields: (t) => ({
     /** Create a new task */
@@ -481,7 +486,7 @@ builder.mutationType({
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
         const task = await taskService.createTask(input as any, actorId);
-        await publishTaskEvent('created', { projectId: (task as any).projectId, task });
+        await publishTaskEvent('created', { projectId: eventProjectId(task), task });
         return task as any;
       },
     }),
@@ -499,7 +504,7 @@ builder.mutationType({
         const actorId = (ctx.user as any).userId;
         const task = await taskService.updateTask(id, input as any, actorId);
         if (task) {
-          await publishTaskEvent('updated', { projectId: (task as any).projectId, task });
+          await publishTaskEvent('updated', { projectId: eventProjectId(task), task });
         }
         return task as any;
       },
@@ -516,7 +521,7 @@ builder.mutationType({
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
         const task = await taskService.transitionTask(id, status, actorId);
-        await publishTaskEvent('updated', { projectId: (task as any).projectId, task });
+        await publishTaskEvent('updated', { projectId: eventProjectId(task), task });
         return task as any;
       },
     }),
@@ -529,7 +534,7 @@ builder.mutationType({
         requireAuth(ctx);
         const actorId = (ctx.user as any).userId;
         const task = await taskService.deleteTask(id, actorId);
-        await publishTaskEvent('deleted', { projectId: (task as any).projectId, taskId: id });
+        await publishTaskEvent('deleted', { projectId: eventProjectId(task), taskId: id });
         return true;
       },
     }),

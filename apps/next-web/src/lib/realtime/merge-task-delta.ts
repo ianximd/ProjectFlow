@@ -1,12 +1,12 @@
 import type { Task } from '@/server/queries/normalize-task';
 
 /**
- * The camelCase fields carried by the `taskUpdated` GraphQL subscription
- * (`TASK_UPDATED` in ./operations). Every field beyond `id` is optional and
- * nullable on purpose: the server emits this from several publish sites, at
- * least one of which sends a partial payload (the custom-field value-set path
- * publishes only `{ task: { id } }`). Consumers MUST treat an absent/null field
- * as "unchanged", never "cleared".
+ * Per-event task payload shape consumed by `applyTaskEvent` (from the
+ * `taskEvents` / `TASK_EVENTS` subscription). Every field beyond `id` is
+ * optional and nullable on purpose: the server emits this from several publish
+ * sites, at least one of which sends a partial payload (the custom-field
+ * value-set path publishes only `{ task: { id } }`). Consumers MUST treat an
+ * absent/null field as "unchanged", never "cleared".
  */
 export interface TaskDelta {
   id: string;

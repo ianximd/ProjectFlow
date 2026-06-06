@@ -9,8 +9,8 @@ export interface LiveTask extends TaskDelta {
 
 export interface TaskEvent {
   kind: 'created' | 'updated' | 'deleted';
-  taskId?: string | null;
-  task?: LiveTask | null;
+  taskId?: string | null; // present only on `deleted` events
+  task?: LiveTask | null; // present on `created` and `updated` events
 }
 
 /** GraphQL full-task payload → client Task (normalizeTask is casing-tolerant). */
@@ -30,6 +30,7 @@ export function applyTaskEvent(
   }
   if (!ev.task) return tasks;
   if (ev.kind === 'updated') {
+    // `accepts` is intentionally not consulted: updates only touch tasks already in view.
     return mergeTaskDelta(tasks, ev.task as TaskDelta);
   }
   // created

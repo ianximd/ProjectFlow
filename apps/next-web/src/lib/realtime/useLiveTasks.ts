@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSubscription } from '@apollo/client/react';
 import type { Task } from '@/server/queries/normalize-task';
 import { TASK_EVENTS } from './operations';
@@ -25,6 +25,13 @@ export function useLiveTasks(
   const [tasks, setTasks] = useState<Task[]>(base);
   useEffect(() => { setTasks(base); }, [base]);
 
+  // Ref-stabilizer: always reflects the latest `accepts` predicate without
+  // being part of the subscription's dependency closure, so callers can pass
+  // non-stable lambdas (e.g. `t => t.listId === listScopeId`) without
+  // re-creating the subscription on every render.
+  const acceptsRef = useRef(accepts);
+  useEffect(() => { acceptsRef.current = accepts; });
+
   const projectId = scope.projectId ?? null;
   const workspaceId = scope.workspaceId ?? null;
   const enabled = Boolean(projectId || workspaceId);
@@ -35,7 +42,7 @@ export function useLiveTasks(
     onData: ({ data }) => {
       const ev = data.data?.taskEvents;
       if (!ev) return;
-      setTasks((prev) => applyTaskEvent(prev, ev, accepts));
+      setTasks((prev) => applyTaskEvent(prev, ev, acceptsRef.current));
     },
   });
 

@@ -71,6 +71,16 @@ export async function fanOutTaskEvent(
 }
 
 /**
+ * Debounce key for a TASK_UPDATED fan-out. Keyed by taskId AND change type so
+ * that DIFFERENT change types (e.g. 'status' vs 'assignees') on the same task
+ * never coalesce — each gets its own gate — while bursts of the SAME change
+ * type within the window still coalesce (the intended debounce). Centralized
+ * here so every call site keys identically and can't drift.
+ */
+export const taskUpdatedDebounceKey = (taskId: string, change: string): string =>
+  `notif:debounce:TASK_UPDATED:${taskId}:${change}`;
+
+/**
  * Returns true at most once per `ttlSeconds` for a given key (Redis SET NX EX).
  * Fails OPEN (returns true) if Redis is unavailable — better to notify than to
  * silently drop. Used to coalesce noisy TASK_UPDATED bursts.

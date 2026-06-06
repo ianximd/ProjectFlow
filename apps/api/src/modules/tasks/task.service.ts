@@ -1,6 +1,6 @@
 import { TaskRepository, type AssigneeRow } from './task.repository.js';
 import { notificationService } from '../notifications/notification.service.js';
-import { fanOutTaskEvent, debounceGate } from '../notifications/fanout.js';
+import { fanOutTaskEvent, debounceGate, taskUpdatedDebounceKey } from '../notifications/fanout.js';
 import { watcherService } from '../watchers/watcher.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
 import { customFieldService } from '../customfields/customfield.service.js';
@@ -85,7 +85,7 @@ export class TaskService {
       // New assignees auto-watch the task.
       for (const r of rows) void watcherService.add(taskId, r.UserId).catch(() => {});
 
-      if (await debounceGate(`notif:debounce:TASK_UPDATED:${taskId}`, 60)) {
+      if (await debounceGate(taskUpdatedDebounceKey(taskId, 'assignees'), 60)) {
         void fanOutTaskEvent(taskId, actorId, 'TASK_UPDATED', {
           taskId, taskTitle: (before as any).title ?? (before as any).Title ?? '',
           change: 'assignees',
@@ -124,7 +124,7 @@ export class TaskService {
     }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));;
 
     // Notify watchers of a meaningful status change (debounced to avoid spam).
-    if (await debounceGate(`notif:debounce:TASK_UPDATED:${taskId}`, 60)) {
+    if (await debounceGate(taskUpdatedDebounceKey(taskId, 'status'), 60)) {
       void fanOutTaskEvent(taskId, actorId, 'TASK_UPDATED', {
         taskId, taskTitle: (task as any).title ?? (task as any).Title ?? '',
         change: 'status', status: newStatus,

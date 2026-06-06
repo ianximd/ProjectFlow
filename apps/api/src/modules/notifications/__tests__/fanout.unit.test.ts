@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { computeRecipients } from '../fanout.js';
+import { computeRecipients, taskUpdatedDebounceKey } from '../fanout.js';
 
 const R = 'aaaaaaaa-0000-0000-0000-000000000001'; // reporter
 const X = 'aaaaaaaa-0000-0000-0000-000000000002'; // assignee
@@ -31,6 +31,31 @@ describe('computeRecipients', () => {
 
   it('handles empty/missing inputs', () => {
     expect(computeRecipients({ reporterId: null, assigneeIds: [], watcherIds: [], actorId: ACTOR })).toEqual([]);
+  });
+});
+
+describe('taskUpdatedDebounceKey', () => {
+  const TASK = 'bbbbbbbb-0000-0000-0000-000000000001';
+
+  it('discriminates by change type so different changes do not coalesce', () => {
+    // Two DISTINCT change types on the same task must produce DISTINCT keys.
+    // The debounce gate is keyed by these strings, so distinct keys = both
+    // independently pass Redis SET NX (neither is suppressed by the other).
+    const statusKey    = taskUpdatedDebounceKey(TASK, 'status');
+    const assigneesKey = taskUpdatedDebounceKey(TASK, 'assignees');
+    expect(statusKey).not.toBe(assigneesKey);
+  });
+
+  it('coalesces bursts of the SAME change type within the window', () => {
+    // Same change type on the same task → identical key → second SET NX is
+    // suppressed by the first (the intended debounce behavior).
+    expect(taskUpdatedDebounceKey(TASK, 'status')).toBe(taskUpdatedDebounceKey(TASK, 'status'));
+  });
+
+  it('namespaces the key under notif:debounce:TASK_UPDATED:<taskId>:<change>', () => {
+    expect(taskUpdatedDebounceKey(TASK, 'assignees')).toBe(
+      `notif:debounce:TASK_UPDATED:${TASK}:assignees`,
+    );
   });
 });
 

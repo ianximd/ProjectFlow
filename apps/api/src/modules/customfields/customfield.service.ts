@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { CustomFieldRepository } from './customfield.repository.js';
-import { validateFieldValue } from './validators.js';
+import { validateFieldValue, validateFieldConfig } from './validators.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from './customfield.errors.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
+import { relationshipService } from '../relationships/relationship.service.js';
 import type { CustomField, CustomFieldConfig, CustomFieldScopeType, CustomFieldType, EffectiveField } from '@projectflow/types';
 
 export class CustomFieldService {
@@ -13,6 +14,8 @@ export class CustomFieldService {
     scopeType: CustomFieldScopeType; scopeId: string; type: CustomFieldType;
     name: string; config: CustomFieldConfig | null; required: boolean; position: number;
   }): Promise<CustomField | null> {
+    const cfg = validateFieldConfig(input.type, input.config);
+    if (!cfg.valid) throw new FieldValidationError(cfg.code ?? 'INVALID_CONFIG', cfg.message ?? 'Invalid field config');
     const node = await this.repo.getScopeNode(input.scopeType, input.scopeId);
     if (!node) return null;
     const id = randomUUID().toUpperCase();
@@ -24,7 +27,18 @@ export class CustomFieldService {
     });
   }
 
-  update(id: string, p: { name?: string; config?: CustomFieldConfig | null; clearConfig?: boolean; required?: boolean }) {
+  async update(id: string, p: { name?: string; config?: CustomFieldConfig | null; clearConfig?: boolean; required?: boolean }) {
+    // When a new config is supplied (or it's being cleared), re-validate it
+    // against the field's existing type so relationship/rollup config stays
+    // well-formed. A bare name/required update (no config key) skips this.
+    if (p.config !== undefined || p.clearConfig) {
+      const existing = await this.repo.getById(id);
+      if (existing) {
+        const nextConfig = p.clearConfig ? null : (p.config ?? null);
+        const cfg = validateFieldConfig(existing.type, nextConfig);
+        if (!cfg.valid) throw new FieldValidationError(cfg.code ?? 'INVALID_CONFIG', cfg.message ?? 'Invalid field config');
+      }
+    }
     return this.repo.update(id, {
       name: p.name,
       config: p.config === undefined ? undefined : (p.config ? JSON.stringify(p.config) : null),
@@ -36,7 +50,21 @@ export class CustomFieldService {
   delete(id: string) { return this.repo.delete(id); }
   list(scopeType: CustomFieldScopeType, scopeId: string) { return this.repo.list(scopeType, scopeId); }
   reorder(id: string, position: number) { return this.repo.reorder(id, position); }
-  effectiveForTask(taskId: string): Promise<EffectiveField[]> { return this.repo.effectiveForTask(taskId); }
+
+  /**
+   * Resolve a task's effective custom fields + values. `rollup`-type fields have
+   * no stored value (TaskCustomFieldValues row is always absent — writes are
+   * rejected) so their value is COMPUTED here from the related tasks. All other
+   * field types pass through with their stored value.
+   */
+  async effectiveForTask(taskId: string): Promise<EffectiveField[]> {
+    const fields = await this.repo.effectiveForTask(taskId);
+    return Promise.all(fields.map(async (ef) => {
+      if (ef.field.type !== 'rollup') return ef;
+      return { field: ef.field, value: await relationshipService.computeRollup(taskId, ef.field) };
+    }));
+  }
+
   getById(id: string) { return this.repo.getById(id); }
 
   /**

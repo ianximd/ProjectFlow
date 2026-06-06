@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateFieldValue } from '../validators.js';
+import { validateFieldValue, validateFieldConfig } from '../validators.js';
 import type { CustomFieldConfig, CustomFieldType } from '@projectflow/types';
 
 function ok(type: CustomFieldType, value: unknown, config: CustomFieldConfig | null = null) {
@@ -60,5 +60,40 @@ describe('validateFieldValue', () => {
   it('people requires an array of strings (membership checked in the service)', () => {
     expect(ok('people', ['u1', 'u2']).valid).toBe(true);
     expect(ok('people', 'u1').valid).toBe(false);
+  });
+  it('relationship rejects any direct value write', () => {
+    expect(ok('relationship', 'TASK-1').valid).toBe(false);
+    expect(ok('relationship', 'TASK-1').code).toBe('RELATIONSHIP_READONLY');
+  });
+  it('rollup rejects any direct value write', () => {
+    expect(ok('rollup', 42).valid).toBe(false);
+    expect(ok('rollup', 42).code).toBe('ROLLUP_READONLY');
+  });
+});
+
+describe('validateFieldConfig', () => {
+  it('passes through unconstrained types', () => {
+    expect(validateFieldConfig('text', null).valid).toBe(true);
+    expect(validateFieldConfig('number', { precision: 2 }).valid).toBe(true);
+  });
+  it("relationship requires a valid targetType", () => {
+    expect(validateFieldConfig('relationship', { relationshipTargetType: 'any' }).valid).toBe(true);
+    expect(validateFieldConfig('relationship', null).valid).toBe(false);
+    expect(validateFieldConfig('relationship', { relationshipTargetType: 'bad' as any }).valid).toBe(false);
+  });
+  it("relationship 'list' requires relationshipTargetListId", () => {
+    expect(validateFieldConfig('relationship', { relationshipTargetType: 'list' }).valid).toBe(false);
+    expect(validateFieldConfig('relationship', { relationshipTargetType: 'list', relationshipTargetListId: 'L1' }).valid).toBe(true);
+  });
+  it('rollup requires relationshipFieldId + sourceField + function', () => {
+    const good: CustomFieldConfig = {
+      rollupRelationshipFieldId: 'F1',
+      rollupSourceField: { kind: 'builtin', key: 'storyPoints' },
+      rollupFunction: 'sum',
+    };
+    expect(validateFieldConfig('rollup', good).valid).toBe(true);
+    expect(validateFieldConfig('rollup', { ...good, rollupRelationshipFieldId: undefined }).valid).toBe(false);
+    expect(validateFieldConfig('rollup', { ...good, rollupSourceField: undefined }).valid).toBe(false);
+    expect(validateFieldConfig('rollup', { ...good, rollupFunction: 'bad' as any }).valid).toBe(false);
   });
 });

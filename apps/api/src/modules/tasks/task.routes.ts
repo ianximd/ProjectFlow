@@ -12,6 +12,7 @@ import { publishTaskEvent, publishTaskMove } from '../../graphql/task-events.js'
 import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 import { DependencyWarningError, dependencyService } from '../dependencies/dependency.service.js';
+import { relationshipService, RelationshipNotFoundError } from '../relationships/relationship.service.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { watcherService } from '../watchers/watcher.service.js';
@@ -337,6 +338,60 @@ taskRoutes.delete(
   async (c) => {
     const relation = c.req.query('relation') === 'blocking' ? 'blocking' : 'waiting_on';
     await dependencyService.remove(c.req.param('id')!, c.req.param('otherId')!, relation);
+    await invalidateTaskCaches();
+    return c.body(null, 204);
+  });
+
+// ── Relationships (Phase 5b) ─────────────────────────────────────────────────
+// Task links for a `relationship` custom field. Source of truth is the
+// TaskRelationships link table (not TaskCustomFieldValues). VIEW to read,
+// task.update to mutate. The POST carries the 5a cross-workspace IDOR guard:
+// resolve the toTask's workspace and 404 on a mismatch (no existence leak).
+
+// GET /api/v1/tasks/:id/relationships/:fieldId — VIEW on the task's list.
+taskRoutes.get('/:id/relationships/:fieldId',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await relationshipService.list(c.req.param('fieldId')!, c.req.param('id')!) }));
+
+// POST /api/v1/tasks/:id/relationships/:fieldId  { toTaskId } — link a task.
+taskRoutes.post(
+  '/:id/relationships/:fieldId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    const fromTaskId = c.req.param('id')!;
+    const fieldId    = c.req.param('fieldId')!;
+    const body = await c.req.json().catch(() => ({}));
+    const toTaskId = body?.toTaskId;
+    if (!toTaskId || typeof toTaskId !== 'string') {
+      return c.json({ error: { code: 'BAD_REQUEST', message: 'toTaskId is required' } }, 400);
+    }
+    try {
+      const workspaceId = await taskRepo.getWorkspaceId(fromTaskId);
+      if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      // Cross-workspace IDOR guard: the toTask must live in the SAME workspace.
+      const toWs = await taskRepo.getWorkspaceId(toTaskId);
+      if (!toWs || toWs !== workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      const data = await relationshipService.add(fieldId, fromTaskId, toTaskId, workspaceId);
+      await invalidateTaskCaches();
+      return c.json({ data }, 201);
+    } catch (err: any) {
+      if (err instanceof RelationshipNotFoundError) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 51600) return c.json({ error: { code: 'RELATIONSHIP_FIELD_NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 51601 || err.number === 51602) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      if (err.number === 51603) return c.json({ error: { code: 'INVALID_RELATIONSHIP', message: err.message } }, 422);
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/relationships/:fieldId/:toTaskId — unlink a task.
+taskRoutes.delete(
+  '/:id/relationships/:fieldId/:toTaskId',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await relationshipService.remove(c.req.param('fieldId')!, c.req.param('id')!, c.req.param('toTaskId')!);
     await invalidateTaskCaches();
     return c.body(null, 204);
   });

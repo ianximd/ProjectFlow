@@ -75,7 +75,50 @@ export function validateFieldValue(
         ? okResult : fail('BAD_PROGRESS', 'Value must be an integer between 0 and 100');
     case 'progress_auto':
       return fail('PROGRESS_AUTO_READONLY', 'progress_auto is computed and cannot be set directly');
+    case 'relationship':
+      // Relationship values live in the TaskRelationships link table and are set
+      // via the dedicated /relationships endpoints, not the generic value path.
+      return fail('RELATIONSHIP_READONLY', 'relationship values are set via the relationships endpoints');
+    case 'rollup':
+      // Rollup is computed (read-only) from related tasks, like progress_auto.
+      return fail('ROLLUP_READONLY', 'rollup is computed and cannot be set directly');
     default:
       return fail('UNKNOWN_TYPE', `Unknown field type: ${type}`);
+  }
+}
+
+const ROLLUP_FUNCTIONS = new Set(['sum', 'avg', 'count', 'min', 'max', 'first', 'concat']);
+
+/**
+ * Validates a field's CONFIG at create/update time (NOT the per-task value).
+ * Most field types accept any config; only `relationship` and `rollup` have
+ * required-shape config introduced in Phase 5b. Returns `okResult` for types
+ * with no config constraints so callers can wire this unconditionally.
+ */
+export function validateFieldConfig(
+  type: CustomFieldType,
+  config: CustomFieldConfig | null,
+): ValidationResult {
+  switch (type) {
+    case 'relationship': {
+      const target = config?.relationshipTargetType;
+      if (target !== 'any' && target !== 'list')
+        return fail('BAD_RELATIONSHIP_CONFIG', "relationship requires relationshipTargetType 'any' or 'list'");
+      if (target === 'list' && !isString(config?.relationshipTargetListId))
+        return fail('BAD_RELATIONSHIP_CONFIG', "relationshipTargetListId is required when relationshipTargetType is 'list'");
+      return okResult;
+    }
+    case 'rollup': {
+      if (!isString(config?.rollupRelationshipFieldId))
+        return fail('BAD_ROLLUP_CONFIG', 'rollup requires rollupRelationshipFieldId');
+      const src = config?.rollupSourceField;
+      if (!src || (src.kind !== 'builtin' && src.kind !== 'custom') || !isString(src.key))
+        return fail('BAD_ROLLUP_CONFIG', 'rollup requires a valid rollupSourceField');
+      if (!config?.rollupFunction || !ROLLUP_FUNCTIONS.has(config.rollupFunction))
+        return fail('BAD_ROLLUP_CONFIG', 'rollup requires a valid rollupFunction');
+      return okResult;
+    }
+    default:
+      return okResult;
   }
 }

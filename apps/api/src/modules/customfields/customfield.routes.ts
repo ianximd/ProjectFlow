@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { customFieldService } from './customfield.service.js';
 import { CustomFieldRepository } from './customfield.repository.js';
+import { FieldValidationError } from './customfield.errors.js';
 import { requireObjectAccess } from '../access/access.middleware.js';
 import { pubsub } from '../../graphql/pubsub.js';
 
@@ -13,7 +14,9 @@ const SCOPE = z.enum(['SPACE', 'FOLDER', 'LIST']);
 const TYPE = z.enum([
   'text','text_area','number','currency','checkbox','date','url','email','phone',
   'dropdown','labels','rating','people','progress_manual','progress_auto',
+  'relationship','rollup',
 ]);
+const fieldRefSchema = z.object({ kind: z.enum(['builtin', 'custom']), key: z.string() });
 const configSchema = z.object({
   options: z.array(z.object({ id: z.string(), name: z.string(), color: z.string().nullable() })).optional(),
   currencyCode: z.string().optional(),
@@ -21,6 +24,13 @@ const configSchema = z.object({
   precision: z.number().int().optional(),
   includeTime: z.boolean().optional(),
   source: z.literal('subtasks').optional(),
+  // relationship (Phase 5b)
+  relationshipTargetType: z.enum(['any', 'list']).optional(),
+  relationshipTargetListId: z.string().optional(),
+  // rollup (Phase 5b) — shape-checked here; required-presence enforced by validateFieldConfig.
+  rollupRelationshipFieldId: z.string().optional(),
+  rollupSourceField: fieldRefSchema.optional(),
+  rollupFunction: z.enum(['sum', 'avg', 'count', 'min', 'max', 'first', 'concat']).optional(),
 }).nullable();
 
 const createSchema = z.object({
@@ -42,10 +52,16 @@ customFieldRoutes.post('/', zValidator('json', createSchema),
   }),
   async (c) => {
     const b = c.req.valid('json');
-    const field = await customFieldService.create({
-      scopeType: b.scopeType, scopeId: b.scopeId, type: b.type, name: b.name,
-      config: b.config ?? null, required: b.required, position: b.position,
-    });
+    let field;
+    try {
+      field = await customFieldService.create({
+        scopeType: b.scopeType, scopeId: b.scopeId, type: b.type, name: b.name,
+        config: b.config ?? null, required: b.required, position: b.position,
+      });
+    } catch (err) {
+      if (err instanceof FieldValidationError) return c.json({ error: { code: err.fieldCode, message: err.message } }, 422);
+      throw err;
+    }
     if (!field) return c.json({ error: { code: 'NOT_FOUND', message: 'Scope not found' } }, 404);
     pubsub.publish('customField:updated', { scopeId: b.scopeId, field });
     return c.json({ data: field }, 201);
@@ -64,7 +80,13 @@ customFieldRoutes.patch('/:id', zValidator('json', updateSchema),
     return f ? { type: f.scopeType, id: f.scopeId } : null;
   }),
   async (c) => {
-    const field = await customFieldService.update(c.req.param('id')!, c.req.valid('json'));
+    let field;
+    try {
+      field = await customFieldService.update(c.req.param('id')!, c.req.valid('json'));
+    } catch (err) {
+      if (err instanceof FieldValidationError) return c.json({ error: { code: err.fieldCode, message: err.message } }, 422);
+      throw err;
+    }
     if (!field) return c.json({ error: { code: 'NOT_FOUND', message: 'Custom field not found' } }, 404);
     pubsub.publish('customField:updated', { scopeId: field.scopeId, field });
     return c.json({ data: field });

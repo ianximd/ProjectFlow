@@ -850,7 +850,11 @@ export interface RoleMember {
 export type CustomFieldType =
   | 'text' | 'text_area' | 'number' | 'currency' | 'checkbox' | 'date'
   | 'url' | 'email' | 'phone' | 'dropdown' | 'labels' | 'rating'
-  | 'people' | 'progress_manual' | 'progress_auto';
+  | 'people' | 'progress_manual' | 'progress_auto'
+  // Phase 5b: link tasks (relationship) + read-only aggregate over linked tasks (rollup).
+  | 'relationship' | 'rollup';
+
+export type RollupFunction = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'first' | 'concat';
 
 export type CustomFieldScopeType = 'SPACE' | 'FOLDER' | 'LIST';
 
@@ -864,6 +868,21 @@ export interface CustomFieldConfig {
   precision?: number;           // number
   includeTime?: boolean;        // date
   source?: 'subtasks';          // progress_auto
+  // ── relationship (Phase 5b) ──
+  relationshipTargetType?: 'any' | 'list';  // link to any task, or only tasks in a list
+  relationshipTargetListId?: string;        // required when relationshipTargetType = 'list'
+  // ── rollup (Phase 5b) ──
+  rollupRelationshipFieldId?: string;       // a 'relationship' field on the same scope
+  rollupSourceField?: FieldRef;             // builtin key or custom field id to aggregate
+  rollupFunction?: RollupFunction;          // sum | avg | count | min | max | first | concat
+}
+
+/** One linked task as exposed for a `relationship` field's value (the ToTask). */
+export interface RelationshipRef {
+  taskId: string;
+  title: string;
+  status: string;
+  issueKey?: string | null;
 }
 
 export interface CustomField {

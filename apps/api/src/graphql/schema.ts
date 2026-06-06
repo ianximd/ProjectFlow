@@ -11,6 +11,7 @@ import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
 import { registerDependenciesGraphql } from './dependencies.schema.js';
+import { registerRelationshipsGraphql } from './relationships.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { requireObjectLevel } from './authz.js';
@@ -744,6 +745,12 @@ registerWatchersGraphql();
 // taskDependencies query + addTaskDependency/removeTaskDependency mutations.
 // ─────────────────────────────────────────
 registerDependenciesGraphql();
+
+// ─────────────────────────────────────────
+// Relationships (Phase 5b) — RelationshipRef type + taskRelationships query +
+// addTaskRelationship/removeTaskRelationship mutations.
+// ─────────────────────────────────────────
+registerRelationshipsGraphql();
 
 // ─────────────────────────────────────────
 // Views (Phase 3) — SavedView/ViewTaskPage/ViewGroup types + savedViews/

@@ -35,6 +35,7 @@ import { integrationRoutes } from './modules/integrations/integration.routes.js'
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
+import { startRecurrenceWorker } from './modules/recurrence/recurrence.worker.js';
 import { requestIdMiddleware } from './shared/middleware/requestId.middleware.js';
 import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.middleware.js';
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
@@ -300,6 +301,15 @@ if (process.env.NODE_ENV !== 'test') {
   startOAuthMaintenanceWorker().catch((err) =>
     logger.warn({ err: err?.message }, 'oauth-maintenance worker failed to start'),
   );
+
+  // Start the recurring-task scheduled sweep (Phase 5c). Conditional on Redis
+  // being configured — the BullMQ queue/worker need it. On-complete spawning
+  // works without this worker (it's driven by the transition path).
+  if (process.env.REDIS_URL || process.env.REDIS_HOST) {
+    startRecurrenceWorker().catch((err) =>
+      logger.warn({ err: err?.message }, 'recurrence worker failed to start'),
+    );
+  }
 
   const port = 3001;
   logger.info(

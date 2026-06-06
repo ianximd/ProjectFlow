@@ -5,6 +5,7 @@ import { watcherService } from '../watchers/watcher.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { dependencyService, computeDateDelta } from '../dependencies/dependency.service.js';
+import { recurrenceService } from '../recurrence/recurrence.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
 import { subLogger } from '../../shared/lib/logger.js';
@@ -150,6 +151,24 @@ export class TaskService {
         change: 'status', status: newStatus,
       });
     }
+
+    // Recurring tasks (Phase 5c): on a successful DONE-group transition, spawn the
+    // next occurrence if an active recurrence covers on_complete. Fire-and-forget
+    // AFTER the transition has committed — a spawn error is logged but never
+    // faults the transition the user asked for.
+    if (isDoneGroupStatus(newStatus)) {
+      void (async () => {
+        try {
+          const rec = await recurrenceService.getForTask(taskId);
+          if (rec && rec.active && (rec.regenerateMode === 'on_complete' || rec.regenerateMode === 'both')) {
+            await recurrenceService.spawnNext(rec);
+          }
+        } catch (err: any) {
+          log.error({ err: err?.message, taskId }, 'recurrence spawn-on-complete failed');
+        }
+      })();
+    }
+
     return task;
   }
 

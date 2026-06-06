@@ -885,6 +885,38 @@ export interface RelationshipRef {
   issueKey?: string | null;
 }
 
+// ─── Recurring Tasks (Phase 5c) ───────────────────────────────────────────
+// A recurrence rule attached to a task regenerates the next occurrence either
+// on completion (DONE-group transition), on a scheduled BullMQ sweep, or both.
+
+export type RecurrenceFreq = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+/** RRULE-ish recurrence rule (stored as JSON on TaskRecurrences.Rule). */
+export interface RecurrenceRule {
+  freq: RecurrenceFreq;
+  interval: number;          // > 0
+  byWeekday?: number[];      // 0=Sun .. 6=Sat (weekly)
+  byMonthday?: number;       // 1..31, month-end clamped (monthly/yearly)
+  endsAt?: string;           // ISO; no occurrences strictly after this
+  count?: number;            // max occurrences to spawn (caller-enforced)
+}
+
+export type RecurrenceMode = 'on_complete' | 'schedule' | 'both';
+
+export interface TaskRecurrence {
+  id: string;
+  taskId: string;
+  workspaceId: string;
+  rule: RecurrenceRule;
+  regenerateMode: RecurrenceMode;
+  nextRunAt: string | null;
+  active: boolean;
+  lastSpawnedTaskId: string | null;
+  includeDependencies: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CustomField {
   id: string;
   workspaceId: string;

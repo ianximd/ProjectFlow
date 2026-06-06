@@ -13,6 +13,7 @@ import { customFieldService } from '../customfields/customfield.service.js';
 import { FieldValidationError, RequiredFieldsUnmetError } from '../customfields/customfield.errors.js';
 import { DependencyWarningError, dependencyService } from '../dependencies/dependency.service.js';
 import { relationshipService, RelationshipNotFoundError } from '../relationships/relationship.service.js';
+import { recurrenceService, InvalidRecurrenceRuleError } from '../recurrence/recurrence.service.js';
 import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { watcherService } from '../watchers/watcher.service.js';
@@ -400,6 +401,60 @@ taskRoutes.delete(
     const workspaceId = await taskRepo.getWorkspaceId(fromTaskId);
     if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
     await relationshipService.remove(c.req.param('fieldId')!, fromTaskId, c.req.param('toTaskId')!, workspaceId);
+    await invalidateTaskCaches();
+    return c.body(null, 204);
+  });
+
+// ── Recurrence (Phase 5c) ────────────────────────────────────────────────────
+// A recurrence rule per task regenerates the next occurrence on completion
+// and/or a scheduled sweep. VIEW to read; task.update to set/clear. A malformed
+// rule (bad freq/interval/etc.) → 422.
+
+// GET /api/v1/tasks/:id/recurrence — VIEW on the task's list (IDOR guard).
+taskRoutes.get('/:id/recurrence',
+  requireObjectAccess('VIEW', async (c) => {
+    const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
+    return lid ? { type: 'LIST', id: lid } : null;
+  }),
+  async (c) => c.json({ data: await recurrenceService.getForTask(c.req.param('id')!) }));
+
+// PUT /api/v1/tasks/:id/recurrence  { rule, regenerateMode, includeDependencies? }
+const recurrenceSchema = z.object({
+  rule:                z.unknown(),
+  regenerateMode:      z.enum(['on_complete', 'schedule', 'both']),
+  includeDependencies: z.boolean().optional(),
+});
+taskRoutes.put(
+  '/:id/recurrence',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  zValidator('json', recurrenceSchema),
+  async (c) => {
+    const taskId = c.req.param('id')!;
+    const body = c.req.valid('json');
+    try {
+      const data = await recurrenceService.setForTask(taskId, {
+        rule: body.rule,
+        regenerateMode: body.regenerateMode,
+        includeDependencies: body.includeDependencies,
+      });
+      await invalidateTaskCaches();
+      return c.json({ data });
+    } catch (err: any) {
+      if (err instanceof InvalidRecurrenceRuleError) {
+        return c.json({ error: { code: err.code, message: err.message } }, 422);
+      }
+      if (err.number === 51700) return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);
+      if (err.number === 51701) return c.json({ error: { code: 'WORKSPACE_MISMATCH', message: err.message } }, 422);
+      throw err;
+    }
+  });
+
+// DELETE /api/v1/tasks/:id/recurrence — clear the rule (idempotent).
+taskRoutes.delete(
+  '/:id/recurrence',
+  requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
+  async (c) => {
+    await recurrenceService.clear(c.req.param('id')!);
     await invalidateTaskCaches();
     return c.body(null, 204);
   });

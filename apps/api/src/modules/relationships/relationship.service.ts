@@ -86,15 +86,15 @@ export class RelationshipService {
     const toWs = await this.taskRepo.getWorkspaceId(toTaskId);
     if (!toWs || toWs !== workspaceId) throw new RelationshipNotFoundError();
     await this.repo.add(fieldId, fromTaskId, toTaskId, workspaceId);
-    return this.list(fieldId, fromTaskId);
+    return this.list(fieldId, fromTaskId, workspaceId);
   }
 
-  async remove(fieldId: string, fromTaskId: string, toTaskId: string): Promise<number> {
-    return this.repo.remove(fieldId, fromTaskId, toTaskId);
+  async remove(fieldId: string, fromTaskId: string, toTaskId: string, workspaceId: string): Promise<number> {
+    return this.repo.remove(fieldId, fromTaskId, toTaskId, workspaceId);
   }
 
-  async list(fieldId: string, fromTaskId: string): Promise<RelationshipRef[]> {
-    return this.repo.listForField(fieldId, fromTaskId);
+  async list(fieldId: string, fromTaskId: string, workspaceId: string): Promise<RelationshipRef[]> {
+    return this.repo.listForField(fieldId, fromTaskId, workspaceId);
   }
 
   /**
@@ -102,6 +102,10 @@ export class RelationshipService {
    * via the configured relationship field, reads each related task's source
    * field value (builtin column or custom-field value), then aggregates by the
    * configured function. Returns null when the rollup is misconfigured.
+   *
+   * `field.workspaceId` is the VIEWING task's field workspace; all related-task
+   * and source reads are scoped to it. A rollup whose source is itself a rollup
+   * is unsupported and yields null (no recursion — see readSourceValue).
    */
   async computeRollup(taskId: string, field: CustomField): Promise<unknown> {
     const cfg = field.config;
@@ -110,7 +114,17 @@ export class RelationshipService {
     const fn = cfg?.rollupFunction;
     if (!relFieldId || !source || !fn) return null;
 
-    const relatedIds = await this.repo.relatedTaskIds(relFieldId, taskId);
+    const workspaceId = field.workspaceId;
+
+    // FIX 5 (config-scope guard): the configured relationship field must resolve
+    // to a `relationship`-type CustomField in the VIEWING task's workspace.
+    // Belt-and-suspenders against a poisoned config pointing at a foreign field.
+    const relField = await this.fieldRepo.getById(relFieldId);
+    if (!relField || relField.type !== 'relationship' || String(relField.workspaceId).toUpperCase() !== String(workspaceId).toUpperCase()) {
+      return null;
+    }
+
+    const relatedIds = await this.repo.relatedTaskIds(relFieldId, taskId, workspaceId);
     if (relatedIds.length === 0) return aggregateRollup(fn, []);
 
     const values = await Promise.all(relatedIds.map((id) => this.readSourceValue(id, source)));
@@ -124,11 +138,14 @@ export class RelationshipService {
       if (!task) return null;
       return readBuiltin(task as any, source.key);
     }
-    // custom: source.key is the CustomFields.Id (GUID). Pull from the task's
-    // effective values (which include the LEFT-joined CurrentValue per field).
-    const effective = await this.fieldRepo.effectiveForTask(taskId);
-    const match = effective.find((e) => String(e.field.id).toUpperCase() === String(source.key).toUpperCase());
-    return match ? match.value : null;
+    // custom: source.key is the CustomFields.Id (GUID). Read THAT ONE field's
+    // stored value DIRECTLY (not via effectiveForTask, which re-computes ALL
+    // rollups → rollup-of-rollup infinite recursion / stack overflow). If the
+    // resolved source field is itself a rollup, rollup-of-rollup is unsupported
+    // → return null. Reading one value also removes most of the N+1 cost.
+    const sourceField = await this.fieldRepo.getById(source.key);
+    if (!sourceField || sourceField.type === 'rollup') return null;
+    return this.fieldRepo.getValue(taskId, source.key);
   }
 }
 

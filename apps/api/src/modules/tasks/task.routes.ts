@@ -354,7 +354,12 @@ taskRoutes.get('/:id/relationships/:fieldId',
     const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
     return lid ? { type: 'LIST', id: lid } : null;
   }),
-  async (c) => c.json({ data: await relationshipService.list(c.req.param('fieldId')!, c.req.param('id')!) }));
+  async (c) => {
+    const fromTaskId = c.req.param('id')!;
+    const workspaceId = await taskRepo.getWorkspaceId(fromTaskId);
+    if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+    return c.json({ data: await relationshipService.list(c.req.param('fieldId')!, fromTaskId, workspaceId) });
+  });
 
 // POST /api/v1/tasks/:id/relationships/:fieldId  { toTaskId } — link a task.
 taskRoutes.post(
@@ -391,7 +396,10 @@ taskRoutes.delete(
   '/:id/relationships/:fieldId/:toTaskId',
   requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
   async (c) => {
-    await relationshipService.remove(c.req.param('fieldId')!, c.req.param('id')!, c.req.param('toTaskId')!);
+    const fromTaskId = c.req.param('id')!;
+    const workspaceId = await taskRepo.getWorkspaceId(fromTaskId);
+    if (!workspaceId) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+    await relationshipService.remove(c.req.param('fieldId')!, fromTaskId, c.req.param('toTaskId')!, workspaceId);
     await invalidateTaskCaches();
     return c.body(null, 204);
   });

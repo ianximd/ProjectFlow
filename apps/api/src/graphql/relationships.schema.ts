@@ -34,7 +34,9 @@ export function registerRelationshipsGraphql(): void {
       args: { taskId: t.arg.string({ required: true }), fieldId: t.arg.string({ required: true }) },
       resolve: async (_, a, ctx) => {
         await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'VIEW');
-        return relationshipService.list(a.fieldId, a.taskId);
+        const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
+        if (!workspaceId) notFound('Task not found');
+        return relationshipService.list(a.fieldId, a.taskId, workspaceId);
       },
     }),
   }));
@@ -64,9 +66,12 @@ export function registerRelationshipsGraphql(): void {
         toTaskId: t.arg.string({ required: true }),
       },
       resolve: async (_, a, ctx) => {
-        await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
-        await relationshipService.remove(a.fieldId, a.taskId, a.toTaskId);
-        return relationshipService.list(a.fieldId, a.taskId);
+        const workspaceId = await requireWorkspacePermission(ctx, await taskRepo.getWorkspaceId(a.taskId), 'task.update');
+        // Mirror addTaskRelationship: cross-workspace IDOR guard on toTaskId.
+        const toWs = await taskRepo.getWorkspaceId(a.toTaskId);
+        if (!toWs || toWs !== workspaceId) notFound('Task not found');
+        await relationshipService.remove(a.fieldId, a.taskId, a.toTaskId, workspaceId);
+        return relationshipService.list(a.fieldId, a.taskId, workspaceId);
       },
     }),
   }));

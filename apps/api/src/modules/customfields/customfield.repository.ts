@@ -76,6 +76,21 @@ export class CustomFieldRepository {
     return (rows as any[]).map(mapEffectiveFieldRow);
   }
 
+  /**
+   * Read ONE (task, field) stored value, JSON-decoded (null when absent).
+   * Targeted read used by rollup source resolution so we DON'T re-compute the
+   * task's full effective field set (which re-evaluates rollups → recursion).
+   */
+  async getValue(taskId: string, fieldId: string): Promise<unknown> {
+    const rows = await execSpOne<{ Value: string | null }>('usp_TaskCustomFieldValue_GetOne', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+      { name: 'FieldId', type: sql.UniqueIdentifier, value: fieldId },
+    ]);
+    const raw = rows[0]?.Value;
+    if (raw == null || raw === '') return null;
+    try { return JSON.parse(String(raw)); } catch { return null; }
+  }
+
   async getById(id: string): Promise<CustomField | null> {
     const rows = await execSpOne('usp_CustomField_GetById', [{ name: 'Id', type: sql.UniqueIdentifier, value: id }]);
     return rows[0] ? mapCustomFieldRow(rows[0]) : null;

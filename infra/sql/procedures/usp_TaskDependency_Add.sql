@@ -1,33 +1,23 @@
 CREATE OR ALTER PROCEDURE usp_TaskDependency_Add
-    @TaskId    UNIQUEIDENTIFIER,
-    @DependsOn UNIQUEIDENTIFIER,
-    @Type      NVARCHAR(20) = 'BLOCKS'
+    @TaskId UNIQUEIDENTIFIER, @DependsOn UNIQUEIDENTIFIER, @WorkspaceId UNIQUEIDENTIFIER
 AS
 BEGIN
     SET NOCOUNT ON;
-
-    IF @TaskId = @DependsOn
-        THROW 50400, 'A task cannot depend on itself', 1;
-
-    -- Prevent direct circular dependency
-    IF EXISTS (
-        SELECT 1 FROM TaskDependencies
-        WHERE TaskId = @DependsOn AND DependsOn = @TaskId
-    )
-        THROW 50400, 'Circular dependency detected', 1;
-
-    -- Validate type
-    IF @Type NOT IN ('BLOCKS', 'IS_BLOCKED_BY', 'RELATES_TO', 'DUPLICATES')
-        THROW 50400, 'Invalid dependency type', 1;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM TaskDependencies
-        WHERE TaskId = @TaskId AND DependsOn = @DependsOn
-    )
-    BEGIN
-        INSERT INTO TaskDependencies (Id, TaskId, DependsOn, Type)
-        VALUES (NEWID(), @TaskId, @DependsOn, @Type);
-    END;
-
-    SELECT * FROM TaskDependencies WHERE TaskId = @TaskId AND DependsOn = @DependsOn;
+    BEGIN TRY
+        IF @TaskId = @DependsOn THROW 51500, 'A task cannot depend on itself', 1;
+        -- Transitive cycle: would (TaskId waits_on DependsOn) let DependsOn already reach TaskId?
+        DECLARE @cnt INT = 0;
+        ;WITH reach AS (
+            SELECT DependsOn AS NodeId FROM dbo.TaskDependencies WHERE TaskId = @DependsOn
+            UNION ALL
+            SELECT d.DependsOn FROM dbo.TaskDependencies d JOIN reach r ON d.TaskId = r.NodeId
+        )
+        SELECT @cnt = COUNT(*) FROM reach WHERE NodeId = @TaskId OPTION (MAXRECURSION 1000);
+        IF @cnt > 0 THROW 51501, 'Circular dependency detected', 1;
+        IF NOT EXISTS (SELECT 1 FROM dbo.TaskDependencies WHERE TaskId = @TaskId AND DependsOn = @DependsOn)
+            INSERT INTO dbo.TaskDependencies (Id, TaskId, DependsOn, Type, WorkspaceId)
+            VALUES (NEWID(), @TaskId, @DependsOn, 'waiting_on', @WorkspaceId);
+        SELECT * FROM dbo.TaskDependencies WHERE TaskId = @TaskId AND DependsOn = @DependsOn;
+    END TRY
+    BEGIN CATCH THROW; END CATCH
 END;

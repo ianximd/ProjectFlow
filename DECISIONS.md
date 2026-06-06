@@ -401,3 +401,89 @@ config (pre-existing `ENVIRONMENT_FALLBACK` dev advisory surfaced in e2e logs).
 **Verification:** API 248 unit, web 98 unit + i18n parity, tsc clean (both packages), web production build OK;
 live e2e realtime+presence 2/2 (Bug C backstop never fired), views 6/6 + hierarchy 1/1. DB only local Docker
 `ProjectFlow_Test`.
+
+## 2026-06-06 — Phase 3.5 deferred-item cleanup
+
+Closed the six documented Phase 3.5 deferrals on `feat/phase3.5-deferred-cleanup`, executed task-by-task via
+subagent-driven-development (fresh implementer + two-stage spec/quality review per task).
+
+### 1. Live add/remove (§1) + per-project/-workspace scoping (§2) — the big change
+Replaced the single **global, unkeyed** `task:updated` pubsub channel (every client saw every project's task
+chatter; payloads were update-only on the client) with a **keyed lifecycle topic** `task:event` carrying a
+discriminated `{ kind: 'created'|'updated'|'deleted', projectId, task?, taskId? }`, published to BOTH a
+`prj:{projectId}` key and a `ws:{workspaceId}` key (`apps/api/src/graphql/task-events.ts`:
+`publishTaskEvent`/`publishTaskMove`; workspace id resolved via cached `ProjectRepository.getWorkspaceId`).
+A new extracted, unit-tested `taskEventsSubscribe` (`apps/api/src/graphql/subscriptions/taskEvents.ts`)
+replaces the `taskUpdated` subscription field and **authz-gates the scope**: project scope →
+`requireObjectLevel(ctx,'SPACE',projectId,'VIEW')`; workspace scope (EVERYTHING) →
+`requireWorkspacePermission(ctx,workspaceId,'workspace.read')`; neither → `BAD_REQUEST` (fails closed).
+Topic keys are built in ONE place (`taskEventKey.project/.workspace`) imported by both publish and subscribe
+sides, so they cannot drift. **Every** mutating task site now emits the matching event — GraphQL
+create/update/transition/delete/move AND every REST route (create, update, transition, position, assignees,
+type, custom-field, move, delete); cross-project move emits `deleted`(old)+`created`(new), same-project emits
+one `updated`. Client: `applyTaskEvent` (created/updated/deleted with dedupe + an `accepts` filter) + a
+reworked `useLiveTasks(base, scope, accepts)` (SSR stays source of truth; live events patch on top; a
+`useRef` keeps a non-stable `accepts` predicate fresh without re-subscribing) wired into the project board,
+the hierarchy list view, and all four Views-Engine surfaces.
+
+- **Key correction vs the spec's hedge:** the feared "partial `{task:{id}}` publisher" does NOT exist — every
+  legacy `task:updated` site published a full task, so live `created` events carry full payloads everywhere
+  and no ghost-card mitigation was needed.
+- **Two real PascalCase-casing bugs found + fixed (this class bit the SSE work twice before).** (a) Every
+  publish site initially keyed by `task.projectId` (camelCase), which is `undefined` on the PascalCase SP rows
+  → events keyed `prj:undefined` and reached no subscriber. Fixed by sourcing projectId casing-tolerantly at
+  every site (`eventProjectId`/`taskProjectId` = `x.projectId ?? x.ProjectId`). (b) The live e2e then proved
+  the SSE event arrived but with an **all-null payload**: `TaskType`'s scalar resolvers used camelCase-only
+  `t.exposeString('id'|'title'|…)`, but the subscription publishes the raw PascalCase SP row (the query path
+  maps to camelCase first; the subscription does not). Fixed by making the `TaskType` scalar resolvers
+  casing-tolerant (mirrors the client `normalizeTask`). `createdAt`/`updatedAt` made nullable (safer than
+  `new Date(undefined)`; no GraphQL codegen in next-web so non-breaking).
+- **Owning-project resolution for node-scoped views (deviation from plan):** the plan assumed an existing
+  client-reachable node→Space read for LIST/FOLDER; none exists. Resolved instead by reading the owning
+  `projectId` off the first SSR task (a LIST/FOLDER belongs to exactly one Space, so all its tasks share one
+  `projectId`; verified against the schema: `Lists.SpaceId`/`Folders.SpaceId`, `Tasks.ProjectId=List.SpaceId`).
+  Required widening `VIEW_TASKS_QUERY`/`PREVIEW_VIEW_TASKS_QUERY` to select `projectId`+`listId`.
+- **Documented v1 boundaries (accepted):** (a) FOLDER views `accepts=()=>false` — live update/delete of
+  already-shown cards work, but a live *new* card arrives only on the next SSR re-seed (client can't cheaply
+  verify nested-folder membership). (b) An empty LIST/FOLDER scope (0 SSR tasks → no owning projectId) skips
+  the live subscription until SSR re-seed. (c) Live event payloads carry scalars only; `assignees`/
+  `customFieldValues` resolve empty/null on live events (the SP row doesn't carry them) and reconcile on the
+  next SSR — `mergeTaskDelta` treats null as "unchanged", so a partial payload never blanks existing data.
+- **Live e2e** (`e2e/live-board.spec.ts`): two contexts, B creates→transitions→deletes over REST, A sees
+  add→re-bucket→remove with no reload. A one-time ~1.5s settle gates B's first publish against the Redis
+  SUBSCRIBE round-trip (Redis pub/sub has no replay); all event-arrival waits use auto-retrying `expect`.
+  No `ERR_INVALID_STATE`/uncaught during SSE teardown (prior rounds' guarded stream + backstop held).
+
+### 2. §3 EVERYTHING views — verified, no code change
+Confirmed already-wired end-to-end: sidebar `everything-nav` → `/views/EVERYTHING/{workspaceId}`; the route
+maps `EVERYTHING → {workspaceId, null node scope}`; reads thread `workspaceId`; the API
+`requireEverythingWorkspace` → `requireWorkspacePermission(…,'workspace.read')` rejects non-members and a
+missing/foreign workspaceId (fails closed). Existing `views.spec.ts` EVERYTHING test passes live. No change.
+
+### 3. §4 i18n — table boolean Yes/No
+`Views.table.yes/no` added to `en.json` (Yes/No) + `id.json` (Ya/Tidak); `table-view` boolean cell now uses
+`t('table.yes'|'table.no')` (translator threaded into the module-scope `formatCellValue`). Parity test green.
+
+### 4. §5 deprovisioned-author block on comment assign/resolve
+There is no TS-layer workspace-membership gate — membership is enforced in SQL. Added an **actor**-membership
+check (`THROW 51403`) to both `usp_Comment_Assign` and `usp_Comment_Resolve` (after the existence check,
+before the UPDATE), mapped `51403 → FORBIDDEN/403` in the GraphQL resolvers AND both REST handlers. This is
+the single enforcement point covering the GraphQL `assertCanEditComment` author-bypass path (ownership ≠
+membership) where the deprovisioned author would otherwise slip through. Note: for the REST paths the
+`requirePermission(task.update, ownerFallback: comment.update.own)` middleware ALREADY 403s a removed member
+(no slugs) — so the SP gate is genuine defense-in-depth, proven by a direct service-layer test asserting the
+SP throws 51403 (alongside the HTTP 403 test).
+
+### 5. §6 dependency advisories
+- **hono** 4.12.18 → 4.12.23 via in-range `npm audit fix` (patches JWT-scheme bypass + Set-Cookie injection +
+  IP-restriction + mount-prefix advisories). `turbo` floated 2.9.9→2.9.16 alongside (pinned `latest`; benign
+  in-range lockfile drift + its own security fix).
+- **next** forced to 16.2.7 (`npm audit fix --force`) — patches the high-severity App Router middleware/proxy
+  bypass GHSA-26hh-7cqf-hhc6. Scope confined to the `next` family + one nested `postcss` transitive; React et
+  al. untouched. App already uses the v16 `proxy` convention; build green, proxy auth-gate intact. Residual
+  moderate `postcss` chain left (its only fix is a catastrophic `next@9.3.3` downgrade — out of scope).
+
+**Verification (all on the final tip):** API 256 unit / 143 integration / tsc-clean build; web 104 unit /
+production build green; e2e `live-board` green (full suite 15 pass / 2 fail = `board-categories` legacy flake
++ `freeze-toast`, both proven pre-existing on next@16.2.5, not regressions). DB only local Docker
+`ProjectFlow_Test` + local Redis. Final whole-implementation review: READY TO MERGE (no Critical/Important).

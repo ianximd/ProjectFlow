@@ -26,6 +26,10 @@ export class ListRepository {
     const rows = await execSpOne<{ WorkspaceId: string }>('usp_List_GetWorkspaceId', [{ name: 'Id', type: sql.UniqueIdentifier, value: id }]);
     return rows[0]?.WorkspaceId ?? null;
   }
+  async getById(id: string) {
+    const rows = await execSpOne('usp_List_GetById', [{ name: 'Id', type: sql.UniqueIdentifier, value: id }]);
+    return rows[0] ?? null;
+  }
   async update(id: string, name?: string, workflowId?: string | null, clearWorkflow = false) {
     const rows = await execSpOne('usp_List_Update', [
       { name: 'Id',            type: sql.UniqueIdentifier, value: id },

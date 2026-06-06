@@ -14,6 +14,7 @@ import { registerDependenciesGraphql } from './dependencies.schema.js';
 import { registerRelationshipsGraphql } from './relationships.schema.js';
 import { registerRecurrenceGraphql } from './recurrence.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
+import { registerTemplatesGraphql } from './templates.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { requireObjectLevel } from './authz.js';
 
@@ -764,6 +765,7 @@ registerRecurrenceGraphql();
 // viewTasks/previewViewTasks queries + create/update/delete/reorder mutations.
 // ─────────────────────────────────────────
 registerViewsGraphql();
+registerTemplatesGraphql();
 
 // ─────────────────────────────────────────
 // Presence (Phase 3.5c) — PresenceUser type + presenceHeartbeat/presenceLeave

@@ -83,6 +83,19 @@ export class ViewRepository {
     return rows[0] ? mapSavedViewRow(rows[0]) : null;
   }
 
+  /**
+   * Phase 5d: SHARED views for a scope, WITHOUT the per-user visibility filter
+   * usp_View_List applies. Template capture is actor-agnostic — it portably
+   * copies a list's shared views (private views belong to one user, not copied).
+   */
+  async listForScope(scopeType: ViewScopeType, scopeId: string | null): Promise<SavedView[]> {
+    const rows = await execSpOne('usp_View_ListForScope', [
+      { name: 'ScopeType', type: sql.NVarChar(12),     value: scopeType },
+      { name: 'ScopeId',   type: sql.UniqueIdentifier, value: scopeId },
+    ]);
+    return (rows as any[]).map(mapSavedViewRow);
+  }
+
   async queryTasks(compiled: CompiledQuery, opts: { page: number; pageSize: number }): Promise<ViewTaskPage> {
     if (!Number.isInteger(opts.page) || opts.page < 1) throw new Error('page must be an integer >= 1');
     if (!Number.isInteger(opts.pageSize) || opts.pageSize < 1) throw new Error('pageSize must be an integer >= 1');

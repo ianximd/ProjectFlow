@@ -32,6 +32,7 @@ import { epicRoutes }        from './modules/epics/epic.routes.js';
 import { gitRoutes }         from './modules/git/git.routes.js';
 import { webhookRoutes }     from './modules/git/webhook.routes.js';
 import { integrationRoutes } from './modules/integrations/integration.routes.js';
+import { templateRoutes } from './modules/templates/template.routes.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
@@ -214,6 +215,7 @@ app.route('/epics',          epicRoutes);
 app.route('/git',            gitRoutes);
 app.route('/webhooks',       webhookRoutes);
 app.route('/integrations',   integrationRoutes);
+app.route('/templates',      templateRoutes);
 app.route('/outgoing-webhooks', webhookOutgoingRoutes);
 app.route('/admin',             adminRoutes);
 

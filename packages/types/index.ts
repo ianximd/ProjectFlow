@@ -1020,3 +1020,88 @@ export type BulkAction =
   | { kind: 'delete' };
 
 export interface BulkUpdateResult { updated: string[]; failed: Array<{ id: string; reason: string }> }
+
+// ─────────────────────────── Templates (Phase 5d) ──────────────────────────
+// A template captures a task / list / folder / space subtree as a JSON snapshot
+// so it can be re-created later (apply is a separate batch). Every date in the
+// snapshot is stored as a day-offset from a reference `anchor`, so apply can
+// remap the whole subtree onto a chosen anchor date.
+export type TemplateScopeType = 'TASK' | 'LIST' | 'FOLDER' | 'SPACE';
+
+export interface Template {
+  id: string;
+  workspaceId: string;
+  scopeType: TemplateScopeType;
+  name: string;
+  description?: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+}
+
+/** One (field, value) pair captured for a task. `value` is the JSON-decoded
+ *  effective value EXACTLY as stored (shape depends on the field type). */
+export interface TemplateFieldValue { fieldId: string; value: unknown }
+
+/** A captured saved view (only its portable bits: name/type/config). `config`
+ *  is the same ViewConfig the SavedView carries. */
+export interface TemplateViewNode { name: string; type: ViewType; config: ViewConfig }
+
+/**
+ * A captured task and its subtasks (recursive). `nodeId` is a STABLE path-like
+ * id (e.g. `list/0/task/2` or `task/0/sub/1`) so a later "import selected
+ * items" UI can address individual nodes. Dates are day-offsets from the
+ * snapshot anchor (null when the source date was null). Assignees are dropped
+ * by default (user-specific — documented deferral).
+ */
+export interface TemplateTaskNode {
+  nodeId: string;
+  title: string;
+  description?: string | null;
+  type?: string | null;
+  priority?: string | null;
+  estimate?: number | null;            // storyPoints on the source task
+  startOffset?: number | null;
+  dueOffset?: number | null;
+  customFieldValues: TemplateFieldValue[];
+  tags: string[];                       // tag names (portable across spaces)
+  subtasks: TemplateTaskNode[];
+}
+
+/** A captured list: its settings + custom-field DEFINITIONS + shared views +
+ *  tasks. fieldDefs are full CustomField rows (apply re-creates the defs). */
+export interface TemplateListNode {
+  nodeId: string;
+  name: string;
+  fieldDefs: CustomField[];
+  views: TemplateViewNode[];
+  tasks: TemplateTaskNode[];
+}
+
+/** A captured folder: nested sub-folders (recursive) + lists. */
+export interface TemplateFolderNode {
+  nodeId: string;
+  name: string;
+  folders: TemplateFolderNode[];
+  lists: TemplateListNode[];
+}
+
+/** A captured space: top-level folders + lists. */
+export interface TemplateSpaceNode {
+  nodeId: string;
+  name: string;
+  folders: TemplateFolderNode[];
+  lists: TemplateListNode[];
+}
+
+/**
+ * The full snapshot persisted (JSON-stringified) on Templates.Snapshot. `anchor`
+ * is the ISO reference date that all offsets are measured from. `root` is the
+ * one node type matching `scopeType`.
+ */
+export interface TemplateSnapshot {
+  scopeType: TemplateScopeType;
+  anchor: string;   // ISO reference date
+  root: TemplateTaskNode | TemplateListNode | TemplateFolderNode | TemplateSpaceNode;
+}

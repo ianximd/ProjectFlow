@@ -16,6 +16,7 @@ import { registerRecurrenceGraphql } from './recurrence.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
 import { registerTemplatesGraphql } from './templates.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
+import { registerAutomationGraphql } from './automation.schema.js';
 import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -772,6 +773,12 @@ registerTemplatesGraphql();
 // mutations + presenceUpdated subscription (VIEW-gated, per-task channel).
 // ─────────────────────────────────────────
 registerPresenceGraphql();
+
+// ─────────────────────────────────────────
+// Automation (Phase 6a) — AutomationRule/AutomationRun types + automationRules/
+// automationRuns queries + create/update/toggle/delete mutations.
+// ─────────────────────────────────────────
+registerAutomationGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

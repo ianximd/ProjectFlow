@@ -134,7 +134,7 @@ automationRoutes.get(
   '/:id/runs',
   requirePermission('automation.update', { resolveWorkspace: resolveAutomationWorkspace }),
   async (c) => {
-    const id     = c.req.param('id');
+    const id     = c.req.param('id')!;
     const limit  = Math.min(Number(c.req.query('limit')  ?? 50), 200);
     const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
     const runs   = await svc.listRuns(id, limit, offset);

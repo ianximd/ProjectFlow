@@ -3,6 +3,8 @@ import { AutomationRepository } from './automation.repository.js';
 import { evaluateConditions }   from './automation.conditions.js';
 import { executeAction }        from './automation.actions.js';
 import type { AutomationJobData } from './automation.queue.js';
+import type { LoopContext } from './automation.bus.js';
+import type { AutomationRunStatus } from '@projectflow/types';
 import { subLogger } from '../../shared/lib/logger.js';
 import { registerCloser } from '../../shared/lib/shutdown.js';
 
@@ -19,33 +21,68 @@ export function startAutomationWorker() {
   const worker = new Worker<AutomationJobData>(
     'automation',
     async (job) => {
-      const { ruleId, payload } = job.data;
+      const { ruleId, payload, workspaceId, projectId, eventType, depth, causationChain } = job.data;
+      const startedAt = new Date();
 
-      // Load the rule fresh so we always have the latest config
-      const rules = await repo.list(job.data.projectId);
-      const rule  = rules.find(r => r.id === ruleId);
+      // Load the rule fresh so we always have the latest config.
+      const rules = await repo.list(projectId ?? '');
+      let rule = rules.find((r) => r.id === ruleId);
+      // Workspace-scoped rules aren't in the project list — fall back to a single read.
+      if (!rule) {
+        const byId = await repo.getById(ruleId);
+        rule = byId ? (byId as any) : undefined;
+      }
 
       if (!rule || !rule.isEnabled) {
-        return; // Rule was disabled or deleted since enqueue
+        await repo.recordRun({
+          ruleId, workspaceId, projectId, triggerType: eventType, status: 'skipped',
+          payload: JSON.stringify(payload), error: 'rule disabled or deleted',
+          depth, startedAt, durationMs: Date.now() - startedAt.getTime(),
+        }).catch(() => {});
+        return;
       }
 
-      // Evaluate conditions
+      // Evaluate conditions (AND-only; OR/operators arrive in 6b).
       if (!evaluateConditions(rule.conditions, payload)) {
-        return; // Conditions not met
+        await repo.recordRun({
+          ruleId, workspaceId, projectId, triggerType: eventType, status: 'skipped',
+          payload: JSON.stringify(payload), error: 'conditions not met',
+          depth, startedAt, durationMs: Date.now() - startedAt.getTime(),
+        }).catch(() => {});
+        return;
       }
 
-      // Execute actions sequentially
+      // The loop context a mutating action will propagate: one deeper, this rule appended.
+      const childLoop: LoopContext = {
+        depth: depth + 1,
+        causationChain: [...causationChain, ruleId],
+      };
+
+      const actionResults: Array<{ type: string; ok: boolean; error?: string }> = [];
+      let anyFailed = false;
       for (const action of rule.actions) {
         try {
-          await executeAction(action, payload);
+          await executeAction(action, payload, { workspaceId, projectId, loop: childLoop });
+          actionResults.push({ type: action.type, ok: true });
         } catch (err: any) {
+          anyFailed = true;
+          actionResults.push({ type: action.type, ok: false, error: err?.message });
           log.error({ ruleId, action: action.type, err: err?.message }, 'action failed');
-          // Continue with remaining actions even if one fails
+          // Continue with remaining actions even if one fails.
         }
       }
 
-      // Update execution stats
-      await repo.recordExecution(ruleId);
+      const status: AutomationRunStatus =
+        !anyFailed ? 'success' : actionResults.some((r) => r.ok) ? 'partial' : 'failed';
+
+      await repo.recordRun({
+        ruleId, workspaceId, projectId, triggerType: eventType, status,
+        payload: JSON.stringify(payload), actionResults: JSON.stringify(actionResults),
+        depth, startedAt, durationMs: Date.now() - startedAt.getTime(),
+      }).catch((e: any) => log.error({ err: e?.message }, 'recordRun failed'));
+
+      // Keep the legacy ExecutionCount / LastExecutedAt fields in sync.
+      await repo.recordExecution(ruleId).catch(() => {});
     },
     {
       connection,

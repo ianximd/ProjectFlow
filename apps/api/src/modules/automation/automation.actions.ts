@@ -1,32 +1,53 @@
 /**
  * Automation action executor.
- * Receives a single action and the event payload and performs the side-effect.
+ * Receives a single action, the event payload, and a loop-guard context.
+ * Task-mutating actions re-emit a typed domain event one causal level deeper so
+ * OTHER rules can chain off them while the loop guard blocks self-retrigger.
  */
 import sql from 'mssql';
 import { execSpOne } from '../../shared/lib/sqlClient.js';
 import { subLogger } from '../../shared/lib/logger.js';
+import { emitAutomationEvent, type LoopContext } from './automation.bus.js';
 import type { AutomationAction } from '@projectflow/types';
 
 const log = subLogger('automation');
 
+export interface ActionContext {
+  workspaceId: string;
+  projectId:   string | null;
+  loop:        LoopContext;
+}
+
+const SYSTEM_ACTOR = (payload: Record<string, unknown>): string | null =>
+  (payload['actorId'] as string | undefined) ?? process.env.SYSTEM_USER_ID ?? null;
+
 export async function executeAction(
   action: AutomationAction,
   payload: Record<string, unknown>,
+  ctx: ActionContext,
 ): Promise<void> {
   const taskId = payload['taskId'] as string | undefined;
 
   switch (action.type) {
-    case 'TRANSITION_ISSUE': {
+    case 'CHANGE_STATUS': {
       if (!taskId || !action.toStatus) break;
+      const fromStatus = (payload['status'] as string | undefined) ?? null;
       await execSpOne('usp_Task_Transition', [
         { name: 'TaskId',      type: sql.UniqueIdentifier, value: taskId },
         { name: 'NewStatus',   type: sql.NVarChar(100),    value: action.toStatus },
         { name: 'RequesterId', type: sql.UniqueIdentifier, value: payload['actorId'] ?? null },
       ]);
+      if (ctx.projectId) {
+        void emitAutomationEvent({
+          type: 'STATUS_CHANGED', workspaceId: ctx.workspaceId, projectId: ctx.projectId,
+          taskId, actorId: SYSTEM_ACTOR(payload) ?? '', fromStatus, toStatus: action.toStatus,
+          loop: ctx.loop,
+        });
+      }
       break;
     }
 
-    case 'ASSIGN_ISSUE': {
+    case 'ASSIGN': {
       if (!taskId) break;
       const assigneeId =
         action.assigneeId === 'REPORTER'
@@ -44,10 +65,17 @@ export async function executeAction(
         { name: 'StoryPoints', type: sql.Float,            value: null },
         { name: 'DueDate',     type: sql.Date,             value: null },
       ]);
+      if (ctx.projectId) {
+        void emitAutomationEvent({
+          type: 'ASSIGNEE_CHANGED', workspaceId: ctx.workspaceId, projectId: ctx.projectId,
+          taskId, actorId: SYSTEM_ACTOR(payload) ?? '', from: null, to: assigneeId,
+          loop: ctx.loop,
+        });
+      }
       break;
     }
 
-    case 'UNASSIGN_ISSUE': {
+    case 'UNASSIGN': {
       if (!taskId) break;
       await execSpOne('usp_Task_Update', [
         { name: 'TaskId',      type: sql.UniqueIdentifier, value: taskId },
@@ -78,13 +106,19 @@ export async function executeAction(
         { name: 'StoryPoints', type: sql.Float,            value: null },
         { name: 'DueDate',     type: sql.Date,             value: null },
       ]);
+      if (ctx.projectId) {
+        void emitAutomationEvent({
+          type: 'FIELD_CHANGED', workspaceId: ctx.workspaceId, projectId: ctx.projectId,
+          taskId, actorId: SYSTEM_ACTOR(payload) ?? '', field: 'priority', from: null, to: action.priority,
+          loop: ctx.loop,
+        });
+      }
       break;
     }
 
-    case 'ADD_COMMENT': {
+    case 'POST_COMMENT': {
       if (!taskId || !action.message) break;
-      // System user id placeholder — replace with a real system user id
-      const systemUserId = process.env.SYSTEM_USER_ID ?? null;
+      const systemUserId = SYSTEM_ACTOR(payload);
       if (!systemUserId) break;
       await execSpOne('usp_Comment_Create', [
         { name: 'TaskId',   type: sql.UniqueIdentifier,  value: taskId },
@@ -106,9 +140,9 @@ export async function executeAction(
       break;
     }
 
-    case 'TRIGGER_WEBHOOK': {
+    case 'CALL_WEBHOOK': {
       if (!action.webhookUrl) break;
-      // Fire-and-forget — don't await so a slow external URL doesn't block the worker
+      // Legacy fire-and-forget fetch — replaced by the signed/audited dispatcher in 6c.
       fetch(action.webhookUrl, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },

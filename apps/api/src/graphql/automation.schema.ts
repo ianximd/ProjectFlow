@@ -47,7 +47,7 @@ export function registerAutomationGraphql(): void {
       resolve: async (_, a, ctx) => {
         const workspaceId = await projRepo.getWorkspaceId(a.projectId);
         if (!workspaceId) notFound('Project not found');
-        await requireWorkspacePermission(ctx, workspaceId, 'automation.create');
+        await requireWorkspacePermission(ctx, workspaceId, 'automation.read');
         return svc.list(a.projectId);
       },
     }),
@@ -105,11 +105,19 @@ export function registerAutomationGraphql(): void {
         const workspaceId = await ruleRepo.getWorkspaceId(a.id);
         if (!workspaceId) notFound('Rule not found');
         await requireWorkspacePermission(ctx, workspaceId, 'automation.update');
+        let trigger: unknown, conditions: unknown, actions: unknown;
+        try {
+          trigger    = a.trigger    ? JSON.parse(a.trigger)    : undefined;
+          conditions = a.conditions ? JSON.parse(a.conditions) : undefined;
+          actions    = a.actions    ? JSON.parse(a.actions)    : undefined;
+        } catch {
+          throw new GraphQLError('trigger/conditions/actions must be JSON strings', { extensions: { code: 'INVALID_INPUT' } });
+        }
         return svc.update(a.id, {
           name:       a.name ?? undefined,
-          trigger:    a.trigger    ? JSON.parse(a.trigger)    : undefined,
-          conditions: a.conditions ? JSON.parse(a.conditions) : undefined,
-          actions:    a.actions    ? JSON.parse(a.actions)    : undefined,
+          trigger:    trigger    as any,
+          conditions: conditions as any,
+          actions:    actions    as any,
         });
       },
     }),

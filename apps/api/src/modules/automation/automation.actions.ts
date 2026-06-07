@@ -9,8 +9,11 @@ import { execSpOne } from '../../shared/lib/sqlClient.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import { emitAutomationEvent, type LoopContext } from './automation.bus.js';
 import type { AutomationAction } from '@projectflow/types';
+import { TaskRepository } from '../tasks/task.repository.js';
 
 const log = subLogger('automation');
+
+const taskRepo = new TaskRepository();
 
 export interface ActionContext {
   workspaceId: string;
@@ -53,18 +56,8 @@ export async function executeAction(
         action.assigneeId === 'REPORTER'
           ? (payload['reporterId'] as string | undefined) ?? null
           : action.assigneeId ?? null;
-      await execSpOne('usp_Task_Update', [
-        { name: 'TaskId',      type: sql.UniqueIdentifier, value: taskId },
-        { name: 'Title',       type: sql.NVarChar(500),    value: null },
-        { name: 'Description', type: sql.NVarChar(sql.MAX), value: null },
-        { name: 'Type',        type: sql.NVarChar(20),     value: null },
-        { name: 'Priority',    type: sql.NVarChar(20),     value: null },
-        { name: 'AssigneeId',  type: sql.UniqueIdentifier, value: assigneeId },
-        { name: 'SprintId',    type: sql.UniqueIdentifier, value: null },
-        { name: 'EpicId',      type: sql.UniqueIdentifier, value: null },
-        { name: 'StoryPoints', type: sql.Float,            value: null },
-        { name: 'DueDate',     type: sql.Date,             value: null },
-      ]);
+      if (!assigneeId) break;
+      await taskRepo.setAssignees(taskId, [assigneeId]);
       if (ctx.projectId) {
         void emitAutomationEvent({
           type: 'ASSIGNEE_CHANGED', workspaceId: ctx.workspaceId, projectId: ctx.projectId,
@@ -77,18 +70,7 @@ export async function executeAction(
 
     case 'UNASSIGN': {
       if (!taskId) break;
-      await execSpOne('usp_Task_Update', [
-        { name: 'TaskId',      type: sql.UniqueIdentifier, value: taskId },
-        { name: 'Title',       type: sql.NVarChar(500),    value: null },
-        { name: 'Description', type: sql.NVarChar(sql.MAX), value: null },
-        { name: 'Type',        type: sql.NVarChar(20),     value: null },
-        { name: 'Priority',    type: sql.NVarChar(20),     value: null },
-        { name: 'AssigneeId',  type: sql.UniqueIdentifier, value: null },
-        { name: 'SprintId',    type: sql.UniqueIdentifier, value: null },
-        { name: 'EpicId',      type: sql.UniqueIdentifier, value: null },
-        { name: 'StoryPoints', type: sql.Float,            value: null },
-        { name: 'DueDate',     type: sql.Date,             value: null },
-      ]);
+      await taskRepo.setAssignees(taskId, []);
       break;
     }
 
@@ -100,7 +82,6 @@ export async function executeAction(
         { name: 'Description', type: sql.NVarChar(sql.MAX), value: null },
         { name: 'Type',        type: sql.NVarChar(20),     value: null },
         { name: 'Priority',    type: sql.NVarChar(20),     value: action.priority },
-        { name: 'AssigneeId',  type: sql.UniqueIdentifier, value: null },
         { name: 'SprintId',    type: sql.UniqueIdentifier, value: null },
         { name: 'EpicId',      type: sql.UniqueIdentifier, value: null },
         { name: 'StoryPoints', type: sql.Float,            value: null },

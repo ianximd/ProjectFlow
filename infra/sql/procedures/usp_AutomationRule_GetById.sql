@@ -10,6 +10,9 @@ BEGIN
     SELECT TOP 1
            Id,
            ProjectId,
+           WorkspaceId,
+           ScopeType,
+           ScopeId,
            Name,
            IsEnabled,
            TriggerConfig,

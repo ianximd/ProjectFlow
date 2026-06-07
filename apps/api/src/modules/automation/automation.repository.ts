@@ -78,6 +78,14 @@ export class AutomationRepository {
     return rows[0] ?? null;
   }
 
+  /** Parsed single rule by id (works for PROJECT and WORKSPACE scope). */
+  async getRuleById(id: string) {
+    const rows = await execSpOne<AutomationRuleRow>('usp_AutomationRule_GetById', [
+      { name: 'RuleId', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0] ? parseRow(rows[0]) : null;
+  }
+
   async create(
     scopeType: AutomationScopeType,
     workspaceId: string,

@@ -24,14 +24,9 @@ export function startAutomationWorker() {
       const { ruleId, payload, workspaceId, projectId, eventType, depth, causationChain } = job.data;
       const startedAt = new Date();
 
-      // Load the rule fresh so we always have the latest config.
-      const rules = await repo.list(projectId ?? '');
-      let rule = rules.find((r) => r.id === ruleId);
-      // Workspace-scoped rules aren't in the project list — fall back to a single read.
-      if (!rule) {
-        const byId = await repo.getById(ruleId);
-        rule = byId ? (byId as any) : undefined;
-      }
+      // Load the rule fresh (parsed) so we always have the latest config.
+      // Works for both PROJECT- and WORKSPACE-scoped rules.
+      const rule = await repo.getRuleById(ruleId);
 
       if (!rule || !rule.isEnabled) {
         await repo.recordRun({

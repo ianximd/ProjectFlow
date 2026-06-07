@@ -23,6 +23,13 @@ async function resolveCreateWorkspace(c: any): Promise<string | null> {
   }
 }
 
+async function resolveListWorkspace(c: any): Promise<string | null> {
+  const workspaceId = c.req.query('workspaceId');
+  if (workspaceId) return workspaceId;
+  const projectId = c.req.query('projectId');
+  return projectId ? await projectRepoForLookup.getWorkspaceId(projectId) : null;
+}
+
 const triggerSchema = z.object({
   type:           z.string().min(1),
   cron:           z.string().optional(),
@@ -70,13 +77,17 @@ const updateSchema = z.object({
 export const automationRoutes = new Hono<{ Variables: Variables }>();
 
 // GET /automations?projectId= OR ?workspaceId=
-automationRoutes.get('/', async (c) => {
-  const projectId   = c.req.query('projectId');
-  const workspaceId = c.req.query('workspaceId');
-  if (!projectId && !workspaceId) return c.json({ error: 'projectId or workspaceId required' }, 400);
-  const rules = await svc.list(projectId ?? workspaceId!);
-  return c.json({ rules });
-});
+automationRoutes.get(
+  '/',
+  requirePermission('automation.read', { resolveWorkspace: resolveListWorkspace }),
+  async (c) => {
+    const projectId   = c.req.query('projectId');
+    const workspaceId = c.req.query('workspaceId');
+    if (!projectId && !workspaceId) return c.json({ error: 'projectId or workspaceId required' }, 400);
+    const rules = await svc.list(projectId ?? workspaceId!);
+    return c.json({ rules });
+  },
+);
 
 // POST /automations
 automationRoutes.post(

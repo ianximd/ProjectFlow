@@ -7,11 +7,16 @@ const connection = {
 };
 
 export interface AutomationJobData {
-  ruleId:    string;
-  projectId: string;
-  eventType: string;
-  /** Serialised payload (task, sprint, etc.) */
-  payload:   Record<string, unknown>;
+  ruleId:         string;
+  projectId:      string | null;
+  workspaceId:    string;
+  eventType:      string;
+  /** Serialised payload (task, sprint, etc.) carrying old/new diffs. */
+  payload:        Record<string, unknown>;
+  /** Loop-guard causal depth at enqueue time. */
+  depth:          number;
+  /** Rule ids already fired in this causal chain. */
+  causationChain: string[];
 }
 
 export const automationQueue = new Queue<AutomationJobData>('automation', {

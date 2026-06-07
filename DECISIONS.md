@@ -599,6 +599,62 @@ API **286 unit / 161 integration**, web **104 unit** + i18n parity, `tsc` clean 
 green, e2e `relationships` **1/1** (rollup shows 8 = 3+5). Branch `feat/phase5b-relationships` (6 commits) →
 ff-merged to `main` locally (NOT pushed).
 
+## 2026-06-07 — Phase 6a Engine Activation
+
+Activates the dormant Phase 4 (`0009`) automation engine so rules actually fire. Key architectural choices recorded below.
+
+### Architecture: typed domain-event emission (option B)
+
+- **`emitAutomationEvent` in `automation.bus.ts`** is the sole entry point. It is called best-effort (fire-and-forget, mirroring `publishTaskEvent`) from `task.service` after commit (create → `TASK_CREATED`; `transitionTask` → `STATUS_CHANGED`; `updateTask` → `FIELD_CHANGED` / `ASSIGNEE_CHANGED`) and from `comment.service.create` → `COMMENT_POSTED`.
+- **Rejected:** tapping `publishTaskEvent` directly (would have conflated realtime-UI delivery with automation dispatch — separate concerns, separate failure modes). Also rejected: an outbox-poller table (overkill for the current scale; the bus + BullMQ queue already provides at-least-once delivery with worker retry).
+
+### `0009`-engine rewire — `enqueueForEvent` deleted
+
+The legacy `AutomationService.enqueueForEvent` was a dead letter (never called from any service method). It has been deleted; `automation.bus#emitAutomationEvent` is the sole entry point. `automation.worker.ts` now reads `workspaceId` / `depth` / `causationChain` from the job payload and writes an `AutomationRuns` row per execution.
+
+### `ScopeId` — maintained (non-computed) column
+
+`ScopeId` is stored as a plain `UNIQUEIDENTIFIER` column backfilled and maintained by the SPs (`usp_AutomationRule_Create` sets it; the `GetByTrigger` hot lookup indexes on it). Rationale: SQL Server computed columns are not directly indexable in older compat levels, and the maintained column is trivially kept in sync by the two SP writers.
+
+### `0039` taxonomy JSON rewrite — one-way, not reversed in rollback
+
+The `UPDATE … SET TriggerConfig = REPLACE(…)` / `SET ActionConfig = REPLACE(…)` chain in `0039` rewrites the stored Jira-style enum tokens (`ISSUE_CREATED` → `TASK_CREATED`, `ISSUE_TRANSITIONED` → `STATUS_CHANGED`, etc.) in-place. The rewrite is bounded to rows that still contain an old token (idempotent re-run produces `0 rows affected`). The rollback script drops the two new tables but **does not reverse the token rewrite** — the legacy engine never fired in prod; all DB work is local-only (`ProjectFlow_Test`); and reversing would require an inverse REPLACE that risks colliding with new rows already using the new tokens.
+
+### Loop guard: `{depth, causationChain}` + `MAX_DEPTH=5` + 10 s Redis cooldown
+
+- `shouldEnqueue(ruleId, loop)` is a pure function: blocks if `loop.depth >= MAX_DEPTH` (5) or if `ruleId` is already in `loop.causationChain` (self-retrigger). Both produce a `loop_blocked` `AutomationRuns` row for visibility.
+- A `(ruleId, taskId)` Redis SET NX EX 10 key damps tight thrash (e.g. a rule that assigns an assignee, which fires `ASSIGNEE_CHANGED`, which matches a second rule). Fails open (Redis unavailable → enqueue proceeds).
+- Task-mutating actions (`ASSIGN`, `UNASSIGN`, `CHANGE_STATUS`) pass `depth+1` and the extended chain when they re-emit domain events, so the guard propagates through the causal tree.
+
+### `CALL_WEBHOOK` — legacy `fetch` retained; signed dispatch deferred to 6c
+
+`CALL_WEBHOOK` uses the plain `fetch` call from the original `0009` implementation. HMAC-signed dispatch (secret rotation, `X-ProjectFlow-Signature` header) is deferred to Phase 6c. This is recorded here so it is not forgotten.
+
+### WORKSPACE-scope listing — project-keyed SP reused; full workspace listing UI deferred to 6d
+
+`GET /automations?workspaceId=…` calls `svc.list(workspaceId)`, which passes the workspaceId into `usp_AutomationRule_GetByScope`. The automations page's project-switcher already scopes to the active project. A dedicated "workspace-wide rules" UI panel is deferred to Phase 6d.
+
+### Review fixes applied this slice
+
+**(a) Rollback 0038 — drop/recreate `IX_AutomationRule_Project` to restore `ProjectId NOT NULL`.**
+The original 0038 rollback simply `ALTER COLUMN ProjectId … NOT NULL`, but that fails when `IX_AutomationRule_Project` (from `0009`) is defined on `ProjectId` and the column still has a NULL constraint. Fix: the down script first drops the index, restores `NOT NULL`, then recreates the index.
+
+**(b) Worker `getRuleById` — parse the returned row.**
+The worker's old `getById` returned a raw SQL row (JSON strings not parsed), so workspace-scoped rules (whose `ScopeId ≠ ProjectId`) never matched the `getByTrigger` result. Fixed: the worker now calls a typed `getRuleById` that runs the row through `parseRow` (JSON.parse of TriggerConfig / ConditionConfig / ActionConfig). Without this fix, every rule execution silently no-ops.
+
+**(c) `ASSIGN` / `UNASSIGN` go through `usp_Task_SetAssignees`.**
+The original action implementation passed `@AssigneeId` to `usp_Task_Update`, which does not have that parameter (Phase 2 replaced single-assignee with the `TaskAssignees` join table managed by `usp_Task_SetAssignees`). Fixed: ASSIGN fetches the current assignee list, appends/removes the target user, then calls `usp_Task_SetAssignees`. `SET_PRIORITY` had a stray `@AssigneeId` parameter removed at the same time.
+
+**(d) REST `GET /automations` gained `automation.read` authz.**
+The list endpoint lacked a `requirePermission` guard (any authenticated user could read any project's rules by guessing a projectId). Fixed: wrapped with `requirePermission('automation.read', { resolveWorkspace: resolveListWorkspace })`.
+
+**(e) GraphQL `updateAutomationRule` — JSON.parse guarded.**
+`updateAutomationRule` called `JSON.parse(input.triggerConfig)` without a try/catch; malformed JSON from a client would crash the resolver with an unhandled exception. Fixed: wrapped in try/catch → returns a GraphQL `BAD_USER_INPUT` error.
+
+### DB-execution policy
+
+ALL DB work (migrations 0038/0039, SP deploys, integration tests) ran ONLY against the local Docker `ProjectFlow_Test` instance, never the prod-pointing `apps/api/.env` (`sql.binasentra.co.id/ProjectFlow`). The classifier in MEMORY.md blocks all connections to the prod server.
+
 ## 2026-06-06 — Phase 5c Recurring Tasks
 
 Spec §5; plan `docs/superpowers/plans/2026-06-06-phase5c-recurring.md`.

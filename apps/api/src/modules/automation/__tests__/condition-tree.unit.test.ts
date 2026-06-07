@@ -29,6 +29,9 @@ describe('compareOperator', () => {
   it('contains (case-insensitive substring)', () => {
     expect(compareOperator('contains', 'In Progress', 'progress')).toBe(true);
     expect(compareOperator('contains', 'Done', 'progress')).toBe(false);
+    // Fail closed: empty/missing expected never matches everything.
+    expect(compareOperator('contains', 'anything', '')).toBe(false);
+    expect(compareOperator('contains', 'anything', undefined)).toBe(false);
   });
   it('gt / lt (numeric)', () => {
     expect(compareOperator('gt', 5, '3')).toBe(true);
@@ -95,6 +98,20 @@ describe('evaluateConditionTree — groups', () => {
     expect(await evaluateConditionTree({ op: 'OR', children: [lo, ip] }, ctx())).toBe(true);
     expect(await evaluateConditionTree({ op: 'OR', children: [lo, hi] }, ctx())).toBe(true);
     expect(await evaluateConditionTree({ op: 'OR', children: [lo, leaf({ field: 'status', operator: 'is', value: 'Done' })] }, ctx())).toBe(false);
+  });
+  it('OR short-circuits — a later resolver is not invoked once a branch matches', async () => {
+    const userHasRole = vi.fn(async () => true);
+    // hi (priority is HIGH) matches first → the USER_HAS_ROLE branch must not run.
+    const node: ConditionNode = { op: 'OR', children: [hi, leaf({ type: 'USER_HAS_ROLE', operator: 'is', value: 'admin' })] };
+    expect(await evaluateConditionTree(node, ctx({ userHasRole }))).toBe(true);
+    expect(userHasRole).not.toHaveBeenCalled();
+  });
+  it('AND short-circuits — a later resolver is not invoked once a branch fails', async () => {
+    const matchesFilter = vi.fn(async () => true);
+    // lo (priority is LOW) fails first → the ISSUE_MATCHES_FILTER branch must not run.
+    const node: ConditionNode = { op: 'AND', children: [lo, leaf({ type: 'ISSUE_MATCHES_FILTER', operator: 'is', pql: 'x = y' })] };
+    expect(await evaluateConditionTree(node, ctx({ matchesFilter }))).toBe(false);
+    expect(matchesFilter).not.toHaveBeenCalled();
   });
   it('nested OR-inside-AND', async () => {
     const node: ConditionNode = { op: 'AND', children: [ip, { op: 'OR', children: [hi, lo] }] };

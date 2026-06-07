@@ -36,7 +36,9 @@ export function compareOperator(
     case 'is_not':
       return String(actual ?? '') !== String(expected ?? '');
     case 'contains':
-      return String(actual ?? '').toLowerCase().includes(String(expected ?? '').toLowerCase());
+      // Fail closed: an empty/missing expected must never match everything.
+      if (!expected) return false;
+      return String(actual ?? '').toLowerCase().includes(expected.toLowerCase());
     case 'gt': {
       const a = Number(actual), e = Number(expected);
       return Number.isFinite(a) && Number.isFinite(e) && a > e;
@@ -83,6 +85,8 @@ async function evaluateLeaf(leaf: ConditionLeaf, ctx: ConditionContext): Promise
  */
 export async function evaluateConditionTree(node: ConditionNode, ctx: ConditionContext): Promise<boolean> {
   if (isConditionGroup(node)) {
+    // Both AND and OR with no children are vacuously true — matches the legacy
+    // "no conditions means always fire" semantics.
     if (node.children.length === 0) return true;
     if (node.op === 'AND') {
       for (const child of node.children) {

@@ -8,11 +8,13 @@ import type { ActionResult } from './result';
 
 
 export interface CreateAutomationInput {
-  projectId:  string;
-  name:       string;
-  trigger:    unknown;
-  conditions: unknown[];
-  actions:    unknown[];
+  scopeType:   'PROJECT' | 'WORKSPACE';
+  workspaceId: string;
+  projectId:   string | null;
+  name:        string;
+  trigger:     unknown;
+  conditions:  unknown[];
+  actions:     unknown[];
 }
 
 export interface UpdateAutomationInput {
@@ -29,11 +31,13 @@ export async function createAutomation(input: CreateAutomationInput): Promise<Ac
     await serverFetch('/automations', {
       method: 'POST',
       body:   JSON.stringify({
-        projectId:  input.projectId,
-        name:       input.name,
-        trigger:    input.trigger,
-        conditions: input.conditions,
-        actions:    input.actions,
+        scopeType:   input.scopeType,
+        workspaceId: input.workspaceId,
+        projectId:   input.projectId,
+        name:        input.name,
+        trigger:     input.trigger,
+        conditions:  input.conditions,
+        actions:     input.actions,
       }),
     });
   } catch (e) {

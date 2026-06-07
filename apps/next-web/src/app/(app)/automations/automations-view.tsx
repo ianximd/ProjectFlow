@@ -47,25 +47,29 @@ import { cn } from '@/lib/utils';
 // ── Label key maps (resolved via t() inside components) ───────────────────────
 
 const TRIGGER_KEYS: Record<AutomationTriggerType, string> = {
-  ISSUE_CREATED:        'triggerIssueCreated',
-  ISSUE_UPDATED:        'triggerIssueUpdated',
-  ISSUE_TRANSITIONED:   'triggerIssueTransitioned',
-  SPRINT_STARTED:       'triggerSprintStarted',
-  SPRINT_COMPLETED:     'triggerSprintCompleted',
-  DUE_DATE_APPROACHING: 'triggerDueDateApproaching',
-  SCHEDULED:            'triggerScheduled',
-  MANUAL:               'triggerManual',
-  WEBHOOK:              'triggerWebhook',
+  TASK_CREATED:     'triggerTaskCreated',
+  TASK_UPDATED:     'triggerTaskUpdated',
+  STATUS_CHANGED:   'triggerStatusChanged',
+  FIELD_CHANGED:    'triggerFieldChanged',
+  ASSIGNEE_CHANGED: 'triggerAssigneeChanged',
+  COMMENT_POSTED:   'triggerCommentPosted',
+  SPRINT_STARTED:   'triggerSprintStarted',
+  SPRINT_COMPLETED: 'triggerSprintCompleted',
+  DUE_DATE_PASSED:  'triggerDueDatePassed',
+  DATE_ARRIVED:     'triggerDateArrived',
+  SCHEDULED:        'triggerScheduled',
+  MANUAL:           'triggerManual',
+  WEBHOOK:          'triggerWebhook',
 };
 
 const ACTION_KEYS: Record<AutomationActionType, string> = {
-  TRANSITION_ISSUE:  'actionTransitionIssue',
-  ASSIGN_ISSUE:      'actionAssignIssue',
-  UNASSIGN_ISSUE:    'actionUnassignIssue',
+  CHANGE_STATUS:     'actionChangeStatus',
+  ASSIGN:            'actionAssign',
+  UNASSIGN:          'actionUnassign',
   SET_PRIORITY:      'actionSetPriority',
-  ADD_COMMENT:       'actionAddComment',
+  POST_COMMENT:      'actionPostComment',
   SEND_NOTIFICATION: 'actionSendNotification',
-  TRIGGER_WEBHOOK:   'actionTriggerWebhook',
+  CALL_WEBHOOK:      'actionCallWebhook',
 };
 
 const CONDITION_KEYS: Record<AutomationConditionType, string> = {
@@ -88,7 +92,7 @@ function shortDate(iso: string | null): string | null {
   return formatShortDate(d);
 }
 
-const DEFAULT_TRIGGER: AutomationTriggerConfig = { type: 'ISSUE_CREATED' };
+const DEFAULT_TRIGGER: AutomationTriggerConfig = { type: 'TASK_CREATED' };
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +164,7 @@ export function AutomationsView({ ctx, automations }: Props) {
     trigger:    AutomationTriggerConfig;
     conditions: AutomationCondition[];
     actions:    AutomationAction[];
+    scopeType:  'PROJECT' | 'WORKSPACE';
   }) {
     setSaveError(null);
     setIsSaving(true);
@@ -174,11 +179,13 @@ export function AutomationsView({ ctx, automations }: Props) {
         });
       } else {
         res = await createAutomation({
-          projectId:  ctx.activeProjectId!,
-          name:       input.name,
-          trigger:    input.trigger,
-          conditions: input.conditions,
-          actions:    input.actions,
+          scopeType:   input.scopeType,
+          workspaceId: ctx.activeWorkspaceId,
+          projectId:   input.scopeType === 'WORKSPACE' ? null : ctx.activeProjectId,
+          name:        input.name,
+          trigger:     input.trigger,
+          conditions:  input.conditions,
+          actions:     input.actions,
         });
       }
       if (!res.ok) {
@@ -384,7 +391,7 @@ function RuleRow({
               <Badge size="xs" variant="outline" appearance="outline" className="bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
                 <Wand2 className="size-3 mr-1" />
                 {t((TRIGGER_KEYS[trigger.type as AutomationTriggerType] ?? trigger.type) as Parameters<typeof t>[0])}
-                {trigger.type === 'ISSUE_TRANSITIONED' && (trigger as any).toStatus && ` → ${(trigger as any).toStatus}`}
+                {trigger.type === 'STATUS_CHANGED' && (trigger as any).toStatus && ` → ${(trigger as any).toStatus}`}
                 {trigger.type === 'SCHEDULED' && (trigger as any).cron && ` · ${(trigger as any).cron}`}
               </Badge>
             )}
@@ -451,11 +458,13 @@ function RuleDialog({
     trigger:    AutomationTriggerConfig;
     conditions: AutomationCondition[];
     actions:    AutomationAction[];
+    scopeType:  'PROJECT' | 'WORKSPACE';
   }) => void;
   isPending: boolean;
   error:     string | null;
 }) {
   const [name,       setName]       = useState(initial?.name ?? '');
+  const [scopeType,  setScopeType]  = useState<'PROJECT' | 'WORKSPACE'>('PROJECT');
   const [trigger,    setTrigger]    = useState<AutomationTriggerConfig>(
     (initial?.trigger as AutomationTriggerConfig) ?? DEFAULT_TRIGGER,
   );
@@ -480,7 +489,7 @@ function RuleDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ name: name.trim(), trigger, conditions, actions });
+            onSubmit({ name: name.trim(), trigger, conditions, actions, scopeType });
           }}
         >
           <DialogBody className="flex flex-col gap-5 max-h-[60vh] overflow-y-auto">
@@ -497,6 +506,18 @@ function RuleDialog({
                 onChange={(e) => setName(e.target.value)}
                 placeholder={t('namePlaceholder')}
               />
+            </div>
+
+            {/* Scope */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">{t('scopeLabel')}</label>
+              <Select value={scopeType} onValueChange={(v) => setScopeType(v as 'PROJECT' | 'WORKSPACE')}>
+                <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PROJECT">{t('scopeThisProject')}</SelectItem>
+                  <SelectItem value="WORKSPACE">{t('scopeEntireWorkspace')}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Trigger */}
@@ -564,7 +585,7 @@ function TriggerEditor({
         </SelectContent>
       </Select>
 
-      {trigger.type === 'ISSUE_TRANSITIONED' && (
+      {trigger.type === 'STATUS_CHANGED' && (
         <Input
           placeholder={t('transitionToStatusPlaceholder')}
           value={(trigger as any).toStatus ?? ''}
@@ -572,7 +593,7 @@ function TriggerEditor({
           className="h-9 text-sm"
         />
       )}
-      {trigger.type === 'DUE_DATE_APPROACHING' && (
+      {trigger.type === 'DUE_DATE_PASSED' && (
         <Input
           type="number" min={0}
           placeholder={t('hoursBeforeDuePlaceholder')}
@@ -738,7 +759,7 @@ function ActionList({
                 </Button>
               </div>
 
-              {(action as any).type === 'TRANSITION_ISSUE' && (
+              {(action as any).type === 'CHANGE_STATUS' && (
                 <Input
                   placeholder={t('targetStatusPlaceholder')}
                   value={(action as any).toStatus ?? ''}
@@ -746,7 +767,7 @@ function ActionList({
                   className="h-8 text-xs"
                 />
               )}
-              {(action as any).type === 'ASSIGN_ISSUE' && (
+              {(action as any).type === 'ASSIGN' && (
                 <Input
                   placeholder={t('assigneePlaceholder')}
                   value={(action as any).assigneeId ?? ''}
@@ -765,7 +786,7 @@ function ActionList({
                   </SelectContent>
                 </Select>
               )}
-              {((action as any).type === 'ADD_COMMENT' || (action as any).type === 'SEND_NOTIFICATION') && (
+              {((action as any).type === 'POST_COMMENT' || (action as any).type === 'SEND_NOTIFICATION') && (
                 <textarea
                   placeholder={t('messagePlaceholder')}
                   value={(action as any).message ?? ''}
@@ -774,7 +795,7 @@ function ActionList({
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:border-ring resize-none"
                 />
               )}
-              {(action as any).type === 'TRIGGER_WEBHOOK' && (
+              {(action as any).type === 'CALL_WEBHOOK' && (
                 <Input
                   type="url"
                   placeholder={t('webhookUrlPlaceholder')}

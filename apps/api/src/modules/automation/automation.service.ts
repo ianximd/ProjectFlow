@@ -1,29 +1,32 @@
 import { AutomationRepository } from './automation.repository.js';
-import { automationQueue }      from './automation.queue.js';
 import type {
   AutomationTriggerConfig,
   AutomationCondition,
   AutomationAction,
   AutomationRule,
+  AutomationScopeType,
+  AutomationRun,
 } from '@projectflow/types';
 
 const repo = new AutomationRepository();
 
 export class AutomationService {
-  /** List all rules for a project */
+  /** List all rules for a project. */
   async list(projectId: string): Promise<AutomationRule[]> {
     return repo.list(projectId);
   }
 
-  /** Create a new rule */
+  /** Create a new rule (PROJECT or WORKSPACE scope). */
   async create(
-    projectId: string,
+    scopeType: AutomationScopeType,
+    workspaceId: string,
+    projectId: string | null,
     name: string,
     trigger: AutomationTriggerConfig,
     conditions: AutomationCondition[],
     actions: AutomationAction[],
   ): Promise<AutomationRule> {
-    return repo.create(projectId, name, trigger, conditions, actions);
+    return repo.create(scopeType, workspaceId, projectId, name, trigger, conditions, actions);
   }
 
   /** Partial update a rule */
@@ -45,24 +48,8 @@ export class AutomationService {
     return repo.delete(id);
   }
 
-  /**
-   * Called from other modules when an event fires (e.g., task created, sprint started).
-   * Looks up matching enabled rules and enqueues a job for each.
-   */
-  async enqueueForEvent(
-    projectId: string,
-    triggerType: string,
-    payload: Record<string, unknown>,
-  ): Promise<void> {
-    const rules = await repo.getByTrigger(projectId, triggerType);
-
-    for (const rule of rules) {
-      await automationQueue.add(`${triggerType}:${rule.id}`, {
-        ruleId:    rule.id,
-        projectId: rule.projectId,
-        eventType: triggerType,
-        payload,
-      });
-    }
+  /** Audited run history for a rule (newest first). */
+  async listRuns(ruleId: string, limit = 50, offset = 0): Promise<AutomationRun[]> {
+    return repo.listRunsByRule(ruleId, limit, offset);
   }
 }

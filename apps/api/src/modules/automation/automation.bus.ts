@@ -24,7 +24,7 @@ export type AutomationDomainEvent =
   | { type: 'ASSIGNEE_CHANGED'; workspaceId: string; projectId: string; taskId: string; actorId: string; from: string | null; to: string | null; payload?: Record<string, unknown>; loop?: LoopContext }
   | { type: 'COMMENT_POSTED';   workspaceId: string; projectId: string; taskId: string; actorId: string; commentId: string; payload?: Record<string, unknown>; loop?: LoopContext };
 
-export type LoopDecision = { ok: true } | { ok: false; reason: 'depth' | 'chain' };
+export type LoopDecision = { ok: boolean; reason?: 'depth' | 'chain' };
 
 /** Pure loop-guard decision for one rule given the inbound causal context. */
 export function shouldEnqueue(ruleId: string, loop: LoopContext): LoopDecision {

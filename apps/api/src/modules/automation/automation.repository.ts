@@ -4,11 +4,16 @@ import type {
   AutomationTriggerConfig,
   AutomationCondition,
   AutomationAction,
+  AutomationScopeType,
+  AutomationRun,
 } from '@projectflow/types';
 
 export interface AutomationRuleRow {
   Id:              string;
-  ProjectId:       string;
+  ProjectId:       string | null;
+  WorkspaceId:     string;
+  ScopeType:       AutomationScopeType;
+  ScopeId:         string;
   Name:            string;
   IsEnabled:       boolean;
   TriggerConfig:   string;
@@ -23,6 +28,8 @@ export interface AutomationRuleRow {
 function parseRow(row: AutomationRuleRow) {
   return {
     id:             row.Id,
+    scopeType:      row.ScopeType,
+    workspaceId:    row.WorkspaceId,
     projectId:      row.ProjectId,
     name:           row.Name,
     isEnabled:      Boolean(row.IsEnabled),
@@ -33,6 +40,26 @@ function parseRow(row: AutomationRuleRow) {
     lastExecutedAt: row.LastExecutedAt?.toISOString() ?? null,
     createdAt:      row.CreatedAt.toISOString(),
     updatedAt:      row.UpdatedAt.toISOString(),
+  };
+}
+
+interface AutomationRunRow {
+  Id: string; RuleId: string; WorkspaceId: string; ProjectId: string | null;
+  TriggerType: string; Status: AutomationRun['status'];
+  Payload: string | null; ActionResults: string | null; Error: string | null;
+  Depth: number; StartedAt: Date; FinishedAt: Date | null; DurationMs: number | null;
+}
+
+function parseRunRow(row: AutomationRunRow): AutomationRun {
+  return {
+    id: row.Id, ruleId: row.RuleId, workspaceId: row.WorkspaceId, projectId: row.ProjectId,
+    triggerType: row.TriggerType, status: row.Status,
+    payload:       row.Payload       ? JSON.parse(row.Payload)       : null,
+    actionResults: row.ActionResults ? JSON.parse(row.ActionResults) : null,
+    error: row.Error, depth: row.Depth,
+    startedAt: row.StartedAt.toISOString(),
+    finishedAt: row.FinishedAt?.toISOString() ?? null,
+    durationMs: row.DurationMs,
   };
 }
 
@@ -52,15 +79,19 @@ export class AutomationRepository {
   }
 
   async create(
-    projectId: string,
+    scopeType: AutomationScopeType,
+    workspaceId: string,
+    projectId: string | null,
     name: string,
     trigger: AutomationTriggerConfig,
     conditions: AutomationCondition[],
     actions: AutomationAction[],
   ) {
     const rows = await execSpOne<AutomationRuleRow>('usp_AutomationRule_Create', [
-      { name: 'ProjectId',       type: sql.UniqueIdentifier, value: projectId },
-      { name: 'Name',            type: sql.NVarChar(255),    value: name },
+      { name: 'ScopeType',       type: sql.NVarChar(12),      value: scopeType },
+      { name: 'WorkspaceId',     type: sql.UniqueIdentifier,  value: workspaceId },
+      { name: 'ProjectId',       type: sql.UniqueIdentifier,  value: projectId },
+      { name: 'Name',            type: sql.NVarChar(255),     value: name },
       { name: 'TriggerConfig',   type: sql.NVarChar(sql.MAX), value: JSON.stringify(trigger) },
       { name: 'ConditionConfig', type: sql.NVarChar(sql.MAX), value: JSON.stringify(conditions) },
       { name: 'ActionConfig',    type: sql.NVarChar(sql.MAX), value: JSON.stringify(actions) },
@@ -102,9 +133,10 @@ export class AutomationRepository {
     ]);
   }
 
-  async getByTrigger(projectId: string, triggerType: string) {
+  async getByTrigger(projectId: string | null, workspaceId: string, triggerType: string) {
     const rows = await execSpOne<AutomationRuleRow>('usp_AutomationRule_GetByTrigger', [
       { name: 'ProjectId',   type: sql.UniqueIdentifier, value: projectId },
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
       { name: 'TriggerType', type: sql.NVarChar(50),     value: triggerType },
     ]);
     return rows.map(parseRow);
@@ -121,5 +153,35 @@ export class AutomationRepository {
       { name: 'RuleId', type: sql.UniqueIdentifier, value: ruleId },
     ]);
     return rows[0]?.WorkspaceId ?? null;
+  }
+
+  async recordRun(run: {
+    ruleId: string; workspaceId: string; projectId: string | null; triggerType: string;
+    status: AutomationRun['status']; payload?: string | null; actionResults?: string | null;
+    error?: string | null; depth: number; startedAt: Date; durationMs?: number | null;
+  }): Promise<AutomationRun> {
+    const rows = await execSpOne<AutomationRunRow>('usp_AutomationRun_Record', [
+      { name: 'RuleId',        type: sql.UniqueIdentifier,  value: run.ruleId },
+      { name: 'WorkspaceId',   type: sql.UniqueIdentifier,  value: run.workspaceId },
+      { name: 'ProjectId',     type: sql.UniqueIdentifier,  value: run.projectId },
+      { name: 'TriggerType',   type: sql.NVarChar(40),      value: run.triggerType },
+      { name: 'Status',        type: sql.NVarChar(16),      value: run.status },
+      { name: 'Payload',       type: sql.NVarChar(sql.MAX), value: run.payload ?? null },
+      { name: 'ActionResults', type: sql.NVarChar(sql.MAX), value: run.actionResults ?? null },
+      { name: 'Error',         type: sql.NVarChar(sql.MAX), value: run.error ?? null },
+      { name: 'Depth',         type: sql.Int,               value: run.depth },
+      { name: 'StartedAt',     type: sql.DateTime2,         value: run.startedAt },
+      { name: 'DurationMs',    type: sql.Int,               value: run.durationMs ?? null },
+    ]);
+    return parseRunRow(rows[0]);
+  }
+
+  async listRunsByRule(ruleId: string, limit = 50, offset = 0): Promise<AutomationRun[]> {
+    const rows = await execSpOne<AutomationRunRow>('usp_AutomationRun_ListByRule', [
+      { name: 'RuleId', type: sql.UniqueIdentifier, value: ruleId },
+      { name: 'Limit',  type: sql.Int,              value: limit },
+      { name: 'Offset', type: sql.Int,              value: offset },
+    ]);
+    return rows.map(parseRunRow);
   }
 }

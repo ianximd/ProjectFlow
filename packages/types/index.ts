@@ -377,13 +377,19 @@ export interface CreatedVsResolvedEntry {
 
 // ── Automation Engine ─────────────────────────────────────────────────────────
 
+export type AutomationScopeType = 'WORKSPACE' | 'PROJECT';
+
 export type AutomationTriggerType =
-  | 'ISSUE_CREATED'
-  | 'ISSUE_UPDATED'
-  | 'ISSUE_TRANSITIONED'
+  | 'TASK_CREATED'
+  | 'TASK_UPDATED'
+  | 'STATUS_CHANGED'
+  | 'FIELD_CHANGED'
+  | 'ASSIGNEE_CHANGED'
+  | 'COMMENT_POSTED'
   | 'SPRINT_STARTED'
   | 'SPRINT_COMPLETED'
-  | 'DUE_DATE_APPROACHING'
+  | 'DUE_DATE_PASSED'
+  | 'DATE_ARRIVED'
   | 'SCHEDULED'
   | 'MANUAL'
   | 'WEBHOOK';
@@ -392,9 +398,11 @@ export interface AutomationTriggerConfig {
   type: AutomationTriggerType;
   /** For SCHEDULED: cron expression */
   cron?: string;
-  /** For ISSUE_TRANSITIONED: only fire when moving to this status */
+  /** For STATUS_CHANGED: only fire when moving to this status */
   toStatus?: string;
-  /** For DUE_DATE_APPROACHING: hours before due date */
+  /** For FIELD_CHANGED: only fire when this field changed */
+  field?: string;
+  /** For DUE_DATE_PASSED: hours before due date (preserves "approaching" semantics) */
   hoursBeforeDue?: number;
 }
 
@@ -414,31 +422,33 @@ export interface AutomationCondition {
 }
 
 export type AutomationActionType =
-  | 'TRANSITION_ISSUE'
-  | 'ASSIGN_ISSUE'
-  | 'UNASSIGN_ISSUE'
+  | 'CHANGE_STATUS'
+  | 'ASSIGN'
+  | 'UNASSIGN'
   | 'SET_PRIORITY'
-  | 'ADD_COMMENT'
+  | 'POST_COMMENT'
   | 'SEND_NOTIFICATION'
-  | 'TRIGGER_WEBHOOK';
+  | 'CALL_WEBHOOK';
 
 export interface AutomationAction {
   type: AutomationActionType;
-  /** TRANSITION_ISSUE */
+  /** CHANGE_STATUS */
   toStatus?: string;
-  /** ASSIGN_ISSUE: userId or "REPORTER" */
+  /** ASSIGN: userId or "REPORTER" */
   assigneeId?: string;
   /** SET_PRIORITY */
   priority?: string;
-  /** ADD_COMMENT / SEND_NOTIFICATION */
+  /** POST_COMMENT / SEND_NOTIFICATION */
   message?: string;
-  /** TRIGGER_WEBHOOK */
+  /** CALL_WEBHOOK */
   webhookUrl?: string;
 }
 
 export interface AutomationRule {
   id: string;
-  projectId: string;
+  scopeType: AutomationScopeType;
+  workspaceId: string;
+  projectId: string | null;
   name: string;
   isEnabled: boolean;
   trigger: AutomationTriggerConfig;
@@ -448,6 +458,24 @@ export interface AutomationRule {
   lastExecutedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type AutomationRunStatus = 'success' | 'partial' | 'failed' | 'skipped' | 'loop_blocked';
+
+export interface AutomationRun {
+  id: string;
+  ruleId: string;
+  workspaceId: string;
+  projectId: string | null;
+  triggerType: string;
+  status: AutomationRunStatus;
+  payload: unknown | null;
+  actionResults: unknown | null;
+  error: string | null;
+  depth: number;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
 }
 
 // ── Time Tracking / Work Logs ─────────────────────────────────────────────────

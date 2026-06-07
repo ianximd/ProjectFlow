@@ -62,8 +62,8 @@ export class TaskService {
 
     void emitAutomationEvent({
       type: 'TASK_CREATED',
-      workspaceId: task.workspaceId,
-      projectId: task.projectId,
+      workspaceId: (task as any).workspaceId ?? (task as any).WorkspaceId,
+      projectId: (task as any).projectId ?? (task as any).ProjectId,
       taskId: task.id,
       actorId,
       reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,
@@ -190,8 +190,8 @@ export class TaskService {
 
     void emitAutomationEvent({
       type: 'STATUS_CHANGED',
-      workspaceId: task.workspaceId,
-      projectId: task.projectId,
+      workspaceId: (task as any).workspaceId ?? (task as any).WorkspaceId,
+      projectId: (task as any).projectId ?? (task as any).ProjectId,
       taskId,
       actorId,
       reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,

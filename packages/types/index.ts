@@ -421,6 +421,46 @@ export interface AutomationCondition {
   pql?: string;
 }
 
+// ── Recursive condition tree (Phase 6b) ───────────────────────────────────────
+// A rule's conditions are now a recursive AND/OR group of leaves. A legacy flat
+// AutomationCondition[] is read as an implicit top-level AND group (no migration).
+
+export type ConditionGroupOp = 'AND' | 'OR';
+
+export type ConditionOperator =
+  | 'is'
+  | 'is_not'
+  | 'contains'
+  | 'gt'
+  | 'lt'
+  | 'before'
+  | 'after'
+  | 'is_set';
+
+/** A single comparison. `type` carries the legacy condition kind; FIELD-style
+ *  leaves use `field`/`operator`/`value`, while ISSUE_MATCHES_FILTER uses `pql`
+ *  and USER_HAS_ROLE uses `value` (the role slug). */
+export interface ConditionLeaf {
+  type:     AutomationConditionType;
+  field?:   string;
+  operator: ConditionOperator;
+  value?:   string;
+  /** ISSUE_MATCHES_FILTER only. */
+  pql?:     string;
+}
+
+export interface ConditionGroup {
+  op:       ConditionGroupOp;
+  children: ConditionNode[];
+}
+
+export type ConditionNode = ConditionGroup | ConditionLeaf;
+
+/** Type guard: a group node has an `op` + `children`. */
+export function isConditionGroup(node: ConditionNode): node is ConditionGroup {
+  return (node as ConditionGroup).op === 'AND' || (node as ConditionGroup).op === 'OR';
+}
+
 export type AutomationActionType =
   | 'CHANGE_STATUS'
   | 'ASSIGN'
@@ -452,7 +492,9 @@ export interface AutomationRule {
   name: string;
   isEnabled: boolean;
   trigger: AutomationTriggerConfig;
-  conditions: AutomationCondition[];
+  /** Legacy flat array OR a recursive AND/OR tree (Phase 6b). Read via
+   *  parseConditionTree() which normalises a flat array to an implicit AND. */
+  conditions: AutomationCondition[] | ConditionNode;
   actions: AutomationAction[];
   executionCount: number;
   lastExecutedAt: string | null;

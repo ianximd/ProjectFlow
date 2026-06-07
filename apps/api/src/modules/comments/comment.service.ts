@@ -5,6 +5,7 @@ import { watcherService } from '../watchers/watcher.service.js';
 import { extractMentionUserIds } from './mentions.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { pubsub } from '../../graphql/pubsub.js';
+import { emitAutomationEvent } from '../automation/automation.bus.js';
 import type { Comment, CreateCommentInput } from '@projectflow/types';
 
 const repo     = new CommentRepository();
@@ -46,6 +47,15 @@ export const commentService = {
         { taskId: comment.taskId, taskTitle, commentId: comment.id },
         newlyNotified,
       );
+
+      const projectId   = (task as any).projectId   ?? (task as any).ProjectId   ?? null;
+      const workspaceId = (task as any).workspaceId ?? (task as any).WorkspaceId ?? null;
+      if (projectId && workspaceId) {
+        void emitAutomationEvent({
+          type: 'COMMENT_POSTED', workspaceId, projectId,
+          taskId: comment.taskId, actorId: authorId, commentId: comment.id,
+        });
+      }
     })().catch(() => { /* non-fatal */ });
 
     return comment;

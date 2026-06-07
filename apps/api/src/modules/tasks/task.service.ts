@@ -7,6 +7,7 @@ import { customFieldService } from '../customfields/customfield.service.js';
 import { dependencyService, computeDateDelta } from '../dependencies/dependency.service.js';
 import { recurrenceService } from '../recurrence/recurrence.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
+import { emitAutomationEvent } from '../automation/automation.bus.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
@@ -58,6 +59,15 @@ export class TaskService {
       type: task.type, status: task.status, priority: task.priority,
       projectId: task.projectId,
     }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
+
+    void emitAutomationEvent({
+      type: 'TASK_CREATED',
+      workspaceId: task.workspaceId,
+      projectId: task.projectId,
+      taskId: task.id,
+      actorId,
+      reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,
+    });
 
     return task;
   }
@@ -178,6 +188,17 @@ export class TaskService {
       })();
     }
 
+    void emitAutomationEvent({
+      type: 'STATUS_CHANGED',
+      workspaceId: task.workspaceId,
+      projectId: task.projectId,
+      taskId,
+      actorId,
+      reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,
+      fromStatus: previousStatus,
+      toStatus: newStatus,
+    });
+
     return task;
   }
 
@@ -210,6 +231,25 @@ export class TaskService {
           }
         } catch (err: any) {
           log.error({ err: err?.message }, 'reschedule dependents failed');
+        }
+      }
+
+      const projectId = projectIdOf(task);
+      const workspaceId = (task as any).workspaceId ?? (task as any).WorkspaceId ?? null;
+      if (projectId && workspaceId) {
+        if ('assigneeId' in (input as any)) {
+          void emitAutomationEvent({
+            type: 'ASSIGNEE_CHANGED', workspaceId, projectId, taskId, actorId,
+            from: null, to: (input as any).assigneeId ?? null,
+          });
+        }
+        for (const field of ['priority', 'type', 'dueDate', 'title', 'storyPoints'] as const) {
+          if (field in (input as any) && (input as any)[field] !== undefined) {
+            void emitAutomationEvent({
+              type: 'FIELD_CHANGED', workspaceId, projectId, taskId, actorId,
+              field, from: null, to: (input as any)[field],
+            });
+          }
         }
       }
     }

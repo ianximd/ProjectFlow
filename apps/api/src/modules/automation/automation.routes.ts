@@ -12,9 +12,11 @@ const svc = new AutomationService();
 const automationRepoForLookup = new AutomationRepository();
 const projectRepoForLookup    = new ProjectRepository();
 const resolveAutomationWorkspace = (c: any) => automationRepoForLookup.getWorkspaceId(c.req.param('id'));
-async function resolveProjectWorkspaceFromBody(c: any): Promise<string | null> {
+
+async function resolveCreateWorkspace(c: any): Promise<string | null> {
   try {
     const body = await c.req.json();
+    if (body?.scopeType === 'WORKSPACE') return body?.workspaceId ?? null;
     return body?.projectId ? await projectRepoForLookup.getWorkspaceId(body.projectId) : null;
   } catch {
     return null;
@@ -45,11 +47,16 @@ const actionSchema = z.object({
 });
 
 const createSchema = z.object({
-  projectId:  z.string().uuid(),
-  name:       z.string().min(1).max(255),
-  trigger:    triggerSchema,
-  conditions: z.array(conditionSchema).default([]),
-  actions:    z.array(actionSchema).min(1),
+  scopeType:   z.enum(['PROJECT', 'WORKSPACE']).default('PROJECT'),
+  workspaceId: z.string().uuid(),
+  projectId:   z.string().uuid().nullish(),
+  name:        z.string().min(1).max(255),
+  trigger:     triggerSchema,
+  conditions:  z.array(conditionSchema).default([]),
+  actions:     z.array(actionSchema).min(1),
+}).refine((v) => v.scopeType === 'WORKSPACE' || !!v.projectId, {
+  message: 'projectId is required for PROJECT-scoped rules',
+  path: ['projectId'],
 });
 
 const updateSchema = z.object({
@@ -62,11 +69,12 @@ const updateSchema = z.object({
 
 export const automationRoutes = new Hono<{ Variables: Variables }>();
 
-// GET /automations?projectId=
+// GET /automations?projectId= OR ?workspaceId=
 automationRoutes.get('/', async (c) => {
-  const projectId = c.req.query('projectId');
-  if (!projectId) return c.json({ error: 'projectId required' }, 400);
-  const rules = await svc.list(projectId);
+  const projectId   = c.req.query('projectId');
+  const workspaceId = c.req.query('workspaceId');
+  if (!projectId && !workspaceId) return c.json({ error: 'projectId or workspaceId required' }, 400);
+  const rules = await svc.list(projectId ?? workspaceId!);
   return c.json({ rules });
 });
 
@@ -74,10 +82,13 @@ automationRoutes.get('/', async (c) => {
 automationRoutes.post(
   '/',
   zValidator('json', createSchema),
-  requirePermission('automation.create', { resolveWorkspace: resolveProjectWorkspaceFromBody }),
+  requirePermission('automation.create', { resolveWorkspace: resolveCreateWorkspace }),
   async (c) => {
-    const { projectId, name, trigger, conditions, actions } = c.req.valid('json');
-    const rule = await svc.create(projectId, name, trigger as any, conditions as any, actions as any);
+    const { scopeType, workspaceId, projectId, name, trigger, conditions, actions } = c.req.valid('json');
+    const rule = await svc.create(
+      scopeType, workspaceId, scopeType === 'WORKSPACE' ? null : (projectId ?? null),
+      name, trigger as any, conditions as any, actions as any,
+    );
     return c.json({ rule }, 201);
   },
 );
@@ -117,3 +128,16 @@ automationRoutes.delete(
   await svc.delete(id);
   return c.json({ ok: true });
 });
+
+// GET /automations/:id/runs — run history
+automationRoutes.get(
+  '/:id/runs',
+  requirePermission('automation.update', { resolveWorkspace: resolveAutomationWorkspace }),
+  async (c) => {
+    const id     = c.req.param('id');
+    const limit  = Math.min(Number(c.req.query('limit')  ?? 50), 200);
+    const offset = Math.max(Number(c.req.query('offset') ?? 0), 0);
+    const runs   = await svc.listRuns(id, limit, offset);
+    return c.json({ runs });
+  },
+);

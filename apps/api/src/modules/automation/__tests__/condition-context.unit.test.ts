@@ -25,6 +25,13 @@ describe('condition.context pure mappers', () => {
       const fields = toConditionFields({ customField: 'x' });
       expect(fields.customField).toBe('x');
     });
+
+    it('collapses an absent field to null (locks the ?? null contract)', () => {
+      const fields = toConditionFields({});
+      expect(fields.priority).toBeNull();
+      expect(fields.status).toBeNull();
+      expect(fields.sprintId).toBeNull();
+    });
   });
 
   describe('toFilterTask', () => {
@@ -33,6 +40,13 @@ describe('condition.context pure mappers', () => {
       expect(task.priority).toBe('HIGH');
       expect(task.assigneeId).toBe('u1');
       expect(task.status).toBe('Blocked');
+    });
+
+    it('collapses unset fields to null, not undefined', () => {
+      const task = toFilterTask({});
+      expect(task.priority).toBeNull();
+      expect(task.status).toBeNull();
+      expect(task.assigneeId).toBeNull();
     });
   });
 });

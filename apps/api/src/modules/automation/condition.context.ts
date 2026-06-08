@@ -66,8 +66,9 @@ export function toFilterTask(p: AutomationEventPayload): FilterTask {
   };
 }
 
-/** Build the evaluation context. workspaceId/actorId fall back to the payload
- *  but the worker SHOULD pass the authoritative ones via opts. */
+/** Build the evaluation context. The worker passes the authoritative workspaceId
+ *  (job.data.workspaceId) + actorId via opts; actorId falls back to the payload,
+ *  workspaceId falls back to null (the 6a payload carries no workspaceId). */
 export function buildConditionContext(
   payload: AutomationEventPayload,
   opts: { workspaceId?: string | null; actorId?: string | null } = {},

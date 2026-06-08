@@ -40,8 +40,21 @@ export function startAutomationWorker() {
 
       // Phase 6b: evaluate the recursive AND/OR condition tree with real
       // PQL-filter + RBAC resolvers. A legacy flat array is read as implicit AND.
-      const ctx    = buildConditionContext(payload, { workspaceId, actorId: payload.actorId as string | undefined });
-      const passed = await evaluateConditionTree(parseConditionTree(rule.conditions), ctx);
+      // The resolvers do IO (USER_HAS_ROLE hits the DB), so guard the eval: a
+      // resolver error records a 'failed' run (preserving the audit trail) and
+      // rethrows so BullMQ still retries — rather than failing silently.
+      let passed: boolean;
+      try {
+        const ctx = buildConditionContext(payload, { workspaceId, actorId: payload.actorId as string | undefined });
+        passed = await evaluateConditionTree(parseConditionTree(rule.conditions), ctx);
+      } catch (err: any) {
+        await repo.recordRun({
+          ruleId, workspaceId, projectId, triggerType: eventType, status: 'failed',
+          payload: JSON.stringify(payload), error: `condition eval error: ${err?.message}`,
+          depth, startedAt, durationMs: Date.now() - startedAt.getTime(),
+        }).catch(() => {});
+        throw err;
+      }
       if (!passed) {
         await repo.recordRun({
           ruleId, workspaceId, projectId, triggerType: eventType, status: 'skipped',

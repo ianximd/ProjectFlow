@@ -467,6 +467,7 @@
     "assigneePlaceholder": "ID pengguna atau \"REPORTER\"",
     "messagePlaceholder": "Pesan",
     "webhookUrlPlaceholder": "https://hooks.example.com/…",
+    "webhookEventPlaceholder": "Event webhook",
     "fieldPlaceholder": "kolom",
     "valuePlaceholder": "nilai",
     "sprintPlaceholder": "Nama atau ID sprint (opsional)",

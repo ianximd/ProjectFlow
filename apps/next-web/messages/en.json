@@ -467,6 +467,7 @@
     "assigneePlaceholder": "User ID or \"REPORTER\"",
     "messagePlaceholder": "Message",
     "webhookUrlPlaceholder": "https://hooks.example.com/…",
+    "webhookEventPlaceholder": "Webhook event",
     "fieldPlaceholder": "field",
     "valuePlaceholder": "value",
     "sprintPlaceholder": "Sprint name or ID (optional)",

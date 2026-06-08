@@ -100,6 +100,16 @@ const OPERATORS = ['is', 'is_not', 'contains', 'gt', 'lt', 'before', 'after', 'i
 
 const PRIORITIES = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
+const WEBHOOK_EVENTS = [
+  'issue.created',
+  'issue.updated',
+  'issue.deleted',
+  'sprint.started',
+  'sprint.completed',
+  'comment.created',
+  'member.invited',
+] as const;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function shortDate(iso: string | null): string | null {
@@ -836,13 +846,17 @@ function ActionList({
                 />
               )}
               {(action as any).type === 'CALL_WEBHOOK' && (
-                <Input
-                  type="url"
-                  placeholder={t('webhookUrlPlaceholder')}
-                  value={(action as any).webhookUrl ?? ''}
-                  onChange={(e) => update(i, { webhookUrl: e.target.value } as any)}
-                  className="h-8 text-xs font-mono"
-                />
+                <Select
+                  value={(action as any).webhookEvent ?? ''}
+                  onValueChange={(v) => update(i, { webhookEvent: v } as any)}
+                >
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={t('webhookEventPlaceholder')} /></SelectTrigger>
+                  <SelectContent>
+                    {WEBHOOK_EVENTS.map((ev) => (
+                      <SelectItem key={ev} value={ev}>{ev}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
               {(action as any).type === 'SET_FIELD' && (
                 <>

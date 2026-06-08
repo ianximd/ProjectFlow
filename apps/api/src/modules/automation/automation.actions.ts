@@ -22,6 +22,7 @@ import {
 } from './automation.actions.context.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { TaskService } from '../tasks/task.service.js';
+import { ListRepository } from '../hierarchy/list.repository.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { templateService } from '../templates/template.service.js';
@@ -34,6 +35,7 @@ const log = subLogger('automation');
 
 const taskRepo    = new TaskRepository();
 const taskService = new TaskService(taskRepo);
+const listRepo    = new ListRepository();
 
 /**
  * Distributive `Omit` over the domain-event union: `Omit<Union, K>` collapses to
@@ -205,6 +207,11 @@ export async function executeAction(
 
     case 'MOVE_TASK': {
       if (!taskId || !action.targetListId) break;
+      const targetWsId = await listRepo.getWorkspaceId(action.targetListId);
+      if (!targetWsId || targetWsId.toLowerCase() !== ctx.workspaceId.toLowerCase()) {
+        log.warn({ targetListId: action.targetListId, ruleWorkspaceId: ctx.workspaceId }, 'MOVE_TASK blocked: target list is in a different workspace');
+        break;
+      }
       const oldProjectId = projectId;
       const moved = await taskService.moveTask(taskId, action.targetListId, action.targetPosition ?? Date.now());
       // taskService.moveTask dispatches the outgoing webhook but does NOT publish

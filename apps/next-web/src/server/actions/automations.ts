@@ -5,6 +5,7 @@ import { requireSession } from '../session';
 import { serverFetch } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
+import type { AutomationCondition, ConditionNode } from '@projectflow/types';
 
 
 export interface CreateAutomationInput {
@@ -13,14 +14,14 @@ export interface CreateAutomationInput {
   projectId:   string | null;
   name:        string;
   trigger:     unknown;
-  conditions:  unknown[] | unknown;
+  conditions:  AutomationCondition[] | ConditionNode;
   actions:     unknown[];
 }
 
 export interface UpdateAutomationInput {
   name?:       string;
   trigger?:    unknown;
-  conditions?: unknown[] | unknown;
+  conditions?: AutomationCondition[] | ConditionNode;
   actions?:    unknown[];
 }
 

@@ -3,6 +3,7 @@ import { execSpOne } from '../../shared/lib/sqlClient.js';
 import type {
   AutomationTriggerConfig,
   AutomationCondition,
+  ConditionNode,
   AutomationAction,
   AutomationScopeType,
   AutomationRun,
@@ -34,7 +35,7 @@ function parseRow(row: AutomationRuleRow) {
     name:           row.Name,
     isEnabled:      Boolean(row.IsEnabled),
     trigger:        JSON.parse(row.TriggerConfig)   as AutomationTriggerConfig,
-    conditions:     JSON.parse(row.ConditionConfig) as AutomationCondition[],
+    conditions:     JSON.parse(row.ConditionConfig) as AutomationCondition[] | ConditionNode,
     actions:        JSON.parse(row.ActionConfig)    as AutomationAction[],
     executionCount: row.ExecutionCount,
     lastExecutedAt: row.LastExecutedAt?.toISOString() ?? null,

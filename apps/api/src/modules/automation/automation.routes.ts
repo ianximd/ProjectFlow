@@ -37,12 +37,36 @@ const triggerSchema = z.object({
   hoursBeforeDue: z.number().optional(),
 });
 
+const conditionOperatorSchema = z.enum([
+  'is', 'is_not', 'contains', 'gt', 'lt', 'before', 'after', 'is_set',
+]);
+
 const conditionSchema = z.object({
-  type:  z.string().min(1),
-  field: z.string().optional(),
-  value: z.string().optional(),
-  pql:   z.string().optional(),
+  type:     z.string().min(1),
+  field:    z.string().optional(),
+  operator: conditionOperatorSchema.optional(),
+  value:    z.string().optional(),
+  pql:      z.string().optional(),
 });
+
+// Recursive AND/OR condition tree (Phase 6b) — accepted alongside the legacy
+// flat array. The SP stores conditions as an opaque JSON blob, so either shape
+// round-trips unchanged.
+const conditionNodeSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.object({ op: z.enum(['AND', 'OR']), children: z.array(conditionNodeSchema) }),
+    z.object({
+      type:     z.string().min(1),
+      field:    z.string().optional(),
+      operator: conditionOperatorSchema.optional(),
+      value:    z.string().optional(),
+      pql:      z.string().optional(),
+    }),
+  ]),
+);
+
+// conditions accept EITHER the legacy flat array OR a recursive tree.
+const conditionsSchema = z.union([z.array(conditionSchema), conditionNodeSchema]);
 
 const actionSchema = z.object({
   type:        z.string().min(1),
@@ -59,7 +83,7 @@ const createSchema = z.object({
   projectId:   z.string().uuid().nullish(),
   name:        z.string().min(1).max(255),
   trigger:     triggerSchema,
-  conditions:  z.array(conditionSchema).default([]),
+  conditions:  conditionsSchema.default([]),
   actions:     z.array(actionSchema).min(1),
 }).refine((v) => v.scopeType === 'WORKSPACE' || !!v.projectId, {
   message: 'projectId is required for PROJECT-scoped rules',
@@ -70,7 +94,7 @@ const updateSchema = z.object({
   name:       z.string().min(1).max(255).optional(),
   isEnabled:  z.boolean().optional(),
   trigger:    triggerSchema.optional(),
-  conditions: z.array(conditionSchema).optional(),
+  conditions: conditionsSchema.optional(),
   actions:    z.array(actionSchema).optional(),
 });
 

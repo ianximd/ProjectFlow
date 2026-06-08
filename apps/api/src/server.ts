@@ -37,6 +37,7 @@ import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.route
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
 import { startRecurrenceWorker } from './modules/recurrence/recurrence.worker.js';
+import { startSchedulerWorker } from './modules/automation/automation.scheduler.worker.js';
 import { requestIdMiddleware } from './shared/middleware/requestId.middleware.js';
 import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.middleware.js';
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
@@ -311,6 +312,9 @@ if (process.env.NODE_ENV !== 'test') {
   if (process.env.REDIS_URL || process.env.REDIS_HOST) {
     startRecurrenceWorker().catch((err) =>
       logger.warn({ err: err?.message }, 'recurrence worker failed to start'),
+    );
+    startSchedulerWorker().catch((err) =>
+      logger.warn({ err: err?.message }, 'automation scheduler worker failed to start'),
     );
   }
 

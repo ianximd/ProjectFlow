@@ -655,6 +655,47 @@ The list endpoint lacked a `requirePermission` guard (any authenticated user cou
 
 ALL DB work (migrations 0038/0039, SP deploys, integration tests) ran ONLY against the local Docker `ProjectFlow_Test` instance, never the prod-pointing `apps/api/.env` (`sql.binasentra.co.id/ProjectFlow`). The classifier in MEMORY.md blocks all connections to the prod server.
 
+## 2026-06-08 — Phase 6b Condition Engine
+
+Replaces the 6a AND-only, stub-laden condition evaluator with a recursive **nested AND/OR** engine. **No migration, no new SP** — this slice swaps the pure evaluator the 6a worker already calls; the stored `conditions` JSON is an opaque blob to the SPs, so the richer shape flows through transparently.
+
+### Recursive model lives in `@projectflow/types` alongside the kept legacy shape
+
+- Added `ConditionNode = ConditionGroup | ConditionLeaf`, `ConditionGroupOp` (`'AND'|'OR'`), the exact 8-token `ConditionOperator` (`is | is_not | contains | gt | lt | before | after | is_set`), and the `isConditionGroup` type guard. The legacy `AutomationCondition` (`{type, field?, value?, pql?}`) is **unchanged** — it remains the leaf payload shape and the legacy stored form. `AutomationRule.conditions` widened to `AutomationCondition[] | ConditionNode`.
+- **No data migration:** `parseConditionTree(stored)` normalises a legacy flat array to an implicit **top-level AND** group (and passes an already-tree value through by reference). Legacy `FIELD_NOT_EQUALS → operator 'is_not'`; `IN_SPRINT`/`NOT_IN_SPRINT → {field:'sprintId', operator:'is_set'}` (the negation for `NOT_IN_SPRINT` is applied in the leaf evaluator, not encoded as a sentinel value).
+
+### Pure, injected-resolver evaluator (IO stays at the worker boundary)
+
+- `evaluateConditionTree(node, ctx): Promise<boolean>` in `condition.tree.ts` is pure: AND = every child, OR = any child, **empty group = vacuously true** (matches the legacy "no conditions → always fire" semantics, for BOTH AND and OR). The two leaf kinds that need data are supplied as async resolvers on `ConditionContext` (`matchesFilter`, `userHasRole`), so the tree-walk + `compareOperator` are fully unit-testable in isolation. `compareOperator` is the single source of operator truth; numeric/date operators are finite-guarded (never throw); `contains` **fails closed** on an empty/missing expected (an empty `value` must not match everything).
+- `ISSUE_MATCHES_FILTER` reuses the existing PQL parser (`modules/search/pql.parser.ts#parsePQL`) and matches the parsed filter against the event's task **in memory** (no DB round-trip) — fast, deterministic, and it resolves `currentUser()` against the event actor. Supported match fields are the `ParsedPQL` subset (`status/priority/type/assigneeId/reporterId/sprintId`, free-text `q` over the title, `dueAfter/dueBefore`).
+- `USER_HAS_ROLE` reuses `roleService.listUserRoles(userId, workspaceId)` (RBAC) and **fails closed** (returns false, does not call the service) when there is no actor. The role check is scoped to the rule's **workspace**: the 6a job payload carries `actorId` but NOT `workspaceId`, so the worker passes the authoritative `job.data.workspaceId` into `buildConditionContext(payload, { workspaceId, actorId })` via an explicit `opts` arg.
+
+### Worker change is a minimal swap (not the plan's full rewrite)
+
+The 6a worker already loads the rule via `getRuleById`, wraps the whole job in an `AutomationRuns` audit, and records a **`skipped`** run when conditions fail. So the only change is: `evaluateConditions(rule.conditions, payload)` → `await evaluateConditionTree(parseConditionTree(rule.conditions), buildConditionContext(payload, { workspaceId, actorId }))`. The legacy `evaluateConditions`/`evaluateOne` (with the `ISSUE_MATCHES_FILTER`/`USER_HAS_ROLE → return true` stubs) is **deleted**; `automation.conditions.ts` is now a thin re-export of the tree engine (the worker was its only caller).
+
+### Resolver-error guard (review-added) — preserve the audit trail
+
+Because the evaluator now `await`s real IO (a `USER_HAS_ROLE` check hits the DB), a resolver rejection could escape the job handler uncaught — BullMQ would fail the job with **no audit row**, a silent-failure regression vs. the old never-throwing sync evaluator. The worker now wraps the eval in try/catch: a resolver error records a **`failed`** `AutomationRuns` row (preserving observability) and **rethrows** so BullMQ retry semantics are kept. Only rules using `ISSUE_MATCHES_FILTER`/`USER_HAS_ROLE` touch a resolver; FIELD-only rules cannot reject.
+
+### Route schema widened to accept a tree (backward compatible)
+
+`automation.routes.ts` `conditions` validation became `z.union([z.array(conditionSchema), conditionNodeSchema])` on BOTH create and update, where `conditionNodeSchema` is a `z.lazy` recursive union of `{op:'AND'|'OR', children:[...]}` and a leaf. The leaf `conditionSchema` gained an optional `operator` enum (so a flat array WITH operators also validates; pre-operator legacy data still passes because it is optional). The route stores `conditions` opaquely (`JSON.stringify` → `ConditionConfig NVARCHAR(MAX)`); no array-specific handling. The repository's `parseRow` cast was broadened from `as AutomationCondition[]` to `as AutomationCondition[] | ConditionNode` to match.
+
+### Frontend — nested AND/OR builder
+
+`automations-view.tsx`'s flat `ConditionList` was replaced with a recursive `ConditionGroupEditor` + `ConditionLeafEditor` (AND/OR toggle, add-leaf, add-nested-group, remove; per-leaf operator dropdown; PQL/role inputs force `operator:'is'`). Dialog state moved from `AutomationCondition[]` to a `ConditionNode` tree, seeded from existing rules via a client mirror `lib/conditionTree.ts#parseConditionTreeClient` (legacy array → implicit AND). The `RuleRow` badge counts leaves tree-safely via `countLeaves` (the old `conditions.length` would crash on a tree object). The submit payload still sends `scopeType/trigger/actions/name` alongside the tree `conditions`; the server action forwards it opaquely (its `conditions` type tightened to `AutomationCondition[] | ConditionNode`). i18n: 13 new keys (operator labels, AND/OR group labels, PQL/role placeholders) in **en + id** (real Indonesian), parity green.
+
+### Deviations from the plan (recorded per DoD)
+
+- **Worker:** the plan's Task 5 supplied a full worker rewrite using `repo.list(projectId)`; the real 6a worker uses `getRuleById` + an existing `recordRun` audit, so only the eval call was swapped (full rewrite ignored).
+- **Integration test:** the plan assumed `emitAutomationEvent`/`drainAutomationJobs` test helpers — they don't exist. `or-group.integration.test.ts` instead follows 6a's direct-call style: create an OR-group rule via the real `POST /automations`, read it back with `getRuleById` (proving the tree survives the SP JSON round-trip), then evaluate the tree against three payloads (fire HIGH / fire Blocked / skip neither). 4 assertions, **live-green**.
+- **E2E:** the plan's Task 9 was a fragile UI builder round-trip; replaced with an **API-driven** `e2e/automation-conditions.spec.ts` (at repo-root `e2e/`, not `apps/next-web/e2e/`) that proves §5.5 end-to-end through the live BullMQ worker — two rules on one `STATUS_CHANGED→Done` transition: an OR group whose `status is "Done"` branch matches records **`success`** (+ASSIGN landed), an OR group matching neither branch records **`skipped`**. The builder UI itself is covered by web unit tests (same rationale 6a used).
+
+### DB-execution policy
+
+The one integration test + the e2e ran ONLY against local Docker `ProjectFlow_Test`, never the prod-pointing `apps/api/.env`. Verified this slice: **API 379 unit / 186 integration (45 files), web 104 unit + en/id parity, both builds clean, e2e `automation-conditions` 1/1.**
+
 ## 2026-06-06 — Phase 5c Recurring Tasks
 
 Spec §5; plan `docs/superpowers/plans/2026-06-06-phase5c-recurring.md`.

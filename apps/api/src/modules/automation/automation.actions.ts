@@ -167,10 +167,12 @@ export async function executeAction(
         listId,
         parentTaskId: null,
       });
-      if (created?.id && created.projectId) {
+      const newId  = (created as any)?.id ?? (created as any)?.Id;
+      const newPid = (created as any)?.projectId ?? (created as any)?.ProjectId;
+      if (newId && newPid) {
         await emitDeeper(ctx, {
-          type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: created.projectId,
-          taskId: created.id, actorId: reporterId, reporterId,
+          type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: newPid,
+          taskId: newId, actorId: reporterId, reporterId,
         });
       }
       break;
@@ -190,10 +192,12 @@ export async function executeAction(
         listId,
         parentTaskId: taskId,
       });
-      if (created?.id && created.projectId) {
+      const newId  = (created as any)?.id ?? (created as any)?.Id;
+      const newPid = (created as any)?.projectId ?? (created as any)?.ProjectId;
+      if (newId && newPid) {
         await emitDeeper(ctx, {
-          type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: created.projectId,
-          taskId: created.id, actorId: reporterId, reporterId,
+          type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: newPid,
+          taskId: newId, actorId: reporterId, reporterId,
         });
       }
       break;

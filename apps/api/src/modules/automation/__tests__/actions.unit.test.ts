@@ -12,7 +12,7 @@ const {
   tagList:         vi.fn(async (..._a: unknown[]) => [] as Array<{ id: string; name: string }>),
   tagCreate:       vi.fn(async (..._a: unknown[]) => ({ id: 'TAG-NEW', name: 'urgent' })),
   resolveOrCreate: vi.fn(async (..._a: unknown[]) => 'TAG-RESOLVED'),
-  taskCreate:      vi.fn(async (..._a: unknown[]) => ({ id: 'NEW-TASK', projectId: 'P1', workspaceId: 'W1' })),
+  taskCreate:      vi.fn(async (..._a: unknown[]) => ({ Id: 'NEW-TASK', ProjectId: 'P1', WorkspaceId: 'W1' })),
   setAssignees:    vi.fn(async (..._a: unknown[]) => [] as unknown[]),
   moveTask:        vi.fn(async (..._a: unknown[]) => ({ id: 'T1', projectId: 'P1', workspaceId: 'W1' })),
   applyTpl:        vi.fn(async (..._a: unknown[]) => ({ rootId: 'NEW-ROOT', counts: { lists: 0, tasks: 1, views: 0, fields: 0 } })),

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   setValue, linkTask, tagList, tagCreate, resolveOrCreate,
   taskCreate, setAssignees, moveTask, applyTpl, dispatch, emit, publishMove, execSpOne,
+  listGetWorkspaceId,
 } = vi.hoisted(() => ({
   setValue:        vi.fn(async (..._a: unknown[]) => {}),
   linkTask:        vi.fn(async (..._a: unknown[]) => {}),
@@ -20,6 +21,7 @@ const {
   emit:            vi.fn(async (..._a: unknown[]) => {}),
   publishMove:     vi.fn(async (..._a: unknown[]) => {}),
   execSpOne:       vi.fn(async (..._a: unknown[]) => [] as unknown[]),
+  listGetWorkspaceId: vi.fn(async (..._a: unknown[]) => 'W1'),
 }));
 
 // customFieldService is a SINGLETON export.
@@ -40,6 +42,14 @@ vi.mock('../../tasks/task.repository.js', () => ({
 vi.mock('../../tasks/task.service.js', () => ({
   TaskService: class {
     moveTask = moveTask;
+  },
+}));
+// ListRepository is a CLASS export — the executor does `new ListRepository()` and
+// calls getWorkspaceId for the MOVE_TASK cross-workspace guard. Return the ctx
+// workspace id ('W1') so the guard passes and the move proceeds.
+vi.mock('../../hierarchy/list.repository.js', () => ({
+  ListRepository: class {
+    getWorkspaceId = listGetWorkspaceId;
   },
 }));
 // templateService is a SINGLETON export.

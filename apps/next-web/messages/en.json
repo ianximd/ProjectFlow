@@ -503,7 +503,20 @@
     "conditionFieldNotEquals": "Field not equals",
     "conditionUserHasRole": "User has role",
     "conditionInSprint": "In sprint",
-    "conditionNotInSprint": "Not in sprint"
+    "conditionNotInSprint": "Not in sprint",
+    "groupAll": "Match ALL (AND)",
+    "groupAny": "Match ANY (OR)",
+    "addGroup": "Add group",
+    "operatorIs": "is",
+    "operatorIsNot": "is not",
+    "operatorContains": "contains",
+    "operatorGt": "greater than",
+    "operatorLt": "less than",
+    "operatorBefore": "before",
+    "operatorAfter": "after",
+    "operatorIsSet": "is set",
+    "pqlPlaceholder": "PQL filter, e.g. priority = HIGH AND status = \"In Progress\"",
+    "roleSlugPlaceholder": "Role slug, e.g. workspace-admin"
   },
   "Lists": {
     "heading": "List",

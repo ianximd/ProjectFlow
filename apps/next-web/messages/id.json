@@ -503,7 +503,20 @@
     "conditionFieldNotEquals": "Kolom tidak sama dengan",
     "conditionUserHasRole": "Pengguna memiliki peran",
     "conditionInSprint": "Dalam sprint",
-    "conditionNotInSprint": "Tidak dalam sprint"
+    "conditionNotInSprint": "Tidak dalam sprint",
+    "groupAll": "Cocokkan SEMUA (DAN)",
+    "groupAny": "Cocokkan SALAH SATU (ATAU)",
+    "addGroup": "Tambah grup",
+    "operatorIs": "adalah",
+    "operatorIsNot": "bukan",
+    "operatorContains": "mengandung",
+    "operatorGt": "lebih besar dari",
+    "operatorLt": "lebih kecil dari",
+    "operatorBefore": "sebelum",
+    "operatorAfter": "sesudah",
+    "operatorIsSet": "telah diisi",
+    "pqlPlaceholder": "Filter PQL, mis. priority = HIGH AND status = \"In Progress\"",
+    "roleSlugPlaceholder": "Slug peran, mis. workspace-admin"
   },
   "Lists": {
     "heading": "Daftar",

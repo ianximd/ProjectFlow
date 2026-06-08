@@ -701,6 +701,89 @@ Because the evaluator now `await`s real IO (a `USER_HAS_ROLE` check hits the DB)
 
 The one integration test + the e2e ran ONLY against local Docker `ProjectFlow_Test`, never the prod-pointing `apps/api/.env`. Verified this slice: **API 380 unit / 186 integration (45 files), web 104 unit + en/id parity, both builds clean, e2e `automation-conditions` 1/1.**
 
+## 2026-06-08 — Phase 6c (Actions · Scheduler · Signed Webhooks)
+
+Expands the automation engine with six new action types, per-action delay, a time-based scheduler sweep, and audited/signed outgoing webhooks. **No migration** — 6c reuses existing tables (`Tasks`, `Tags`/`TaskTags`, `TaskCustomFieldValues`, `Templates`, `AutomationRules`, the 6a `AutomationRuns`). Migrations on disk stay at the 6a/6b high-water mark; local Docker `ProjectFlow_Test` remains at **0039**.
+
+### No migration; two new read-only scheduler SPs
+
+The only new SQL is two READ-ONLY stored procedures:
+
+- **`usp_AutomationRule_ListDueDateRules`** — window join: tasks whose `DueDate` crossed `(@Since, @Now]`, one row per rule×task. Uses `JSON_VALUE(TriggerConfig,'$.type')` to identify due-date triggers because `AutomationRules` has **no `TriggerType` column** (the plan assumed one; caught at deploy against `ProjectFlow_Test`). Scope predicate mirrors `usp_AutomationRule_GetByTrigger` exactly: `PROJECT → r.ScopeId = t.ProjectId`, `WORKSPACE → r.ScopeId = t.WorkspaceId`.
+- **`usp_AutomationRule_ListScheduledRules`** — returns enabled `SCHEDULED` rules (same `JSON_VALUE` derivation, no column). Each rule's cron string is evaluated in the application layer by `cron-parser`.
+
+### Six new actions — delegated, no raw table writes
+
+All six new action types delegate to existing service methods rather than writing SQL directly:
+
+- **`SET_FIELD`** → `customFieldService.setValue`
+- **`ADD_TAG`** → `tagService.linkTask(tagId)` when given a tag ID, or `tagService.resolveOrCreate(spaceId, name)` then link when given a `tagName` (space id = `ctx.projectId`)
+- **`CREATE_TASK` / `CREATE_SUBTASK`** → `TaskRepository.create`; `CREATE_SUBTASK` parents the new task to the trigger task
+- **`MOVE_TASK`** → `taskService.moveTask` + `publishTaskMove`; `taskService.moveTask` dispatches the outgoing webhook but does **not** publish the live board event, so the executor explicitly calls `publishTaskMove` after
+- **`APPLY_TEMPLATE`** → `templateService.apply(templateId, { targetParentId: listId, anchorDate }, actor)`
+
+All actions run as the resolved actor `resolveActor(ctx) = payload.actorId ?? process.env.SYSTEM_USER_ID`. There is **no seeded system user**; `SYSTEM_USER_ID` is an optional env var — if absent, actions that require an actor will surface null-actor errors.
+
+### Executor signature unified to 2-arg (`action`, `ctx`)
+
+`executeAction(action, ctx: ActionContext)` where `ActionContext = { ruleId, workspaceId, projectId, loop: { depth, causationChain }, payload }` lives in the new `automation.actions.context.ts`. This replaces 6a's 3-arg `(action, payload, { workspaceId, projectId, loop })`. The worker constructs this ctx before calling the executor.
+
+### Loop-guarded re-emit, constrained to the 6a bus union
+
+`reEmit(ctx, event)` stamps `loop = { depth + 1, causationChain: [...chain, ruleId] }` and calls the 6a `emitAutomationEvent`. It only emits event types that exist in the `AutomationDomainEvent` discriminated union:
+
+| Action | Re-emitted as |
+|---|---|
+| `SET_FIELD` / `SET_PRIORITY` | `FIELD_CHANGED` |
+| `CHANGE_STATUS` | `STATUS_CHANGED` |
+| `ASSIGN` / `UNASSIGN` | `ASSIGNEE_CHANGED` (`UNASSIGN` re-emits `{ from: null, to: null }`; legacy did not) |
+| `CREATE_TASK` / `CREATE_SUBTASK` | `TASK_CREATED` |
+| `MOVE_TASK`, `ADD_TAG`, `POST_COMMENT`, `SEND_NOTIFICATION`, `CALL_WEBHOOK`, `APPLY_TEMPLATE` | no re-emit (no matching union member) |
+
+A local `emitDeeper` wrapper in `automation.actions.ts` works around `Omit<AutomationDomainEvent, 'loop'>` collapsing the discriminated union to its common keys (per-member required fields like `STATUS_CHANGED.toStatus` were lost when passing through `Omit`). The canonical `reEmit` param should be made distributive in a later cleanup.
+
+### PascalCase bug caught in review
+
+`CREATE_TASK` / `CREATE_SUBTASK` read the `TaskRepository.create` result casing-tolerantly — `(created as any)?.id ?? .Id` — because the repo returns a PascalCase `SELECT *` row while the `Task` TS type declares camelCase. The initial code's re-emit guard was always false (the `TASK_CREATED` re-emit never fired). The unit-test mock was tightened to the real PascalCase shape so it genuinely guards the contract. Same recurring bug-class noted in prior phases (Phase 3.5 deferred-item cleanup, live-board e2e).
+
+### Per-action delay — fixed a latent infinite-loop in the plan's contract
+
+`nextDelayedSlice(actions, fromIndex, prepaidStart = fromIndex > 0)` partitions the ordered action list into `runNow` + `resumeAt` + `delayMs`. The worker passes `prepaidStart = (job.data.actionIndex !== undefined)` and re-enqueues the remaining actions as a BullMQ `DELAYED` job carrying `actionIndex` plus the unchanged `depth` / `causationChain`.
+
+**The plan's contract had a latent infinite-loop:** on a leading-delay action, `resumeAt: 0` would re-defer back to index 0 forever. The `prepaidStart` flag (true on any resume, including `resumeAt: 0`) makes the resumed start index run instead of re-defer. Conditions are evaluated only on the first pass, not on delayed resumes.
+
+Minor accepted residual: a first pass that is fully deferred (all actions have a leading delay) writes a `status: 'success'` audit run that executed 0 actions; `executionCount` is bumped only on the terminal non-deferred slice. The zero-action run is traceable via `actionResults.slice`.
+
+### Signed `CALL_WEBHOOK` — rerouted through `webhookOutgoingService`
+
+`CALL_WEBHOOK` now dispatches through `webhookOutgoingService.dispatch(workspaceId, event, payload)` (HMAC-SHA256 `X-ProjectFlow-Signature`, BullMQ retries, `WebhookDeliveries` record). The prior raw fire-and-forget `fetch` was deleted; the unit test spies `globalThis.fetch` to assert it is **never called**.
+
+**Follow-up:** the outgoing-webhook subscription event enum does not include `'automation.fired'` (the action's default event). A working `CALL_WEBHOOK` must currently target a subscribable event (`issue.created/updated/deleted`, `sprint.started/completed`, `comment.created`, `member.invited`). Add `'automation.fired'` to the enum or change the action default in a follow-up.
+
+### Scheduler — direct-enqueue, not via the bus
+
+A BullMQ repeatable job (`automation-scheduler` queue, `upsertJobScheduler` every 5 min) mirrors `recurrence.worker.ts`. The exported `runScheduledSweep(now, since)` is pure; a Redis last-sweep cursor (`automation:scheduler:lastSweepAt`) is maintained via the existing `getRedis()` singleton.
+
+**Design deviation from the plan's "enqueue through the 6a bus":** the `AutomationDomainEvent` union has no `DUE_DATE_PASSED` / `DATE_ARRIVED` / `SCHEDULED` variants, and `SCHEDULED` rules can't fan-out via `getByTrigger` (each rule has its own cron). The sweep therefore enqueues **directly** to `automationQueue` — one job per due rule×task for due-date rules, one job per `SCHEDULED` rule whose cron window elapsed. The 6a worker then loads the rule, evaluates 6b conditions, runs actions, and records the `AutomationRuns` audit row uniformly.
+
+Additional scheduler details:
+
+- **Cooldown** is NOT applied to scheduler enqueues — accepted residual; the `(since, now]` window + cron gate deduplicate per crossing.
+- **`DATE_ARRIVED`** uses `DueDate` as the target date; a config-named date field is deferred.
+- **Cron evaluation** uses `cron-parser` v4.9.0: `import parser from 'cron-parser'; parser.parseExpression(cron, { currentDate, tz: 'UTC' })`.
+
+### Types widened (backward compatible)
+
+`webhookUrl?` was **kept** (legacy field; not removed contra the plan) and `webhookEvent?` **added**, alongside the six new action tokens, per-action config fields, and `delaySeconds`. The REST `actionSchema` was widened to accept all new fields.
+
+### Dev endpoint for e2e
+
+`POST /api/v1/dev/automation/sweep` triggers one `runScheduledSweep()` call so the e2e doesn't wait for the 5-min repeatable timer. Guarded: returns **404** when `NODE_ENV === 'production'`; requires Bearer auth otherwise.
+
+### DB-execution policy
+
+All DB work (SP deploy, integration tests, e2e) ran ONLY against local Docker `ProjectFlow_Test`, never the prod-pointing `apps/api/.env`. Verified this slice: **API 399 unit / 193 integration (46 files, 266 SPs deploy 0 fail), web 104 unit + en/id parity, both builds clean, e2e `automation-scheduler` 1/1** (DUE_DATE_PASSED fires via the sweep within its window, CALL_WEBHOOK run audited).
+
 ## 2026-06-06 — Phase 5c Recurring Tasks
 
 Spec §5; plan `docs/superpowers/plans/2026-06-06-phase5c-recurring.md`.

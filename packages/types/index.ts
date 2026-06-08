@@ -468,7 +468,13 @@ export type AutomationActionType =
   | 'SET_PRIORITY'
   | 'POST_COMMENT'
   | 'SEND_NOTIFICATION'
-  | 'CALL_WEBHOOK';
+  | 'CALL_WEBHOOK'
+  | 'SET_FIELD'
+  | 'ADD_TAG'
+  | 'CREATE_TASK'
+  | 'CREATE_SUBTASK'
+  | 'MOVE_TASK'
+  | 'APPLY_TEMPLATE';
 
 export interface AutomationAction {
   type: AutomationActionType;
@@ -480,8 +486,28 @@ export interface AutomationAction {
   priority?: string;
   /** POST_COMMENT / SEND_NOTIFICATION */
   message?: string;
-  /** CALL_WEBHOOK */
+  /** CALL_WEBHOOK (legacy, kept) */
   webhookUrl?: string;
+  /** CALL_WEBHOOK (6c — selects a workspace outgoing-webhook event) */
+  webhookEvent?: string;
+  // ── Phase 6c ──
+  /** SET_FIELD */
+  fieldId?: string;
+  fieldValue?: unknown;
+  /** ADD_TAG */
+  tagId?: string;
+  tagName?: string;
+  /** CREATE_TASK / CREATE_SUBTASK */
+  title?: string;
+  description?: string;
+  newPriority?: string;
+  /** MOVE_TASK */
+  targetListId?: string;
+  targetPosition?: number;
+  /** APPLY_TEMPLATE */
+  templateId?: string;
+  /** Universal optional per-action delay */
+  delaySeconds?: number;
 }
 
 export interface AutomationRule {

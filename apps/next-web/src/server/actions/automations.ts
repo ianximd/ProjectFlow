@@ -13,14 +13,14 @@ export interface CreateAutomationInput {
   projectId:   string | null;
   name:        string;
   trigger:     unknown;
-  conditions:  unknown[];
+  conditions:  unknown[] | unknown;
   actions:     unknown[];
 }
 
 export interface UpdateAutomationInput {
   name?:       string;
   trigger?:    unknown;
-  conditions?: unknown[];
+  conditions?: unknown[] | unknown;
   actions?:    unknown[];
 }
 

@@ -15,8 +15,12 @@ import type {
   AutomationTriggerConfig,
   AutomationCondition,
   AutomationAction,
+  ConditionNode,
+  ConditionLeaf,
+  ConditionOperator,
 } from '@projectflow/types';
 
+import { parseConditionTreeClient, emptyLeaf, emptyGroup, isGroup, countLeaves } from '@/lib/conditionTree';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { formatShortDate } from '@/lib/date';
 import {
@@ -80,6 +84,13 @@ const CONDITION_KEYS: Record<AutomationConditionType, string> = {
   IN_SPRINT:            'conditionInSprint',
   NOT_IN_SPRINT:        'conditionNotInSprint',
 };
+
+const OPERATOR_KEYS: Record<string, string> = {
+  is: 'operatorIs', is_not: 'operatorIsNot', contains: 'operatorContains',
+  gt: 'operatorGt', lt: 'operatorLt', before: 'operatorBefore', after: 'operatorAfter', is_set: 'operatorIsSet',
+};
+const GROUP_OP_KEYS: Record<'AND' | 'OR', string> = { AND: 'groupAll', OR: 'groupAny' };
+const OPERATORS = ['is', 'is_not', 'contains', 'gt', 'lt', 'before', 'after', 'is_set'] as const;
 
 const PRIORITIES = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
@@ -162,7 +173,7 @@ export function AutomationsView({ ctx, automations }: Props) {
   async function handleSave(input: {
     name:       string;
     trigger:    AutomationTriggerConfig;
-    conditions: AutomationCondition[];
+    conditions: AutomationCondition[] | ConditionNode;
     actions:    AutomationAction[];
     scopeType:  'PROJECT' | 'WORKSPACE';
   }) {
@@ -363,7 +374,7 @@ function RuleRow({
   const t = useTranslations('Automations');
   const lastRun = shortDate(rule.lastExecutedAt as string | null);
   const trigger = rule.trigger as AutomationTriggerConfig | null;
-  const conditions = rule.conditions as AutomationCondition[];
+  const conditionCount = countLeaves(rule.conditions as AutomationCondition[] | ConditionNode);
   const actions    = rule.actions    as AutomationAction[];
 
   return (
@@ -396,10 +407,10 @@ function RuleRow({
               </Badge>
             )}
 
-            {conditions.length > 0 && (
+            {conditionCount > 0 && (
               <Badge size="xs" variant="outline" appearance="outline">
                 <CircleDot className="size-3 mr-1" />
-                {t('conditionCount', { count: conditions.length })}
+                {t('conditionCount', { count: conditionCount })}
               </Badge>
             )}
 
@@ -456,7 +467,7 @@ function RuleDialog({
   onSubmit:  (input: {
     name:       string;
     trigger:    AutomationTriggerConfig;
-    conditions: AutomationCondition[];
+    conditions: AutomationCondition[] | ConditionNode;
     actions:    AutomationAction[];
     scopeType:  'PROJECT' | 'WORKSPACE';
   }) => void;
@@ -468,8 +479,8 @@ function RuleDialog({
   const [trigger,    setTrigger]    = useState<AutomationTriggerConfig>(
     (initial?.trigger as AutomationTriggerConfig) ?? DEFAULT_TRIGGER,
   );
-  const [conditions, setConditions] = useState<AutomationCondition[]>(
-    (initial?.conditions as AutomationCondition[]) ?? [],
+  const [conditionTree, setConditionTree] = useState<ConditionNode>(
+    parseConditionTreeClient(initial?.conditions as AutomationCondition[] | ConditionNode | undefined),
   );
   const [actions,    setActions]    = useState<AutomationAction[]>(
     (initial?.actions as AutomationAction[]) ?? [],
@@ -489,7 +500,7 @@ function RuleDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onSubmit({ name: name.trim(), trigger, conditions, actions, scopeType });
+            onSubmit({ name: name.trim(), trigger, conditions: conditionTree, actions, scopeType });
           }}
         >
           <DialogBody className="flex flex-col gap-5 max-h-[60vh] overflow-y-auto">
@@ -524,7 +535,7 @@ function RuleDialog({
             <TriggerEditor trigger={trigger} onChange={setTrigger} />
 
             {/* Conditions */}
-            <ConditionList conditions={conditions} onChange={setConditions} />
+            <ConditionGroupEditor node={conditionTree} onChange={setConditionTree} root />
 
             {/* Actions */}
             <ActionList actions={actions} onChange={setActions} />
@@ -623,86 +634,109 @@ function TriggerEditor({
   );
 }
 
-function ConditionList({
-  conditions, onChange,
+function ConditionGroupEditor({
+  node, onChange, root = false,
 }: {
-  conditions: AutomationCondition[];
-  onChange:   (c: AutomationCondition[]) => void;
+  node:     ConditionNode;
+  onChange: (n: ConditionNode) => void;
+  root?:    boolean;
 }) {
   const t = useTranslations('Automations');
-  const add    = () => onChange([...conditions, { type: 'FIELD_EQUALS', field: 'priority', value: 'HIGH' } as any]);
-  const remove = (i: number) => onChange(conditions.filter((_, idx) => idx !== i));
-  const update = (i: number, patch: Partial<AutomationCondition>) =>
-    onChange(conditions.map((c, idx) => (idx === i ? { ...c, ...patch } : c)));
+  if (!isGroup(node)) {
+    return (
+      <ConditionLeafEditor
+        leaf={node as ConditionLeaf}
+        onChange={onChange}
+        onRemove={() => onChange(emptyGroup('AND'))}
+      />
+    );
+  }
+  const group = node;
+  const setOp = (op: 'AND' | 'OR') => onChange({ ...group, op });
+  const addLeaf = () => onChange({ ...group, children: [...group.children, emptyLeaf()] });
+  const addGroup = () => onChange({ ...group, children: [...group.children, emptyGroup(group.op === 'AND' ? 'OR' : 'AND')] });
+  const updateChild = (i: number, child: ConditionNode) =>
+    onChange({ ...group, children: group.children.map((c, idx) => (idx === i ? child : c)) });
+  const removeChild = (i: number) =>
+    onChange({ ...group, children: group.children.filter((_, idx) => idx !== i) });
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-border/60 bg-muted/20 p-3">
-      <div className="flex items-center justify-between">
-        <SectionTitle
-          icon={CircleDot}
-          title={t('ifTitle')}
-          hint={t('ifHint')}
-        />
-        <Button type="button" size="sm" variant="ghost" onClick={add} className="h-7 px-2 text-xs">
-          <Plus className="size-3.5" /> {t('addCondition')}
-        </Button>
+    <div className={cn('flex flex-col gap-2 rounded-md border border-border/60 p-3', root ? 'bg-muted/20' : 'bg-card/60 ml-3')}>
+      {root && <SectionTitle icon={CircleDot} title={t('ifTitle')} hint={t('ifHint')} />}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Select value={group.op} onValueChange={(v) => setOp(v as 'AND' | 'OR')}>
+            <SelectTrigger className="h-7 w-[140px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="AND">{t(GROUP_OP_KEYS.AND as Parameters<typeof t>[0])}</SelectItem>
+              <SelectItem value="OR">{t(GROUP_OP_KEYS.OR as Parameters<typeof t>[0])}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="button" size="sm" variant="ghost" onClick={addLeaf} className="h-7 px-2 text-xs"><Plus className="size-3.5" /> {t('addCondition')}</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={addGroup} className="h-7 px-2 text-xs"><Plus className="size-3.5" /> {t('addGroup')}</Button>
+        </div>
       </div>
-
-      {conditions.length === 0 ? (
-        <p className="text-xs text-muted-foreground italic">
-          {t('noConditions')}
-        </p>
+      {group.children.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">{t('noConditions')}</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {conditions.map((cond, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2">
-              <Select
-                value={(cond as any).type}
-                onValueChange={(v) => update(i, { type: v as AutomationConditionType } as any)}
-              >
-                <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CONDITION_KEYS) as AutomationConditionType[]).map((k) => (
-                    <SelectItem key={k} value={k}>{t(CONDITION_KEYS[k] as Parameters<typeof t>[0])}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {((cond as any).type === 'FIELD_EQUALS' || (cond as any).type === 'FIELD_NOT_EQUALS') && (
-                <>
-                  <Input
-                    placeholder={t('fieldPlaceholder')}
-                    value={(cond as any).field ?? ''}
-                    onChange={(e) => update(i, { field: e.target.value } as any)}
-                    className="h-8 w-[140px] text-xs"
-                  />
-                  <Input
-                    placeholder={t('valuePlaceholder')}
-                    value={(cond as any).value ?? ''}
-                    onChange={(e) => update(i, { value: e.target.value } as any)}
-                    className="h-8 flex-1 min-w-[120px] text-xs"
-                  />
-                </>
-              )}
-              {((cond as any).type === 'IN_SPRINT' || (cond as any).type === 'NOT_IN_SPRINT') && (
-                <Input
-                  placeholder={t('sprintPlaceholder')}
-                  value={(cond as any).value ?? ''}
-                  onChange={(e) => update(i, { value: e.target.value } as any)}
-                  className="h-8 flex-1 min-w-[120px] text-xs"
-                />
-              )}
-              <Button
-                type="button" size="sm" variant="ghost"
-                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                onClick={() => remove(i)}
-                aria-label={t('removeConditionAriaLabel')}
-              >
-                <X className="size-3.5" />
-              </Button>
-            </div>
+          {group.children.map((child, i) => (
+            isGroup(child)
+              ? <div key={i} className="flex items-start gap-1">
+                  <ConditionGroupEditor node={child} onChange={(c) => updateChild(i, c)} />
+                  <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive" onClick={() => removeChild(i)} aria-label={t('removeConditionAriaLabel')}><X className="size-3.5" /></Button>
+                </div>
+              : <ConditionLeafEditor key={i} leaf={child as ConditionLeaf} onChange={(c) => updateChild(i, c)} onRemove={() => removeChild(i)} />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function ConditionLeafEditor({
+  leaf, onChange, onRemove,
+}: {
+  leaf:     ConditionLeaf;
+  onChange: (l: ConditionLeaf) => void;
+  onRemove: () => void;
+}) {
+  const t = useTranslations('Automations');
+  const update = (patch: Partial<ConditionLeaf>) => onChange({ ...leaf, ...patch });
+  const isField = leaf.type === 'FIELD_EQUALS' || leaf.type === 'FIELD_NOT_EQUALS';
+  const isFilter = leaf.type === 'ISSUE_MATCHES_FILTER';
+  const isRole = leaf.type === 'USER_HAS_ROLE';
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Select value={leaf.type} onValueChange={(v) => update({ type: v as ConditionLeaf['type'] })}>
+        <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {(Object.keys(CONDITION_KEYS) as AutomationConditionType[]).map((k) => (
+            <SelectItem key={k} value={k}>{t(CONDITION_KEYS[k] as Parameters<typeof t>[0])}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {isField && (
+        <>
+          <Input placeholder={t('fieldPlaceholder')} value={leaf.field ?? ''} onChange={(e) => update({ field: e.target.value })} className="h-8 w-[130px] text-xs" />
+          <Select value={leaf.operator} onValueChange={(v) => update({ operator: v as ConditionOperator })}>
+            <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {OPERATORS.map((op) => <SelectItem key={op} value={op}>{t(OPERATOR_KEYS[op] as Parameters<typeof t>[0])}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {leaf.operator !== 'is_set' && (
+            <Input placeholder={t('valuePlaceholder')} value={leaf.value ?? ''} onChange={(e) => update({ value: e.target.value })} className="h-8 flex-1 min-w-[110px] text-xs" />
+          )}
+        </>
+      )}
+      {isFilter && (
+        <Input placeholder={t('pqlPlaceholder')} value={leaf.pql ?? ''} onChange={(e) => update({ pql: e.target.value, operator: 'is' })} className="h-8 flex-1 min-w-[160px] text-xs font-mono" />
+      )}
+      {isRole && (
+        <Input placeholder={t('roleSlugPlaceholder')} value={leaf.value ?? ''} onChange={(e) => update({ value: e.target.value, operator: 'is' })} className="h-8 flex-1 min-w-[140px] text-xs font-mono" />
+      )}
+      <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 text-destructive hover:text-destructive" onClick={onRemove} aria-label={t('removeConditionAriaLabel')}><X className="size-3.5" /></Button>
     </div>
   );
 }

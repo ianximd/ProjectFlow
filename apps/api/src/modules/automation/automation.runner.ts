@@ -22,25 +22,33 @@ export interface DelayedSlice {
 // ── nextDelayedSlice ──────────────────────────────────────────────────────────
 
 /**
- * Walk the action list starting at `fromIndex`. The action AT fromIndex always
- * runs now (its delay was already paid by the delayed-job timer). Each
- * subsequent action runs now until one has a positive `delaySeconds` — that
- * index becomes `resumeAt` and execution stops.
+ * Walk the action list starting at `fromIndex`. When this is a resume invocation
+ * (`prepaidStart`), the action AT fromIndex has already had its delay paid by the
+ * delayed-job timer and runs now unconditionally. Each subsequent action runs now
+ * until one has a positive `delaySeconds` — that index becomes `resumeAt` and
+ * execution stops.
+ *
+ * `prepaidStart` defaults to `fromIndex > 0` to preserve the original 2-arg
+ * behaviour. The worker passes it explicitly (true on a resume job) so that a
+ * LEADING-delay action (action[0].delaySeconds > 0) — which yields resumeAt:0 and
+ * is re-enqueued with actionIndex:0 — runs on resume instead of re-deferring
+ * forever (the latent infinite-loop bug this parameter fixes).
  *
  * Non-positive or missing `delaySeconds` counts as no delay.
  */
 export function nextDelayedSlice(
   actions: AutomationAction[],
   fromIndex: number,
+  prepaidStart: boolean = fromIndex > 0,
 ): DelayedSlice {
   const runNow: number[] = [];
 
   for (let i = fromIndex; i < actions.length; i++) {
-    // When this is a resume invocation (fromIndex > 0), the action AT fromIndex
-    // has already had its delay paid by the delayed-job timer — run it
-    // unconditionally. For all other positions (and for the initial call where
-    // fromIndex === 0), check the delay and defer if positive.
-    const isPrePaid = i === fromIndex && fromIndex > 0;
+    // The action AT fromIndex is pre-paid on a resume (its delay was already paid
+    // by the delayed-job timer) — run it unconditionally. For all other positions
+    // (and on the fresh first pass where prepaidStart is false), check the delay
+    // and defer if positive.
+    const isPrePaid = i === fromIndex && prepaidStart;
 
     if (!isPrePaid) {
       const delay = actions[i].delaySeconds;

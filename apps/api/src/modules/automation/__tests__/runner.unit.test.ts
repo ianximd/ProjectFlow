@@ -41,6 +41,19 @@ describe('nextDelayedSlice', () => {
     expect(r.runNow).toEqual([0, 1, 2]);
     expect(r.resumeAt).toBeNull();
   });
+
+  it('runs a resume-at-0 leading-delay action when prepaidStart is true (no infinite loop)', () => {
+    const r = nextDelayedSlice([a('CHANGE_STATUS', 30), a('ASSIGN')], 0, true);
+    expect(r.runNow).toEqual([0, 1]);
+    expect(r.resumeAt).toBeNull();
+  });
+
+  it('still defers a leading-delay action on the fresh first pass (prepaidStart false)', () => {
+    const r = nextDelayedSlice([a('CHANGE_STATUS', 30), a('ASSIGN')], 0, false);
+    expect(r.runNow).toEqual([]);
+    expect(r.resumeAt).toBe(0);
+    expect(r.delayMs).toBe(30000);
+  });
 });
 
 describe('cronWindowElapsed', () => {

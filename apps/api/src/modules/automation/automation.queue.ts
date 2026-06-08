@@ -17,6 +17,12 @@ export interface AutomationJobData {
   depth:          number;
   /** Rule ids already fired in this causal chain. */
   causationChain: string[];
+  /**
+   * 6c: index into rule.actions at which to RESUME (set only on a re-enqueued
+   * delayed continuation job). Absent on the initial trigger job, which runs
+   * conditions then starts from index 0.
+   */
+  actionIndex?:   number;
 }
 
 export const automationQueue = new Queue<AutomationJobData>('automation', {

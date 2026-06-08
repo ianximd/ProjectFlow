@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import { AutomationRepository } from './automation.repository.js';
-import { evaluateConditions }   from './automation.conditions.js';
+import { evaluateConditionTree, parseConditionTree } from './automation.conditions.js';
+import { buildConditionContext } from './condition.context.js';
 import { executeAction }        from './automation.actions.js';
 import type { AutomationJobData } from './automation.queue.js';
 import type { LoopContext } from './automation.bus.js';
@@ -37,8 +38,11 @@ export function startAutomationWorker() {
         return;
       }
 
-      // Evaluate conditions (AND-only; OR/operators arrive in 6b).
-      if (!evaluateConditions(rule.conditions, payload)) {
+      // Phase 6b: evaluate the recursive AND/OR condition tree with real
+      // PQL-filter + RBAC resolvers. A legacy flat array is read as implicit AND.
+      const ctx    = buildConditionContext(payload, { workspaceId, actorId: payload.actorId as string | undefined });
+      const passed = await evaluateConditionTree(parseConditionTree(rule.conditions), ctx);
+      if (!passed) {
         await repo.recordRun({
           ruleId, workspaceId, projectId, triggerType: eventType, status: 'skipped',
           payload: JSON.stringify(payload), error: 'conditions not met',

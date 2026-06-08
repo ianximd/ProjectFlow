@@ -516,7 +516,21 @@
     "operatorAfter": "after",
     "operatorIsSet": "is set",
     "pqlPlaceholder": "PQL filter, e.g. priority = HIGH AND status = \"In Progress\"",
-    "roleSlugPlaceholder": "Role slug, e.g. workspace-admin"
+    "roleSlugPlaceholder": "Role slug, e.g. workspace-admin",
+    "actionSetField": "Set custom field",
+    "actionAddTag": "Add tag",
+    "actionCreateTask": "Create task",
+    "actionCreateSubtask": "Create subtask",
+    "actionMoveTask": "Move task",
+    "actionApplyTemplate": "Apply template",
+    "fieldIdPlaceholder": "Custom field ID",
+    "fieldValuePlaceholder": "Value",
+    "tagNamePlaceholder": "Tag name",
+    "newTaskTitlePlaceholder": "New task title",
+    "targetListIdPlaceholder": "Destination list ID",
+    "templateIdPlaceholder": "Template ID",
+    "delaySecondsPlaceholder": "Delay (s)",
+    "delaySecondsAriaLabel": "Delay before this action runs, in seconds"
   },
   "Lists": {
     "heading": "List",

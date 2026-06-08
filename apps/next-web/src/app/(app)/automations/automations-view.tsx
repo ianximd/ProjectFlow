@@ -74,6 +74,12 @@ const ACTION_KEYS: Record<AutomationActionType, string> = {
   POST_COMMENT:      'actionPostComment',
   SEND_NOTIFICATION: 'actionSendNotification',
   CALL_WEBHOOK:      'actionCallWebhook',
+  SET_FIELD:         'actionSetField',
+  ADD_TAG:           'actionAddTag',
+  CREATE_TASK:       'actionCreateTask',
+  CREATE_SUBTASK:    'actionCreateSubtask',
+  MOVE_TASK:         'actionMoveTask',
+  APPLY_TEMPLATE:    'actionApplyTemplate',
 };
 
 const CONDITION_KEYS: Record<AutomationConditionType, string> = {
@@ -838,6 +844,63 @@ function ActionList({
                   className="h-8 text-xs font-mono"
                 />
               )}
+              {(action as any).type === 'SET_FIELD' && (
+                <>
+                  <Input
+                    placeholder={t('fieldIdPlaceholder')}
+                    value={(action as any).fieldId ?? ''}
+                    onChange={(e) => update(i, { fieldId: e.target.value } as any)}
+                    className="h-8 text-xs font-mono"
+                  />
+                  <Input
+                    placeholder={t('fieldValuePlaceholder')}
+                    value={(action as any).fieldValue ?? ''}
+                    onChange={(e) => update(i, { fieldValue: e.target.value } as any)}
+                    className="h-8 text-xs"
+                  />
+                </>
+              )}
+              {(action as any).type === 'ADD_TAG' && (
+                <Input
+                  placeholder={t('tagNamePlaceholder')}
+                  value={(action as any).tagName ?? ''}
+                  onChange={(e) => update(i, { tagName: e.target.value } as any)}
+                  className="h-8 text-xs"
+                />
+              )}
+              {((action as any).type === 'CREATE_TASK' || (action as any).type === 'CREATE_SUBTASK') && (
+                <Input
+                  placeholder={t('newTaskTitlePlaceholder')}
+                  value={(action as any).title ?? ''}
+                  onChange={(e) => update(i, { title: e.target.value } as any)}
+                  className="h-8 text-xs"
+                />
+              )}
+              {(action as any).type === 'MOVE_TASK' && (
+                <Input
+                  placeholder={t('targetListIdPlaceholder')}
+                  value={(action as any).targetListId ?? ''}
+                  onChange={(e) => update(i, { targetListId: e.target.value } as any)}
+                  className="h-8 text-xs font-mono"
+                />
+              )}
+              {(action as any).type === 'APPLY_TEMPLATE' && (
+                <Input
+                  placeholder={t('templateIdPlaceholder')}
+                  value={(action as any).templateId ?? ''}
+                  onChange={(e) => update(i, { templateId: e.target.value } as any)}
+                  className="h-8 text-xs font-mono"
+                />
+              )}
+              <Input
+                type="number"
+                min={0}
+                placeholder={t('delaySecondsPlaceholder')}
+                value={(action as any).delaySeconds ?? ''}
+                onChange={(e) => update(i, { delaySeconds: e.target.value ? Number(e.target.value) : undefined } as any)}
+                className="h-8 text-xs"
+                aria-label={t('delaySecondsAriaLabel')}
+              />
             </div>
           ))}
         </div>

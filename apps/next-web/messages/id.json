@@ -516,7 +516,21 @@
     "operatorAfter": "sesudah",
     "operatorIsSet": "telah diisi",
     "pqlPlaceholder": "Filter PQL, mis. priority = HIGH AND status = \"In Progress\"",
-    "roleSlugPlaceholder": "Slug peran, mis. workspace-admin"
+    "roleSlugPlaceholder": "Slug peran, mis. workspace-admin",
+    "actionSetField": "Atur bidang khusus",
+    "actionAddTag": "Tambah tag",
+    "actionCreateTask": "Buat tugas",
+    "actionCreateSubtask": "Buat subtugas",
+    "actionMoveTask": "Pindahkan tugas",
+    "actionApplyTemplate": "Terapkan templat",
+    "fieldIdPlaceholder": "ID bidang khusus",
+    "fieldValuePlaceholder": "Nilai",
+    "tagNamePlaceholder": "Nama tag",
+    "newTaskTitlePlaceholder": "Judul tugas baru",
+    "targetListIdPlaceholder": "ID daftar tujuan",
+    "templateIdPlaceholder": "ID templat",
+    "delaySecondsPlaceholder": "Tunda (dtk)",
+    "delaySecondsAriaLabel": "Tunda sebelum aksi ini berjalan, dalam detik"
   },
   "Lists": {
     "heading": "Daftar",

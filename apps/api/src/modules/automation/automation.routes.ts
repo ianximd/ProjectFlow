@@ -69,12 +69,24 @@ const conditionNodeSchema: z.ZodType<unknown> = z.lazy(() =>
 const conditionsSchema = z.union([z.array(conditionSchema), conditionNodeSchema]);
 
 const actionSchema = z.object({
-  type:        z.string().min(1),
-  toStatus:    z.string().optional(),
-  assigneeId:  z.string().optional(),
-  priority:    z.string().optional(),
-  message:     z.string().optional(),
-  webhookUrl:  z.string().url().optional(),
+  type:           z.string().min(1),
+  toStatus:       z.string().optional(),
+  assigneeId:     z.string().optional(),
+  priority:       z.string().optional(),
+  message:        z.string().optional(),
+  webhookUrl:     z.string().url().optional(),
+  webhookEvent:   z.string().optional(),
+  fieldId:        z.string().optional(),
+  fieldValue:     z.any().optional(),
+  tagId:          z.string().optional(),
+  tagName:        z.string().optional(),
+  title:          z.string().optional(),
+  description:    z.string().optional(),
+  newPriority:    z.string().optional(),
+  targetListId:   z.string().optional(),
+  targetPosition: z.number().optional(),
+  templateId:     z.string().optional(),
+  delaySeconds:   z.number().int().nonnegative().optional(),
 });
 
 const createSchema = z.object({

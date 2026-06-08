@@ -35,6 +35,12 @@ describe('matchesFilterPQL', () => {
   it('an empty PQL matches everything', () => {
     expect(matchesFilterPQL('', task, 'u-9')).toBe(true);
   });
+  it('fails closed on filter clauses it cannot evaluate in-memory (no silent over-fire)', () => {
+    // status matches the task, but an unevaluable clause must fail the whole filter closed.
+    expect(matchesFilterPQL('status = "In Progress" AND project = ABC', task, 'u-9')).toBe(false);
+    expect(matchesFilterPQL('project = ABC', task, 'u-9')).toBe(false);
+    expect(matchesFilterPQL('sprint = openSprints()', task, 'u-9')).toBe(false);
+  });
 });
 
 describe('makeUserHasRole', () => {

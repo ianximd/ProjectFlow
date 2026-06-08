@@ -40,6 +40,13 @@ function matchesParsed(p: ParsedPQL, task: FilterTask): boolean {
     const d = Date.parse(String(task.dueDate));
     if (!Number.isFinite(d) || d > Date.parse(p.dueBefore)) return false;
   }
+  // Fail closed on filter constraints we cannot evaluate against the in-memory
+  // task: dropping them silently would over-fire the rule. (orderBy/orderDir are
+  // sort directives, not filters, so they are correctly ignored.)
+  if (p.createdAfter !== undefined) return false;
+  if (p.updatedAfter !== undefined) return false;
+  if (p.openSprints  !== undefined) return false;
+  if (p.projectKey   !== undefined) return false;
   return true;
 }
 

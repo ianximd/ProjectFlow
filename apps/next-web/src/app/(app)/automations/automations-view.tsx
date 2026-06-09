@@ -420,6 +420,7 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
       />
 
       <RuleDialog
+        key={`edit-${editing?.id ?? 'none'}`}
         mode="edit"
         open={!!editing}
         initial={editing}

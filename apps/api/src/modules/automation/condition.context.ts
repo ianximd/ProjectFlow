@@ -66,6 +66,42 @@ export function toFilterTask(p: AutomationEventPayload): FilterTask {
   };
 }
 
+/**
+ * Convert a raw DB task row (PascalCase from `SELECT *` or camelCase from the
+ * TS type) into a partial AutomationEventPayload so scheduler-origin jobs can
+ * hydrate the condition evaluation with the task's CURRENT field values.
+ *
+ * Casing-tolerant: reads `(row as any).status ?? (row as any).Status` etc.
+ * `assigneeId` is resolved from assigneeIds/AssigneeIds which may be an array
+ * or a comma-separated string; only the FIRST id is taken.
+ * Returns `{}` for null/undefined input.
+ */
+export function taskToPayloadFields(task: unknown): Partial<AutomationEventPayload> {
+  if (task == null) return {};
+  const r = task as Record<string, unknown>;
+
+  // Resolve assigneeId: array or comma-string → first element
+  const rawAssignees = r['assigneeIds'] ?? r['AssigneeIds'];
+  let assigneeId: string | null = null;
+  if (Array.isArray(rawAssignees) && rawAssignees.length > 0) {
+    assigneeId = String(rawAssignees[0]);
+  } else if (typeof rawAssignees === 'string' && rawAssignees.length > 0) {
+    assigneeId = rawAssignees.split(',')[0].trim() || null;
+  }
+
+  return {
+    status:      (r['status']      ?? r['Status']      ?? null) as string | null,
+    priority:    (r['priority']    ?? r['Priority']    ?? null) as string | null,
+    type:        (r['type']        ?? r['Type']        ?? null) as string | null,
+    assigneeId,
+    reporterId:  (r['reporterId']  ?? r['ReporterId']  ?? null) as string | null,
+    sprintId:    (r['sprintId']    ?? r['SprintId']    ?? null) as string | null,
+    dueDate:     (r['dueDate']     ?? r['DueDate']     ?? null) as string | null,
+    storyPoints: (r['storyPoints'] ?? r['StoryPoints'] ?? null) as number | null,
+    title:       (r['title']       ?? r['Title']       ?? null) as string | null,
+  };
+}
+
 /** Build the evaluation context. The worker passes the authoritative workspaceId
  *  (job.data.workspaceId) + actorId via opts; actorId falls back to the payload,
  *  workspaceId falls back to null (the 6a payload carries no workspaceId). */

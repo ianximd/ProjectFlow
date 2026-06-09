@@ -6,22 +6,25 @@
  * + Redis + local test DB):
  *
  *   1. API seeds user + workspace + project + list.
- *   2. Register a workspace outgoing webhook subscribed to 'issue.created'
+ *   2. Register a workspace outgoing webhook subscribed to 'automation.fired'
  *      at an unreachable sink URL (http://127.0.0.1:65535/void) — delivery
  *      attempt is fire-and-forget and always recorded even when the POST fails.
- *   3. Create an OVERDUE task (dueDate = 60 seconds ago).
- *   4. Create a DUE_DATE_PASSED rule with a CALL_WEBHOOK action using event
- *      'issue.created' (must match the webhook subscription).
- *   5. Trigger one scheduler sweep via POST /api/v1/dev/automation/sweep — the
- *      sweep queries SQL for overdue tasks, enqueues a BullMQ job per (rule,
- *      task) pair, and the 6a worker processes each job: evaluates conditions,
- *      executes CALL_WEBHOOK, and writes an AutomationRuns audit row.
+ *      Uses 'automation.fired' (the natural default for automation webhooks
+ *      and the first entry in the WEBHOOK_EVENTS selector) — proves follow-up #1.
+ *   3. Create an OVERDUE task with an explicit priority='high' (dueDate = 60 s ago).
+ *   4. Create a DUE_DATE_PASSED rule with:
+ *        - a condition: ISSUE_MATCHES_FILTER with pql='priority = high'
+ *          This condition only passes after the worker hydrates it with the
+ *          task's current DB fields (follow-up #2). Without hydration the
+ *          scheduler payload only carries {taskId,projectId} so priority=null
+ *          and the condition would fail-closed.
+ *        - a CALL_WEBHOOK action using webhookEvent: 'automation.fired'
+ *          (must match the registered webhook's subscribed event).
+ *   5. Trigger one scheduler sweep via POST /api/v1/dev/automation/sweep.
  *   6. HEADLINE assertion: poll GET /automations/:id/runs until runs.length >= 1.
- *      A recorded run proves the date trigger fired via the scheduler within
- *      its window. The run status is 'success' or 'error' (the webhook delivery
- *      to the dead-end URL fails at the network layer, but the run is still
- *      recorded — the exact status depends on whether the worker treats a failed
- *      HTTP call as an action error or a soft failure).
+ *      A recorded run proves: sweep found the task, enqueued the job, the worker
+ *      hydrated the task fields, the PQL condition matched 'high', and the
+ *      CALL_WEBHOOK action was executed. This covers both follow-up #1 and #2.
  *
  * Why API-driven (not UI):
  *   The critical seam is the scheduler→worker→audit pipeline, not the builder
@@ -47,7 +50,9 @@ function uniqSuffix(): string {
 }
 
 test.describe('Phase 6c — automation scheduler', () => {
-  test('a DUE_DATE_PASSED rule fires via sweep and the CALL_WEBHOOK run is audited', async () => {
+  // Covers follow-up #1 (automation.fired event enum) and follow-up #2
+  // (scheduler-origin condition hydration with the task's current DB fields).
+  test('a DUE_DATE_PASSED rule with priority condition fires via sweep — automation.fired + hydrated condition', async () => {
     const suffix    = uniqSuffix();
     const password  = 'E2EPass123!';
     const email     = `sched-${suffix}@projectflow.test`;
@@ -95,10 +100,9 @@ test.describe('Phase 6c — automation scheduler', () => {
     expect(listId, 'listId').toBeTruthy();
 
     // ── 3. Register a workspace outgoing webhook ───────────────────────────────
-    // Subscribed to 'issue.created' (a valid enum event). The CALL_WEBHOOK
-    // action must use the same event name so dispatch() finds this webhook via
-    // getActive(workspaceId, event). The sink URL is unreachable by design —
-    // delivery attempt still produces an audit row.
+    // Subscribed to 'automation.fired' — the natural default for automation
+    // webhooks and the first entry in the CALL_WEBHOOK selector (follow-up #1).
+    // The sink URL is unreachable by design; delivery still produces an audit row.
     const webhookRes = await api.post(`${API_BASE}/outgoing-webhooks`, {
       headers,
       data: {
@@ -106,7 +110,7 @@ test.describe('Phase 6c — automation scheduler', () => {
         name:   `Sched webhook ${suffix}`,
         url:    'http://127.0.0.1:65535/void',
         secret: 's3cr3tpass',
-        events: ['issue.created'],
+        events: ['automation.fired'],
       },
     });
     expect(webhookRes.status(), 'create outgoing webhook').toBe(201);
@@ -114,20 +118,26 @@ test.describe('Phase 6c — automation scheduler', () => {
     const webhookId: string = webhookBody.id ?? webhookBody.Id;
     expect(webhookId, 'webhookId').toBeTruthy();
 
-    // ── 4. Create an OVERDUE task (dueDate = 60 s ago) ────────────────────────
+    // ── 4. Create an OVERDUE task with explicit priority='high' ───────────────
+    // The priority is seeded so the condition below can match it. Without
+    // scheduler-payload hydration (follow-up #2) the worker sees priority=null
+    // and the condition fails-closed, so no run would be recorded.
     const overdueDate = new Date(Date.now() - 60_000).toISOString();
     const taskRes = await api.post(`${API_BASE}/tasks`, {
       headers,
-      data: { workspaceId, listId, title: taskTitle, dueDate: overdueDate },
+      data: { workspaceId, listId, title: taskTitle, dueDate: overdueDate, priority: 'HIGH' },
     });
     expect(taskRes.status(), 'create overdue task').toBe(201);
     const taskBody = (await taskRes.json()).data;
     const taskId: string = String(taskBody.Id ?? taskBody.id);
     expect(taskId, 'taskId').toBeTruthy();
 
-    // ── 5. Create a DUE_DATE_PASSED rule with CALL_WEBHOOK action ─────────────
-    // webhookEvent must match the registered webhook's subscribed event so
-    // dispatch() finds it in getActive(). Empty conditions array = always fires.
+    // ── 5. Create a DUE_DATE_PASSED rule with priority condition + CALL_WEBHOOK ─
+    // The ISSUE_MATCHES_FILTER condition (pql: 'priority = HIGH') only passes
+    // once the worker hydrates the scheduler payload with the task's current DB
+    // fields via taskToPayloadFields (follow-up #2). webhookEvent must match the
+    // registered webhook's subscribed event so dispatch() finds it via
+    // getActive(workspaceId, 'automation.fired') (follow-up #1).
     const ruleRes = await api.post(`${API_BASE}/automations`, {
       headers,
       data: {
@@ -136,8 +146,12 @@ test.describe('Phase 6c — automation scheduler', () => {
         projectId,
         name:        ruleName,
         trigger:     { type: 'DUE_DATE_PASSED' },
-        conditions:  [],
-        actions:     [{ type: 'CALL_WEBHOOK', webhookEvent: 'issue.created' }],
+        conditions:  [{
+          type: 'ISSUE_MATCHES_FILTER',
+          operator: 'is',
+          pql: 'priority = HIGH',
+        }],
+        actions:     [{ type: 'CALL_WEBHOOK', webhookEvent: 'automation.fired' }],
       },
     });
     expect(ruleRes.status(), 'create DUE_DATE_PASSED rule').toBe(201);
@@ -148,9 +162,13 @@ test.describe('Phase 6c — automation scheduler', () => {
     // runScheduledSweep(now, since) queries usp_AutomationRule_ListDueDateRules
     // for tasks whose dueDate falls in (since, now]. The overdue task is within
     // the default sweep window (now − 5 min, now], so the sweep enqueues one
-    // job: DUE_DATE_PASSED:<ruleId>. The 6a worker processes it: evaluates
-    // conditions (empty → pass), executes CALL_WEBHOOK, and writes an
-    // AutomationRuns audit row.
+    // job: DUE_DATE_PASSED:<ruleId>. The worker processes it:
+    //   1. Hydrates the bare {taskId,projectId} payload with the task's current
+    //      DB fields (taskToPayloadFields) — follow-up #2.
+    //   2. Evaluates the ISSUE_MATCHES_FILTER condition: pql='priority = HIGH'
+    //      matches the seeded task → passes.
+    //   3. Executes CALL_WEBHOOK with event 'automation.fired' — follow-up #1.
+    //   4. Writes an AutomationRuns audit row.
     const sweepRes = await api.post(`${API_BASE}/dev/automation/sweep`, { headers });
     expect(sweepRes.status(), 'dev sweep endpoint').toBe(200);
     const sweepBody = await sweepRes.json();

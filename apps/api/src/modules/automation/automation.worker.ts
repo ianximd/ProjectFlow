@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import { AutomationRepository } from './automation.repository.js';
 import { evaluateConditionTree, parseConditionTree } from './automation.conditions.js';
-import { buildConditionContext } from './condition.context.js';
+import { buildConditionContext, taskToPayloadFields } from './condition.context.js';
 import { executeAction }        from './automation.actions.js';
 import type { ActionContext }   from './automation.actions.context.js';
 import { nextDelayedSlice }     from './automation.runner.js';
@@ -10,10 +10,12 @@ import type { AutomationJobData } from './automation.queue.js';
 import type { AutomationRunStatus } from '@projectflow/types';
 import { subLogger } from '../../shared/lib/logger.js';
 import { registerCloser } from '../../shared/lib/shutdown.js';
+import { TaskRepository } from '../tasks/task.repository.js';
 
 const log = subLogger('automation');
 
-const repo = new AutomationRepository();
+const repo     = new AutomationRepository();
+const taskRepo = new TaskRepository();
 
 const connection = {
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -58,7 +60,15 @@ export function startAutomationWorker() {
       if (!isResume) {
         let passed: boolean;
         try {
-          const cctx = buildConditionContext(payload, { workspaceId, actorId: payload.actorId as string | undefined });
+          // For scheduler-origin jobs (DUE_DATE_PASSED / DATE_ARRIVED) the payload
+          // only carries {taskId, projectId}. Hydrate with the task's CURRENT fields
+          // so FIELD / PQL conditions can match real data. Payload wins on conflict
+          // (explicit event fields override the DB snapshot).
+          const taskId = payload.taskId as string | undefined;
+          const conditionPayload = taskId
+            ? { ...taskToPayloadFields(await taskRepo.getById(taskId)), ...payload }
+            : payload;
+          const cctx = buildConditionContext(conditionPayload, { workspaceId, actorId: payload.actorId as string | undefined });
           passed = await evaluateConditionTree(parseConditionTree(rule.conditions), cctx);
         } catch (err: any) {
           await repo.recordRun({

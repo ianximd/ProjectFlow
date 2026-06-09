@@ -3,8 +3,8 @@ import { builder } from './builder.js';
 import { AutomationService } from '../modules/automation/automation.service.js';
 import { AutomationRepository } from '../modules/automation/automation.repository.js';
 import { ProjectRepository } from '../modules/projects/project.repository.js';
-import { notFound, requireWorkspacePermission } from './authz.js';
-import type { AutomationRule, AutomationRun } from '@projectflow/types';
+import { notFound, requireWorkspacePermission, requireAuth } from './authz.js';
+import type { AutomationRule, AutomationRun, AutomationTemplate, AutomationUsage } from '@projectflow/types';
 
 const svc      = new AutomationService();
 const ruleRepo = new AutomationRepository();
@@ -40,6 +40,23 @@ export function registerAutomationGraphql(): void {
     durationMs:    t.int({ nullable: true, resolve: (r) => r.durationMs ?? null }),
   }) });
 
+  const AutomationTemplateType = builder.objectRef<AutomationTemplate>('AutomationTemplate');
+  AutomationTemplateType.implement({ fields: (t) => ({
+    key:         t.exposeString('key'),
+    title:       t.string({ resolve: (r) => r.title ?? r.key }),
+    description: t.string({ resolve: (r) => r.description ?? '' }),
+    trigger:     t.string({ resolve: (r) => JSON.stringify(r.trigger) }),
+    conditions:  t.string({ resolve: (r) => JSON.stringify(r.conditions) }),
+    actions:     t.string({ resolve: (r) => JSON.stringify(r.actions) }),
+  }) });
+
+  const AutomationUsageType = builder.objectRef<AutomationUsage>('AutomationUsage');
+  AutomationUsageType.implement({ fields: (t) => ({
+    workspaceId: t.exposeString('workspaceId'),
+    period:      t.exposeString('period'),
+    runCount:    t.exposeInt('runCount'),
+  }) });
+
   builder.queryFields((t) => ({
     automationRules: t.field({
       type: [AutomationRuleType],
@@ -63,6 +80,22 @@ export function registerAutomationGraphql(): void {
         if (!workspaceId) notFound('Rule not found');
         await requireWorkspacePermission(ctx, workspaceId, 'automation.update');
         return svc.listRuns(a.ruleId, a.limit ?? 50, a.offset ?? 0);
+      },
+    }),
+    automationTemplates: t.field({
+      type: [AutomationTemplateType],
+      args: { locale: t.arg.string({ required: false }) },
+      resolve: (_, a, ctx) => {
+        requireAuth(ctx);                       // static catalog → auth-only
+        return svc.listTemplates(a.locale ?? 'en');
+      },
+    }),
+    automationUsage: t.field({
+      type: AutomationUsageType,
+      args: { workspaceId: t.arg.string({ required: true }) },
+      resolve: async (_, a, ctx) => {
+        await requireWorkspacePermission(ctx, a.workspaceId, 'automation.read');
+        return svc.getUsage(a.workspaceId);
       },
     }),
   }));

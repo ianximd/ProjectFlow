@@ -7,7 +7,8 @@ import { ListRepository } from '../hierarchy/list.repository.js';
 import { FolderRepository } from '../hierarchy/folder.repository.js';
 import { ProjectRepository } from '../projects/project.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
-import type { DocScopeType } from '@projectflow/types';
+import { requireObjectAccess } from '../access/access.middleware.js';
+import type { DocScopeType, HierarchyNodeType } from '@projectflow/types';
 
 export const docRoutes = new Hono();
 
@@ -154,15 +155,26 @@ docRoutes.post(
   },
 );
 
-docRoutes.get('/', async (c) => {
-  const scopeType = c.req.query('scopeType');
-  const scopeId   = c.req.query('scopeId');
-  if (!scopeType || !scopeId) {
-    return c.json({ error: { message: 'scopeType and scopeId are required' } }, 400);
-  }
-  const docs = await docsService.listDocsByScope(scopeType as DocScopeType, scopeId);
-  return c.json({ data: docs });
-});
+docRoutes.get(
+  '/',
+  // HOLE 2 FIX: gate on VIEW access to the scope node, mirroring docsByScope GraphQL resolver.
+  // If scopeType/scopeId are missing the resolver returns null → 404 (fail-closed).
+  requireObjectAccess('VIEW', (c) => {
+    const scopeType = c.req.query('scopeType');
+    const scopeId   = c.req.query('scopeId');
+    if (!scopeType || !scopeId) return null;
+    return { type: scopeType as HierarchyNodeType, id: scopeId };
+  }),
+  async (c) => {
+    const scopeType = c.req.query('scopeType');
+    const scopeId   = c.req.query('scopeId');
+    if (!scopeType || !scopeId) {
+      return c.json({ error: { message: 'scopeType and scopeId are required' } }, 400);
+    }
+    const docs = await docsService.listDocsByScope(scopeType as DocScopeType, scopeId);
+    return c.json({ data: docs });
+  },
+);
 
 // ── Page operations — STATIC /pages segments BEFORE dynamic /:docId ───────────
 
@@ -296,6 +308,9 @@ docRoutes.post(
   '/pages/:id/create-task',
   requirePermission('doc.update', { resolveWorkspace: resolvePageWorkspace }),
   zValidator('json', createTaskSchema),
+  // HOLE 1 FIX: authorize the TARGET LIST exactly like the task move route does.
+  // zValidator has already run, so c.req.valid('json') is synchronously available.
+  requireObjectAccess('EDIT', (c) => ({ type: 'LIST', id: (c.req as any).valid('json').listId })),
   async (c) => {
     const user = (c as any).get('user');
     const b = c.req.valid('json');

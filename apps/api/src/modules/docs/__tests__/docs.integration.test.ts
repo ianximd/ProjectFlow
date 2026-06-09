@@ -117,6 +117,62 @@ describe('docs', () => {
     expect(links.map((l: any) => l.id)).toContain(link.id);
   });
 
+  // ── Negative-authz: cross-tenant holes ──────────────────────────────────────
+
+  it('rejects create-task-from-doc when caller lacks EDIT on target list (cross-tenant)', async () => {
+    // User X owns doc D in workspace A.
+    const { token: tokenX, doc, ws: wsA, space: spaceA } = await seedDoc();
+    const pageA = (await json<{ data: any[] }>(
+      await request(`/docs/${doc.id}/pages`, { token: tokenX }),
+    )).data[0];
+
+    // User Y owns list L in workspace B — X has no access to workspace B at all.
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const userY = await createTestUser({ email: `attacker-${stamp}@projectflow.test` });
+    const wsB   = await createTestWorkspace(userY.accessToken);
+    const spaceB = await createTestProject(wsB.Id, userY.accessToken, {
+      name: 'Attacker Space',
+      key: `AT${stamp.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`,
+    });
+    const listB = (await json<{ data: any }>(await request('/lists', {
+      method: 'POST',
+      token: userY.accessToken,
+      json: { workspaceId: wsB.Id, spaceId: spaceB.Id, folderId: null, name: 'Attacker List', position: 0 },
+    }), 201)).data;
+
+    // X attempts to create a task in Y's list via the doc endpoint.
+    const res = await request(`/docs/pages/${pageA.id}/create-task`, {
+      method: 'POST',
+      token: tokenX,
+      json: { listId: listB.id ?? listB.Id, title: 'Injected task' },
+    });
+    // Must be 403 (or 404 fail-closed) — never 201.
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it('rejects GET /docs when caller has no VIEW access to the scope (cross-tenant)', async () => {
+    // User Y owns a space in workspace B.
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const userY = await createTestUser({ email: `owner-${stamp}@projectflow.test` });
+    const wsB   = await createTestWorkspace(userY.accessToken);
+    const spaceB = await createTestProject(wsB.Id, userY.accessToken, {
+      name: 'Private Space',
+      key: `PR${stamp.replace(/[^a-z0-9]/gi, '').slice(-6).toUpperCase()}`,
+    });
+    // Seed a doc in that space so it would appear if the query ran.
+    await json<{ data: any }>(await request('/docs', {
+      method: 'POST',
+      token: userY.accessToken,
+      json: { workspaceId: wsB.Id, scopeType: 'SPACE', scopeId: spaceB.Id, name: 'Private Doc' },
+    }), 201);
+
+    // User X — a completely separate tenant — tries to list docs for Y's space.
+    const { token: tokenX } = await seedDoc();
+    const res = await request(`/docs?scopeType=SPACE&scopeId=${spaceB.Id}`, { token: tokenX });
+    // Must be 403 or 404 fail-closed — never 200 with Y's docs.
+    expect([403, 404]).toContain(res.status);
+  });
+
   it('marks a doc as wiki and reads the flag back', async () => {
     const { token, doc } = await seedDoc();
     const wiki = (await json<{ data: any }>(

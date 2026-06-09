@@ -546,6 +546,34 @@ export interface AutomationRun {
   durationMs: number | null;
 }
 
+// ── Automation Templates / Metering (Phase 6d) ────────────────────────────────
+// Run history (AutomationRun above) already ships from Phase 6a; 6d adds the
+// in-code template catalog and read-only per-workspace metering.
+
+/**
+ * An in-code template definition. The gallery pre-fills the rule builder from
+ * `trigger`/`conditions`/`actions`; `i18nTitleKey`/`i18nDescKey` resolve to the
+ * localized card title/description. No tenant rows are seeded.
+ */
+export interface AutomationTemplate {
+  key:          string;                  // stable catalog id, e.g. 'auto-assign-on-create'
+  i18nTitleKey: string;                  // dotted key under the Automations namespace
+  i18nDescKey:  string;
+  /** Server-localized strings (filled by GET /templates for the request locale). */
+  title?:       string;
+  description?: string;
+  trigger:      AutomationTriggerConfig;
+  conditions:   AutomationCondition[] | ConditionNode;
+  actions:      AutomationAction[];
+}
+
+/** Read-only per-workspace metering for the current period (no enforcement). */
+export interface AutomationUsage {
+  workspaceId: string;
+  period:      string;                  // 'YYYYMM'
+  runCount:    number;
+}
+
 // ── Time Tracking / Work Logs ─────────────────────────────────────────────────
 
 export interface WorkLogUser {

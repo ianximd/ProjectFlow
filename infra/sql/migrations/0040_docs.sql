@@ -100,3 +100,51 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_DocTaskLinks_Page' AND object_id = OBJECT_ID('dbo.DocTaskLinks'))
     CREATE NONCLUSTERED INDEX IX_DocTaskLinks_Page ON dbo.DocTaskLinks (DocPageId);
 GO
+
+-- =============================================================================
+-- Seed: doc.* RBAC permission slugs (idempotent — guarded by NOT EXISTS).
+-- Mirrors the pattern in 0018_rbac.sql. Added here so 0040 is self-contained
+-- and no new migration number is needed.
+-- Grant matrix:
+--   workspace-owner   : doc.create + doc.read + doc.update  (full authoring)
+--   workspace-admin   : doc.create + doc.read + doc.update  (full authoring)
+--   workspace-member  : doc.create + doc.read + doc.update  (standard member)
+--   workspace-viewer  : doc.read only
+-- =============================================================================
+;WITH DocPerms(Resource, Action, Slug, Scope, Description) AS (
+    SELECT * FROM (VALUES
+        ('doc', 'create', 'doc.create', 'WORKSPACE', 'Create docs and wikis'),
+        ('doc', 'read',   'doc.read',   'WORKSPACE', 'View docs and pages'),
+        ('doc', 'update', 'doc.update', 'WORKSPACE', 'Edit docs, pages, versions and links')
+    ) AS T(Resource, Action, Slug, Scope, Description)
+)
+INSERT INTO dbo.Permissions (Resource, Action, Slug, Scope, Description)
+SELECT d.Resource, d.Action, d.Slug, d.Scope, d.Description
+FROM DocPerms d
+WHERE NOT EXISTS (SELECT 1 FROM dbo.Permissions p WHERE p.Slug = d.Slug);
+GO
+
+;WITH DocRolePerms(RoleSlug, PermSlug) AS (
+    SELECT * FROM (VALUES
+        ('workspace-owner',  'doc.create'),
+        ('workspace-owner',  'doc.read'),
+        ('workspace-owner',  'doc.update'),
+        ('workspace-admin',  'doc.create'),
+        ('workspace-admin',  'doc.read'),
+        ('workspace-admin',  'doc.update'),
+        ('workspace-member', 'doc.create'),
+        ('workspace-member', 'doc.read'),
+        ('workspace-member', 'doc.update'),
+        ('workspace-viewer', 'doc.read')
+    ) AS T(RoleSlug, PermSlug)
+)
+INSERT INTO dbo.RolePermissions (RoleId, PermissionId)
+SELECT r.Id, p.Id
+FROM DocRolePerms s
+JOIN dbo.Roles       r ON r.Slug = s.RoleSlug
+JOIN dbo.Permissions p ON p.Slug = s.PermSlug
+WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp
+    WHERE rp.RoleId = r.Id AND rp.PermissionId = p.Id
+);
+GO

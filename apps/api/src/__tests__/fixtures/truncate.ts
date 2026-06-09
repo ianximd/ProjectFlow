@@ -40,6 +40,11 @@ const TRUNCATION_ORDER = [
   'GitCommits',
   'OutgoingWebhookDeliveries',
   'AutomationRunHistory',
+  // Phase 7a (0040): docs — child-first FK order
+  'DocTaskLinks',
+  'DocPageVersions',
+  'DocPages',
+  'Docs',
   'MfaRecoveryCodes',
   'RefreshTokens',
   'PasswordResetTokens',

@@ -34,6 +34,7 @@ import { gitRoutes }         from './modules/git/git.routes.js';
 import { webhookRoutes }     from './modules/git/webhook.routes.js';
 import { integrationRoutes } from './modules/integrations/integration.routes.js';
 import { templateRoutes } from './modules/templates/template.routes.js';
+import { docRoutes } from './modules/docs/docs.routes.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
@@ -159,6 +160,7 @@ app.use('/templates/*',      authMiddleware);
 app.use('/outgoing-webhooks/*', authMiddleware);
 // incoming git webhooks are public — no authMiddleware
 app.use('/admin/*',         authMiddleware);
+app.use('/docs/*',          authMiddleware);
 
 // Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
 // can ever be invoked. registerAuditSnapshots() is idempotent.
@@ -223,6 +225,7 @@ app.route('/integrations',   integrationRoutes);
 app.route('/templates',      templateRoutes);
 app.route('/outgoing-webhooks', webhookOutgoingRoutes);
 app.route('/admin',             adminRoutes);
+app.route('/docs',              docRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
 // Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).

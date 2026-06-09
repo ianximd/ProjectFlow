@@ -13,5 +13,14 @@ GO
 IF EXISTS (SELECT 1 FROM sys.tables WHERE name = 'Docs')            DROP TABLE dbo.Docs;
 GO
 
+-- Remove the doc.* RBAC seed (role grants first, then the permission rows).
+DELETE rp
+FROM dbo.RolePermissions rp
+JOIN dbo.Permissions p ON p.Id = rp.PermissionId
+WHERE p.Slug IN ('doc.create', 'doc.read', 'doc.update');
+GO
+DELETE FROM dbo.Permissions WHERE Slug IN ('doc.create', 'doc.read', 'doc.update');
+GO
+
 DELETE FROM dbo.MigrationHistory WHERE [FileName] = '0040_docs.sql';
 GO

@@ -64,9 +64,20 @@ export function resolveActor(ctx: ActionContext): string | null {
  *              function fills it in). Must be one of the types in the
  *              AutomationDomainEvent union.
  */
+/**
+ * Distributive `Omit` over the `AutomationDomainEvent` union: the built-in
+ * `Omit<Union, K>` collapses to the union's COMMON keys, stripping
+ * per-member literal fields (e.g. `fromStatus` on STATUS_CHANGED). This
+ * distributes the omit across each union member individually so each event
+ * keeps its own unique fields while `loop` is removed from all.
+ */
+export type DomainEventNoLoop = AutomationDomainEvent extends infer E
+  ? E extends { type: string } ? Omit<E, 'loop'> : never
+  : never;
+
 export async function reEmit(
   ctx:   ActionContext,
-  event: Omit<AutomationDomainEvent, 'loop'>,
+  event: DomainEventNoLoop,
 ): Promise<void> {
   await emitAutomationEvent({
     ...event,

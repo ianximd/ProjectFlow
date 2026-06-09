@@ -28,7 +28,6 @@ import { tagService } from '../tags/tag.service.js';
 import { templateService } from '../templates/template.service.js';
 import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js';
 import { publishTaskMove } from '../../graphql/task-events.js';
-import type { AutomationDomainEvent } from './automation.bus.js';
 import type { AutomationAction } from '@projectflow/types';
 
 const log = subLogger('automation');
@@ -37,21 +36,6 @@ const taskRepo    = new TaskRepository();
 const taskService = new TaskService(taskRepo);
 const listRepo    = new ListRepository();
 
-/**
- * Distributive `Omit` over the domain-event union: `Omit<Union, K>` collapses to
- * the union's COMMON keys, so a per-member literal (e.g. STATUS_CHANGED with
- * `fromStatus`) won't type-check against it. This distributes the omit across
- * each member so each event keeps its own fields. The canonical `reEmit` param
- * type stays as-is; we validate the literal here first, then hand it over.
- */
-type DomainEventNoLoop = AutomationDomainEvent extends infer E
-  ? E extends { type: string } ? Omit<E, 'loop'> : never
-  : never;
-
-/** Type-checked passthrough to the canonical loop-guarded re-emit helper. */
-function emitDeeper(ctx: ActionContext, event: DomainEventNoLoop): Promise<void> {
-  return reEmit(ctx, event as Omit<AutomationDomainEvent, 'loop'>);
-}
 
 export async function executeAction(
   action: AutomationAction,
@@ -71,7 +55,7 @@ export async function executeAction(
         { name: 'RequesterId', type: sql.UniqueIdentifier, value: ctx.payload['actorId'] ?? null },
       ]);
       if (projectId) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'STATUS_CHANGED', workspaceId: ctx.workspaceId, projectId,
           taskId, actorId: resolveActor(ctx) ?? '', fromStatus, toStatus: action.toStatus,
         });
@@ -88,7 +72,7 @@ export async function executeAction(
       if (!assigneeId) break;
       await taskRepo.setAssignees(taskId, [assigneeId]);
       if (projectId) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'ASSIGNEE_CHANGED', workspaceId: ctx.workspaceId, projectId,
           taskId, actorId: resolveActor(ctx) ?? '', from: null, to: assigneeId,
         });
@@ -100,7 +84,7 @@ export async function executeAction(
       if (!taskId) break;
       await taskRepo.setAssignees(taskId, []);
       if (projectId) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'ASSIGNEE_CHANGED', workspaceId: ctx.workspaceId, projectId,
           taskId, actorId: resolveActor(ctx) ?? '', from: null, to: null,
         });
@@ -122,7 +106,7 @@ export async function executeAction(
         { name: 'DueDate',     type: sql.Date,             value: null },
       ]);
       if (projectId) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'FIELD_CHANGED', workspaceId: ctx.workspaceId, projectId,
           taskId, actorId: resolveActor(ctx) ?? '', field: 'priority', from: undefined, to: action.priority,
         });
@@ -134,7 +118,7 @@ export async function executeAction(
       if (!taskId || !action.fieldId) break;
       await customFieldService.setValue(taskId, action.fieldId, action.fieldValue);
       if (projectId) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'FIELD_CHANGED', workspaceId: ctx.workspaceId, projectId,
           taskId, actorId: resolveActor(ctx) ?? '', field: action.fieldId, from: undefined, to: action.fieldValue,
         });
@@ -172,7 +156,7 @@ export async function executeAction(
       const newId  = (created as any)?.id ?? (created as any)?.Id;
       const newPid = (created as any)?.projectId ?? (created as any)?.ProjectId;
       if (newId && newPid) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: newPid,
           taskId: newId, actorId: reporterId, reporterId,
         });
@@ -197,7 +181,7 @@ export async function executeAction(
       const newId  = (created as any)?.id ?? (created as any)?.Id;
       const newPid = (created as any)?.projectId ?? (created as any)?.ProjectId;
       if (newId && newPid) {
-        await emitDeeper(ctx, {
+        await reEmit(ctx, {
           type: 'TASK_CREATED', workspaceId: ctx.workspaceId, projectId: newPid,
           taskId: newId, actorId: reporterId, reporterId,
         });

@@ -4,11 +4,12 @@ import { useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import {
   Zap, Plus, Search, Filter, X, Edit3, Trash2,
-  Power, History, Activity, Wand2, CircleDot, Pause, Play,
+  Power, History, Activity, Wand2, CircleDot, Pause, Play, CalendarClock,
 } from 'lucide-react';
 
 import type {
   AutomationRule,
+  AutomationTemplate,
   AutomationTriggerType,
   AutomationActionType,
   AutomationConditionType,
@@ -19,6 +20,8 @@ import type {
   ConditionLeaf,
   ConditionOperator,
 } from '@projectflow/types';
+import { TemplateGallery } from './TemplateGallery';
+import { RunHistoryDrawer } from './RunHistoryDrawer';
 
 import { parseConditionTreeClient, emptyLeaf, emptyGroup, isGroup, countLeaves } from '@/lib/conditionTree';
 import { notifyActionError } from '@/lib/apiErrorToast';
@@ -50,7 +53,7 @@ import { cn } from '@/lib/utils';
 
 // ── Label key maps (resolved via t() inside components) ───────────────────────
 
-const TRIGGER_KEYS: Record<AutomationTriggerType, string> = {
+export const TRIGGER_KEYS: Record<AutomationTriggerType, string> = {
   TASK_CREATED:     'triggerTaskCreated',
   TASK_UPDATED:     'triggerTaskUpdated',
   STATUS_CHANGED:   'triggerStatusChanged',
@@ -125,13 +128,23 @@ const DEFAULT_TRIGGER: AutomationTriggerConfig = { type: 'TASK_CREATED' };
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  ctx:         WorkspaceProjectContext;
-  automations: Automation[];
+  ctx:             WorkspaceProjectContext;
+  automations:     Automation[];
+  templates:       AutomationTemplate[];
+  usageRunCount:   number | null;
+}
+
+// ── Prefill shape for RuleDialog ──────────────────────────────────────────────
+interface RulePrefill {
+  name:       string;
+  trigger:    AutomationTriggerConfig;
+  conditions: AutomationCondition[] | ConditionNode;
+  actions:    AutomationAction[];
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
-export function AutomationsView({ ctx, automations }: Props) {
+export function AutomationsView({ ctx, automations, templates, usageRunCount }: Props) {
   const t = useTranslations('Automations');
   const [isPending, startTransition] = useTransition();
 
@@ -139,6 +152,11 @@ export function AutomationsView({ ctx, automations }: Props) {
   const [enabledFilter, setEnabledFilter] = useState<'ALL' | 'ENABLED' | 'DISABLED'>('ALL');
   const [editing,       setEditing]       = useState<Automation | null>(null);
   const [createOpen,    setCreateOpen]    = useState(false);
+
+  // Template gallery + run-history drawer state
+  const [galleryOpen,  setGalleryOpen]  = useState(false);
+  const [historyRule,  setHistoryRule]  = useState<Automation | null>(null);
+  const [prefill,      setPrefill]      = useState<RulePrefill | null>(null);
 
   // Create/edit error state
   const [saveError,   setSaveError]   = useState<string | null>(null);
@@ -187,6 +205,18 @@ export function AutomationsView({ ctx, automations }: Props) {
     });
   }
 
+  // ── Template gallery ────────────────────────────────────────────────────────
+  function handleUseTemplate(tpl: AutomationTemplate) {
+    setPrefill({
+      name:       tpl.title ?? '',
+      trigger:    tpl.trigger,
+      conditions: tpl.conditions,
+      actions:    tpl.actions,
+    });
+    setGalleryOpen(false);
+    setCreateOpen(true);
+  }
+
   async function handleSave(input: {
     name:       string;
     trigger:    AutomationTriggerConfig;
@@ -222,6 +252,7 @@ export function AutomationsView({ ctx, automations }: Props) {
       } else {
         setEditing(null);
         setCreateOpen(false);
+        setPrefill(null);
       }
     } finally {
       setIsSaving(false);
@@ -262,6 +293,13 @@ export function AutomationsView({ ctx, automations }: Props) {
           />
           <Button
             size="sm"
+            variant="outline"
+            onClick={() => setGalleryOpen(true)}
+          >
+            <Wand2 className="size-4" /> {t('galleryButton')}
+          </Button>
+          <Button
+            size="sm"
             variant="primary"
             onClick={() => setCreateOpen(true)}
             disabled={!ctx.activeProjectId}
@@ -281,6 +319,9 @@ export function AutomationsView({ ctx, automations }: Props) {
             <KpiTile icon={Play}     label={t('kpiEnabled')}    value={kpi.enabled}  tone="success" />
             <KpiTile icon={Pause}    label={t('kpiDisabled')}   value={kpi.disabled} tone="muted" />
             <KpiTile icon={Activity} label={t('kpiTotalRuns')}  value={kpi.runs}     tone="info" />
+            {usageRunCount !== null && (
+              <KpiTile icon={CalendarClock} label={t('kpiRunsThisMonth')} value={usageRunCount} tone="info" />
+            )}
           </div>
 
           {/* ── Filter bar ────────────────────────────────────────────────── */}
@@ -344,6 +385,7 @@ export function AutomationsView({ ctx, automations }: Props) {
                   onToggle={() => handleToggle(r.id, !r.isEnabled)}
                   onEdit={() => { setSaveError(null); setEditing(r); }}
                   onDelete={() => handleDelete(r.id, r.name)}
+                  onHistory={() => setHistoryRule(r)}
                 />
               ))}
             </div>
@@ -356,7 +398,8 @@ export function AutomationsView({ ctx, automations }: Props) {
         mode="create"
         open={createOpen}
         initial={null}
-        onClose={() => { setCreateOpen(false); setSaveError(null); }}
+        prefill={createOpen ? prefill : null}
+        onClose={() => { setCreateOpen(false); setSaveError(null); setPrefill(null); }}
         onSubmit={handleSave}
         isPending={isSaving}
         error={createOpen ? saveError : null}
@@ -371,6 +414,20 @@ export function AutomationsView({ ctx, automations }: Props) {
         isPending={isSaving}
         error={editing ? saveError : null}
       />
+
+      <TemplateGallery
+        open={galleryOpen}
+        templates={templates}
+        onClose={() => setGalleryOpen(false)}
+        onUse={handleUseTemplate}
+      />
+
+      <RunHistoryDrawer
+        open={!!historyRule}
+        ruleId={historyRule?.id ?? ''}
+        ruleName={historyRule?.name ?? ''}
+        onClose={() => setHistoryRule(null)}
+      />
     </div>
   );
 }
@@ -380,13 +437,14 @@ export function AutomationsView({ ctx, automations }: Props) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RuleRow({
-  rule, busy, onToggle, onEdit, onDelete,
+  rule, busy, onToggle, onEdit, onDelete, onHistory,
 }: {
-  rule:     Automation;
-  busy:     boolean;
-  onToggle: () => void;
-  onEdit:   () => void;
-  onDelete: () => void;
+  rule:      Automation;
+  busy:      boolean;
+  onToggle:  () => void;
+  onEdit:    () => void;
+  onDelete:  () => void;
+  onHistory: () => void;
 }) {
   const t = useTranslations('Automations');
   const lastRun = shortDate(rule.lastExecutedAt as string | null);
@@ -452,6 +510,9 @@ function RuleRow({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          <Button size="sm" variant="ghost" onClick={onHistory} aria-label={t('historyButton')} title={t('historyButton')}>
+            <History className="size-3.5" />
+          </Button>
           <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t('editAriaLabel')}>
             <Edit3 className="size-3.5" />
           </Button>
@@ -475,11 +536,13 @@ function RuleRow({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RuleDialog({
-  mode, open, initial, onClose, onSubmit, isPending, error,
+  mode, open, initial, prefill, onClose, onSubmit, isPending, error,
 }: {
   mode:      'create' | 'edit';
   open:      boolean;
   initial:   Automation | null;
+  /** When mode==='create' and no initial, seed the form from this template prefill. */
+  prefill?:  RulePrefill | null;
   onClose:   () => void;
   onSubmit:  (input: {
     name:       string;
@@ -491,16 +554,20 @@ function RuleDialog({
   isPending: boolean;
   error:     string | null;
 }) {
-  const [name,       setName]       = useState(initial?.name ?? '');
+  const seed = mode === 'create' && !initial && prefill ? prefill : null;
+  const [name,       setName]       = useState(initial?.name ?? seed?.name ?? '');
   const [scopeType,  setScopeType]  = useState<'PROJECT' | 'WORKSPACE'>('PROJECT');
   const [trigger,    setTrigger]    = useState<AutomationTriggerConfig>(
-    (initial?.trigger as AutomationTriggerConfig) ?? DEFAULT_TRIGGER,
+    (initial?.trigger as AutomationTriggerConfig) ?? seed?.trigger ?? DEFAULT_TRIGGER,
   );
   const [conditionTree, setConditionTree] = useState<ConditionNode>(
-    parseConditionTreeClient(initial?.conditions as AutomationCondition[] | ConditionNode | undefined),
+    parseConditionTreeClient(
+      (initial?.conditions as AutomationCondition[] | ConditionNode | undefined)
+        ?? (seed?.conditions as AutomationCondition[] | ConditionNode | undefined),
+    ),
   );
   const [actions,    setActions]    = useState<AutomationAction[]>(
-    (initial?.actions as AutomationAction[]) ?? [],
+    (initial?.actions as AutomationAction[]) ?? seed?.actions ?? [],
   );
 
   const canSubmit = name.trim().length > 0 && actions.length > 0 && !isPending;

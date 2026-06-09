@@ -157,6 +157,10 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
   const [galleryOpen,  setGalleryOpen]  = useState(false);
   const [historyRule,  setHistoryRule]  = useState<Automation | null>(null);
   const [prefill,      setPrefill]      = useState<RulePrefill | null>(null);
+  // Bumped on every create-dialog open so RuleDialog remounts and re-runs its
+  // useState seeders (the form is seeded ONLY in those initializers; without a
+  // remount the create dialog keeps whatever state it first mounted with).
+  const [createSeq,    setCreateSeq]    = useState(0);
 
   // Create/edit error state
   const [saveError,   setSaveError]   = useState<string | null>(null);
@@ -214,6 +218,15 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
       actions:    tpl.actions,
     });
     setGalleryOpen(false);
+    setCreateSeq((s) => s + 1);   // remount RuleDialog so it re-seeds from the prefill
+    setCreateOpen(true);
+  }
+
+  // Open an EMPTY create dialog (no template). Clear any prior prefill and bump
+  // the seq so RuleDialog remounts fresh.
+  function openCreateBlank() {
+    setPrefill(null);
+    setCreateSeq((s) => s + 1);
     setCreateOpen(true);
   }
 
@@ -301,7 +314,7 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
           <Button
             size="sm"
             variant="primary"
-            onClick={() => setCreateOpen(true)}
+            onClick={openCreateBlank}
             disabled={!ctx.activeProjectId}
           >
             <Plus className="size-4" /> {t('newRule')}
@@ -370,7 +383,7 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
 
           {/* ── Rule list ─────────────────────────────────────────────────── */}
           {automations.length === 0 ? (
-            <EmptyRulesState onCreate={() => setCreateOpen(true)} />
+            <EmptyRulesState onCreate={openCreateBlank} />
           ) : filteredRules.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
               {t('noMatchFilters')}
@@ -395,10 +408,11 @@ export function AutomationsView({ ctx, automations, templates, usageRunCount }: 
 
       {/* ── Dialogs ─────────────────────────────────────────────────────────── */}
       <RuleDialog
+        key={`create-${createSeq}`}
         mode="create"
         open={createOpen}
         initial={null}
-        prefill={createOpen ? prefill : null}
+        prefill={prefill}
         onClose={() => { setCreateOpen(false); setSaveError(null); setPrefill(null); }}
         onSubmit={handleSave}
         isPending={isSaving}

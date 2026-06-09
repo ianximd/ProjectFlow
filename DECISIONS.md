@@ -872,3 +872,15 @@ values reapply only on the same list; folder-capture over-fetches the space's li
 API **334 unit / 178 integration**, web **104 unit** + i18n parity, `tsc` clean (both), `npm run build` green,
 e2e `templates` **1/1** (deps/relationships/recurring still green). Branch `feat/phase5d-templates` →
 ff-merged to `main` locally. **Phase 5 (5a–5d) then PUSHED to origin/main.**
+
+---
+
+## 2026-06-09 — Phase 6c follow-ups resolved
+
+The three documented Phase 6c follow-ups are now done (branch `feat/phase6c-followups` off `efad4a0`; 3 commits `a4e054a`→`17ec370`; ff-merged to `main` locally, tip `17ec370`, +46 ahead of origin, **NOT pushed**, branch deleted).
+
+- **`automation.fired` is now a first-class outgoing-webhook event** — added to the `OutgoingWebhookEvent` union (`packages/types`), the API `VALID_EVENTS` zod enum (`webhook-outgoing.routes.ts`), the `WebhookManager` subscription UI (`ALL_EVENTS`; `descKey` made optional + render guarded so the desc-less event doesn't call `t(undefined)`), and the automation builder's `WEBHOOK_EVENTS` selector (placed first as the natural default). No migration (events are JSON; no DB CHECK). The 6c CALL_WEBHOOK default event now actually delivers.
+- **Scheduler-origin condition evaluation is hydrated** — new pure `taskToPayloadFields(task)` (`condition.context.ts`; casing-tolerant PascalCase/camelCase, assignee from array-or-comma-string first element, null-safe; +8 unit tests). The worker, on the first pass only and when the payload carries a `taskId`, loads the task and builds `{ ...taskToPayloadFields(await taskRepo.getById(taskId)), ...payload }` for condition eval (payload wins; `ActionContext.payload` for actions stays the original). So DUE_DATE_PASSED/DATE_ARRIVED rules with FIELD/PQL conditions now match real data instead of failing closed on null fields.
+- **`reEmit` param is now distributive** — exported `DomainEventNoLoop` (distributive `Omit` over the `AutomationDomainEvent` union) is the canonical `reEmit` param; the local `emitDeeper` workaround in `automation.actions.ts` was deleted and its 7 call sites call `reEmit` directly (0 `emitDeeper` left).
+
+Verified live on Docker `ProjectFlow_Test`: API **407 unit** (+8), web **104 unit**, `tsc` + both builds clean, e2e `automation-scheduler` **1/1** — the spec was strengthened to prove BOTH new behaviors: the webhook subscribes to `automation.fired` and the CALL_WEBHOOK action fires it, and the DUE_DATE_PASSED rule carries an `ISSUE_MATCHES_FILTER` `priority = HIGH` condition that only matches because the worker hydrates the task's fields (without #2 it would fail closed → run skipped → test fail). Observed e2e log noise (not failures): `rule disabled or deleted` from stale prior-run queue jobs, and `fetch failed` / `LogDelivery FAILED` from the deliberately-unreachable webhook sink + a delivery-after-teardown race (pre-existing; the webhook-outgoing delivery/logging code was not changed).

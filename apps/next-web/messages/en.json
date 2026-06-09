@@ -1594,5 +1594,31 @@
     "deleteConfirm": "Delete template \"{name}\"? This can't be undone.",
     "deleteSuccess": "Deleted template \"{name}\".",
     "deleteAria": "Delete template {name}"
+  },
+  "Docs": {
+    "editor": "Document editor",
+    "connecting": "Connecting…",
+    "pageTree": "Pages",
+    "newPage": "New page",
+    "addChild": "Add subpage",
+    "rename": "Rename",
+    "renamePrompt": "Page title",
+    "untitled": "Untitled",
+    "history": "History",
+    "noHistory": "No previous versions yet",
+    "restore": "Restore",
+    "markAsWiki": "Mark as wiki",
+    "markedWiki": "Wiki",
+    "wiki": "Wiki",
+    "verified": "Verified",
+    "createTask": "Create task from selection",
+    "slash": {
+      "h1": "Heading 1",
+      "h2": "Heading 2",
+      "bullet": "Bulleted list",
+      "ordered": "Numbered list",
+      "divider": "Divider",
+      "task": "Embed task"
+    }
   }
 }

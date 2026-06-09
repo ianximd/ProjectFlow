@@ -101,6 +101,7 @@ const OPERATORS = ['is', 'is_not', 'contains', 'gt', 'lt', 'before', 'after', 'i
 const PRIORITIES = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const;
 
 const WEBHOOK_EVENTS = [
+  'automation.fired',
   'issue.created',
   'issue.updated',
   'issue.deleted',

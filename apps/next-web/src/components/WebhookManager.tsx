@@ -35,10 +35,11 @@ import { cn } from '@/lib/utils';
 // ── Constants ────────────────────────────────────────────────────────────────
 
 // Each event carries translation keys; components call t(item.labelKey) / t(item.descKey).
+// descKey is optional — entries without one (e.g. automation.fired) render no subtitle.
 const ALL_EVENTS: {
   value: OutgoingWebhookEvent;
   labelKey: 'webhookEventIssueCreated' | 'webhookEventIssueUpdated' | 'webhookEventIssueDeleted' | 'webhookEventSprintStarted' | 'webhookEventSprintCompleted' | 'webhookEventCommentCreated' | 'webhookEventMemberInvited';
-  descKey:  'webhookEventIssueCreatedDesc' | 'webhookEventIssueUpdatedDesc' | 'webhookEventIssueDeletedDesc' | 'webhookEventSprintStartedDesc' | 'webhookEventSprintCompletedDesc' | 'webhookEventCommentCreatedDesc' | 'webhookEventMemberInvitedDesc';
+  descKey?:  'webhookEventIssueCreatedDesc' | 'webhookEventIssueUpdatedDesc' | 'webhookEventIssueDeletedDesc' | 'webhookEventSprintStartedDesc' | 'webhookEventSprintCompletedDesc' | 'webhookEventCommentCreatedDesc' | 'webhookEventMemberInvitedDesc';
 }[] = [
   { value: 'issue.created',    labelKey: 'webhookEventIssueCreated',    descKey: 'webhookEventIssueCreatedDesc' },
   { value: 'issue.updated',    labelKey: 'webhookEventIssueUpdated',    descKey: 'webhookEventIssueUpdatedDesc' },
@@ -47,6 +48,8 @@ const ALL_EVENTS: {
   { value: 'sprint.completed', labelKey: 'webhookEventSprintCompleted', descKey: 'webhookEventSprintCompletedDesc' },
   { value: 'comment.created',  labelKey: 'webhookEventCommentCreated',  descKey: 'webhookEventCommentCreatedDesc' },
   { value: 'member.invited',   labelKey: 'webhookEventMemberInvited',   descKey: 'webhookEventMemberInvitedDesc' },
+  // automation.fired: label and description are shown as the raw event id (font-mono); no i18n key needed.
+  { value: 'automation.fired', labelKey: 'webhookEventMemberInvited' },
 ];
 
 function shortDateTime(iso: string | null): string {
@@ -469,7 +472,7 @@ function CreateWebhookDialog({
                       />
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-foreground font-mono">{e.value}</span>
-                        <span className="text-xs text-muted-foreground">{t(e.descKey)}</span>
+                        {e.descKey && <span className="text-xs text-muted-foreground">{t(e.descKey)}</span>}
                       </div>
                     </label>
                   );

@@ -782,7 +782,8 @@ export type OutgoingWebhookEvent =
   | 'sprint.started'
   | 'sprint.completed'
   | 'comment.created'
-  | 'member.invited';
+  | 'member.invited'
+  | 'automation.fired';
 
 export interface OutgoingWebhook {
   id:          string;

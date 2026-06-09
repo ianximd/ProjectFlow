@@ -24,6 +24,7 @@ const VALID_EVENTS = [
   'sprint.completed',
   'comment.created',
   'member.invited',
+  'automation.fired',
 ] as const;
 
 const createSchema = z.object({

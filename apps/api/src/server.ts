@@ -35,6 +35,7 @@ import { webhookRoutes }     from './modules/git/webhook.routes.js';
 import { integrationRoutes } from './modules/integrations/integration.routes.js';
 import { templateRoutes } from './modules/templates/template.routes.js';
 import { docRoutes } from './modules/docs/docs.routes.js';
+import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
@@ -336,10 +337,18 @@ if (process.env.NODE_ENV !== 'test') {
     `API server listening on :${port}`,
   );
 
-  serve({
+  const httpServer = serve({
     fetch: app.fetch,
     port,
   });
+
+  // Attach the Yjs collab WebSocket upgrade to the same HTTP server
+  // (dev/in-process). @hono/node-server's `serve()` returns the underlying
+  // Node `http.Server` (its `ServerType`), which exposes `.on('upgrade')`.
+  // Gated under the non-test guard so the integration suite — which imports
+  // `app` without binding a port — never instantiates the Hocuspocus server.
+  // In prod this same builder can instead run as a separate bootstrapped process.
+  attachCollabUpgrade(httpServer as import('node:http').Server);
 
   // Graceful shutdown only in production. In dev, `tsx watch` restarts the
   // process on every save — slow shutdown drains race the new child and pile

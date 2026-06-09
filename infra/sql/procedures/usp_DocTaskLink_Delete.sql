@@ -1,0 +1,8 @@
+CREATE OR ALTER PROCEDURE dbo.usp_DocTaskLink_Delete
+    @LinkId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DELETE FROM dbo.DocTaskLinks WHERE Id = @LinkId;
+END;
+GO

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 import { docNameToTarget, renderSnapshot, seedYDoc } from '../yjsPersistence.js';
+import { reseedFromJson } from '../collab.server.js';
 
 describe('docNameToTarget', () => {
   it('parses a doc-page name', () => {
@@ -31,5 +32,46 @@ describe('seed + render round-trip', () => {
     const b = new Y.Doc();
     seedYDoc(b, Buffer.from(bytes));
     expect(renderSnapshot(b)).toBe(json);
+  });
+});
+
+describe('reseedFromJson (restore-on-reconnect path)', () => {
+  it('reconstructs the prosemirror fragment from a ProseMirror-JSON snapshot', () => {
+    // Simulate a stored BodyJson snapshot (StarterKit node names).
+    const snapshot = JSON.stringify({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Version one content.' }] },
+        { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'A heading' }] },
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'item' }] }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const ydoc = new Y.Doc();
+    expect(reseedFromJson(ydoc, snapshot)).toBe(true);
+
+    // The reconstructed fragment renders back to a snapshot containing the text.
+    const rendered = renderSnapshot(ydoc);
+    expect(rendered).toContain('Version one content.');
+    expect(rendered).toContain('A heading');
+    expect(rendered).toContain('item');
+  });
+
+  it('reconstructs a snapshot carrying the custom embedTask atom node', () => {
+    const snapshot = JSON.stringify({
+      type: 'doc',
+      content: [{ type: 'embedTask', attrs: { taskId: 'abc-123' } }],
+    });
+    const ydoc = new Y.Doc();
+    expect(reseedFromJson(ydoc, snapshot)).toBe(true);
+    expect(renderSnapshot(ydoc)).toContain('abc-123');
   });
 });

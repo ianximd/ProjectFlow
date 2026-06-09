@@ -34,8 +34,9 @@ describe('collab persistence', () => {
     await repo.persistYjs(page.id, Buffer.from(Y.encodeStateAsUpdate(ydoc)), renderSnapshot(ydoc));
 
     const loaded = await repo.loadYjs(page.id);
-    expect(loaded).not.toBeNull();
-    expect((loaded as Buffer).length).toBeGreaterThan(0);
+    expect(loaded.bodyYjs).not.toBeNull();
+    expect(loaded.bodyYjs!.length).toBeGreaterThan(0);
+    expect(loaded.bodyJson).toContain('persisted body');
 
     // SSR first-paint reads BodyJson via the page GET.
     const fetched = (await json<{ data: any }>(await request(`/docs/${doc.id}/pages`, { token }))).data;

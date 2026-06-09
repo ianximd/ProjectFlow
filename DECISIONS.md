@@ -875,6 +875,55 @@ ff-merged to `main` locally. **Phase 5 (5a–5d) then PUSHED to origin/main.**
 
 ---
 
+## 2026-06-09 — Phase 6d (Template Gallery · Run History · Metering)
+
+Phase 6d closes the final automation slice: an 18-template in-code catalog with a gallery UI, run-history drawer, and per-workspace monthly metering.
+
+### Reconciliation: run-history was already complete in 6a
+
+`GET /automations/:id/runs` (offset pagination, `{ runs }` envelope), the GraphQL `automationRuns` field, `svc.listRuns`, `repo.listRunsByRule`, `usp_AutomationRun_ListByRule`, and the `AutomationRun`/`AutomationRunStatus` types were all built in Phase 6a. 6d REUSES them unchanged (offset `= runs.length` for drawer "Load more"). No keyset SP, no new route, no new type was added for run history. The only new SP is `usp_AutomationUsage_GetCurrent` (read-only monthly counter); local Docker `ProjectFlow_Test` stays at migration **0039**, SP count **267**.
+
+### 18-template in-code catalog
+
+`automation.templates.ts` defines 18 templates (catalog keys: `auto-assign-on-create`, `webhook-on-done`, etc.) in the 15–20 band. The gallery PRE-FILLS the create-rule dialog with the template's `name`, `trigger`, `conditions`, and `actions`. **No tenant rows are seeded** — the catalog is static code, served via `GET /automations/templates`.
+
+### Shared `ruleShapeSchema` and pre-existing route bug fixed
+
+`ruleShapeSchema` (the Zod shape shared by create + update + the catalog integrity test) was lifted verbatim from `automation.routes.ts` into `automation.templates.schema.ts` (single source of truth). This lift also **fixed a pre-existing 6a route bug**: `triggerSchema` lacked the `field` key, so a `FIELD_CHANGED` rule's `trigger.field` was silently stripped on save (the route validated and persisted a `trigger` without `field`). The fix adds `field: z.string().optional()` to `triggerSchema`; a new integration round-trip test covers the before/after.
+
+### Dual i18n source
+
+`TEMPLATE_STRINGS` (API-side, keyed by catalog key) drives `GET /automations/templates` localization via `Accept-Language` (prefix `id` → Indonesian, otherwise English). The web `Automations` namespace keys drive the in-app gallery (card title/description rendered client-side). Kept in parity by the catalog unit test + `messages.unit`.
+
+### Run-history paging
+
+OFFSET-based, reusing the 6a `GET /:id/runs?limit=&offset=` route (newest-first). The `RunHistoryDrawer` "Load more" button pages by `offset = runs.length`. No new SP or route.
+
+### Authorization
+
+`GET /automations/templates` and the GraphQL `automationTemplates` field are **auth-only** (static catalog; the global `authMiddleware` on `/automations/*` covers them). `GET /automations/usage` + `GET /:id/runs` + GraphQL `automationUsage`/`automationRuns` are **workspace-gated** (`automation.read` / `automation.update`), fail-closed.
+
+### Metering — read-only, no enforcement
+
+`usp_AutomationUsage_GetCurrent` returns `{ workspaceId, period, runCount }` where `period` is UTC `'YYYYMM'` (matching the worker's `CONVERT(CHAR(6), SYSUTCDATETIME(), 112)` write format). The "Runs this month" KPI tile on `/automations` is display-only. Enforcement (rate limiting, plan gating) is deferred to Phase 10.
+
+### e2e split (deviation from plan's single UI-flow spec)
+
+The plan described a single UI-flow e2e. The delivered spec has two tests:
+
+- **TEST 1** (API-driven): templates localization + instantiation + TASK_CREATED→ASSIGN fire + BullMQ run-history poll + metering — over the real HTTP+worker stack, matching the existing automation e2e convention. The worker timing is best proven by polling over the API (as automations.spec.ts and automation-scheduler.spec.ts do).
+- **TEST 2** (browser): gallery dialog renders ≥15 cards, "Use template" pre-fills the create-rule name input. Worker-independent (the run-history/worker path is covered by the integration tests + TEST 1).
+
+Rationale: the project convention prefers robust API-driven e2e over fragile UI selectors; splitting avoids a slow, flake-prone single test that mixes UI waits with BullMQ timing.
+
+### DB-execution policy
+
+All DB work ran ONLY against local Docker `ProjectFlow_Test`, never the prod-pointing `apps/api/.env`. SP count: **267** (one new: `usp_AutomationUsage_GetCurrent`). Migration level: **0039** (unchanged).
+
+**This is the final Phase 6 slice — the Phase 6 automation arc is code-complete.**
+
+---
+
 ## 2026-06-09 — Phase 6c follow-ups resolved
 
 The three documented Phase 6c follow-ups are now done (branch `feat/phase6c-followups` off `efad4a0`; 3 commits `a4e054a`→`17ec370`; ff-merged to `main` locally, tip `17ec370`, +46 ahead of origin, **NOT pushed**, branch deleted).

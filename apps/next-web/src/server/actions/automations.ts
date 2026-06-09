@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
-import { serverFetch } from '../api';
+import { serverFetch, serverFetchBody } from '../api';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-import type { AutomationCondition, ConditionNode } from '@projectflow/types';
+import type { AutomationCondition, AutomationRun, ConditionNode } from '@projectflow/types';
 
 
 export interface CreateAutomationInput {
@@ -94,4 +94,20 @@ export async function deleteAutomation(id: string): Promise<ActionResult> {
   }
   revalidatePath('/automations');
   return { ok: true };
+}
+
+/** GET /automations/:id/runs — run-history drawer pagination (offset-based, client-callable). */
+export async function loadAutomationRuns(
+  ruleId: string,
+  offset = 0,
+): Promise<ActionResult & { runs?: AutomationRun[] }> {
+  await requireSession();
+  try {
+    const body = await serverFetchBody<{ runs: AutomationRun[] }>(
+      `/automations/${encodeURIComponent(ruleId)}/runs?limit=20&offset=${offset}`,
+    );
+    return { ok: true, runs: body?.runs ?? [] };
+  } catch (e) {
+    return toActionError(e);
+  }
 }

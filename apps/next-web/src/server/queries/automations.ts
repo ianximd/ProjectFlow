@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { serverFetchBody } from '../api';
+import type { AutomationTemplate, AutomationUsage } from '@projectflow/types';
 
 // GET /automations?projectId= returns { rules: [...] } — not the standard { data } envelope.
 // The API's parseRow already normalises DB PascalCase columns to camelCase fields.
@@ -32,4 +33,17 @@ export const getAutomations = cache(async (projectId: string): Promise<Automatio
     executionCount: Number(r?.executionCount ?? 0),
     lastExecutedAt: r?.lastExecutedAt ?? null,
   }));
+});
+
+export const getAutomationTemplates = cache(async (): Promise<AutomationTemplate[]> => {
+  const body = await serverFetchBody<{ templates: AutomationTemplate[] }>('/automations/templates');
+  return body?.templates ?? [];
+});
+
+export const getAutomationUsage = cache(async (workspaceId: string): Promise<AutomationUsage | null> => {
+  if (!workspaceId) return null;
+  const body = await serverFetchBody<{ usage: AutomationUsage }>(
+    `/automations/usage?workspaceId=${encodeURIComponent(workspaceId)}`,
+  );
+  return body?.usage ?? null;
 });

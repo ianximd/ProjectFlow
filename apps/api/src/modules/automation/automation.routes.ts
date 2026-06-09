@@ -5,6 +5,7 @@ import { AutomationService } from './automation.service.js';
 import { AutomationRepository } from './automation.repository.js';
 import { ProjectRepository } from '../projects/project.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { triggerSchema, conditionsSchema, actionSchema } from './automation.templates.schema.js';
 import type { Variables }    from '../../server.js';
 
 const svc = new AutomationService();
@@ -29,65 +30,6 @@ async function resolveListWorkspace(c: any): Promise<string | null> {
   const projectId = c.req.query('projectId');
   return projectId ? await projectRepoForLookup.getWorkspaceId(projectId) : null;
 }
-
-const triggerSchema = z.object({
-  type:           z.string().min(1),
-  cron:           z.string().optional(),
-  toStatus:       z.string().optional(),
-  hoursBeforeDue: z.number().optional(),
-});
-
-const conditionOperatorSchema = z.enum([
-  'is', 'is_not', 'contains', 'gt', 'lt', 'before', 'after', 'is_set',
-]);
-
-const conditionSchema = z.object({
-  type:     z.string().min(1),
-  field:    z.string().optional(),
-  operator: conditionOperatorSchema.optional(),
-  value:    z.string().optional(),
-  pql:      z.string().optional(),
-});
-
-// Recursive AND/OR condition tree (Phase 6b) — accepted alongside the legacy
-// flat array. The SP stores conditions as an opaque JSON blob, so either shape
-// round-trips unchanged.
-const conditionNodeSchema: z.ZodType<unknown> = z.lazy(() =>
-  z.union([
-    z.object({ op: z.enum(['AND', 'OR']), children: z.array(conditionNodeSchema) }),
-    z.object({
-      type:     z.string().min(1),
-      field:    z.string().optional(),
-      operator: conditionOperatorSchema.optional(),
-      value:    z.string().optional(),
-      pql:      z.string().optional(),
-    }),
-  ]),
-);
-
-// conditions accept EITHER the legacy flat array OR a recursive tree.
-const conditionsSchema = z.union([z.array(conditionSchema), conditionNodeSchema]);
-
-const actionSchema = z.object({
-  type:           z.string().min(1),
-  toStatus:       z.string().optional(),
-  assigneeId:     z.string().optional(),
-  priority:       z.string().optional(),
-  message:        z.string().optional(),
-  webhookUrl:     z.string().url().optional(),
-  webhookEvent:   z.string().optional(),
-  fieldId:        z.string().optional(),
-  fieldValue:     z.any().optional(),
-  tagId:          z.string().optional(),
-  tagName:        z.string().optional(),
-  title:          z.string().optional(),
-  description:    z.string().optional(),
-  newPriority:    z.string().optional(),
-  targetListId:   z.string().optional(),
-  targetPosition: z.number().optional(),
-  templateId:     z.string().optional(),
-  delaySeconds:   z.number().int().nonnegative().optional(),
-});
 
 const createSchema = z.object({
   scopeType:   z.enum(['PROJECT', 'WORKSPACE']).default('PROJECT'),
@@ -122,6 +64,25 @@ automationRoutes.get(
     if (!projectId && !workspaceId) return c.json({ error: 'projectId or workspaceId required' }, 400);
     const rules = await svc.list(projectId ?? workspaceId!);
     return c.json({ rules });
+  },
+);
+
+// GET /automations/templates — localized in-code catalog (auth-only; static, no tenant data).
+automationRoutes.get('/templates', async (c) => {
+  const accept = c.req.header('accept-language') ?? '';
+  const locale = accept.toLowerCase().startsWith('id') ? 'id' : 'en';
+  return c.json({ templates: svc.listTemplates(locale) });
+});
+
+// GET /automations/usage?workspaceId= — read-only current-period run count (membership-gated).
+automationRoutes.get(
+  '/usage',
+  requirePermission('automation.read', { resolveWorkspace: (c: any) => c.req.query('workspaceId') ?? null }),
+  async (c) => {
+    const workspaceId = c.req.query('workspaceId');
+    if (!workspaceId) return c.json({ error: 'workspaceId required' }, 400);
+    const usage = await svc.getUsage(workspaceId);
+    return c.json({ usage });
   },
 );
 

@@ -1230,3 +1230,104 @@ export interface TemplateSnapshot {
   anchor: string;   // ISO reference date
   root: TemplateTaskNode | TemplateListNode | TemplateFolderNode | TemplateSpaceNode;
 }
+
+// ── Docs & Wikis (Phase 7a) ───────────────────────────────────────────────────
+
+export type DocScopeType = 'SPACE' | 'FOLDER' | 'LIST';
+export type DocTaskLinkKind = 'reference' | 'embed';
+
+export interface Doc {
+  id:           string;
+  workspaceId:  string;
+  scopeType:    DocScopeType;
+  scopeId:      string;
+  name:         string;
+  icon:         string | null;
+  isWiki:       boolean;
+  verifiedById: string | null;
+  createdById:  string;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface DocPage {
+  id:           string;
+  docId:        string;
+  parentPageId: string | null;
+  title:        string;
+  icon:         string | null;
+  cover:        string | null;
+  position:     number;
+  bodyJson:     string | null;   // rendered ProseMirror JSON (SSR first-paint); omitted from tree lists
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+/** A page-tree node = page metadata (no body) + its children. */
+export interface DocPageNode {
+  id:           string;
+  docId:        string;
+  parentPageId: string | null;
+  title:        string;
+  icon:         string | null;
+  position:     number;
+  children:     DocPageNode[];
+}
+
+export interface DocPageVersionMeta {
+  id:            string;
+  pageId:        string;
+  createdById:   string;
+  createdByName: string;
+  createdAt:     string;
+}
+
+export interface DocPageVersion extends DocPageVersionMeta {
+  snapshot: string;   // ProseMirror JSON
+}
+
+export interface DocTaskLink {
+  id:           string;
+  docPageId:    string;
+  taskId:       string;
+  kind:         DocTaskLinkKind;
+  taskTitle:    string;
+  taskIssueKey: string;
+  createdAt:    string;
+}
+
+export interface CreateDocInput {
+  workspaceId: string;
+  scopeType:   DocScopeType;
+  scopeId:     string;
+  name:        string;
+  icon?:       string;
+}
+
+export interface CreateDocPageInput {
+  docId:         string;
+  parentPageId?: string | null;
+  title?:        string;
+  icon?:         string;
+  /** Optional explicit sibling id to position AFTER; the service computes the fractional Position. */
+  afterPageId?:  string | null;
+}
+
+export interface UpdateDocPageInput {
+  title?: string;
+  icon?:  string;
+  cover?: string;
+}
+
+export interface MoveDocPageInput {
+  parentPageId: string | null;
+  /** Sibling id to drop AFTER (null = first child); the service computes the fractional Position. */
+  afterPageId:  string | null;
+}
+
+export interface CreateTaskFromSelectionInput {
+  docPageId: string;
+  listId:    string;
+  title:     string;
+  kind?:     DocTaskLinkKind;   // default 'reference'
+}

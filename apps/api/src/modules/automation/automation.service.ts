@@ -1,4 +1,5 @@
 import { AutomationRepository } from './automation.repository.js';
+import { getTemplateCatalog } from './automation.templates.js';
 import type {
   AutomationTriggerConfig,
   AutomationCondition,
@@ -6,6 +7,8 @@ import type {
   AutomationRule,
   AutomationScopeType,
   AutomationRun,
+  AutomationTemplate,
+  AutomationUsage,
 } from '@projectflow/types';
 
 const repo = new AutomationRepository();
@@ -51,5 +54,17 @@ export class AutomationService {
   /** Audited run history for a rule (newest first). */
   async listRuns(ruleId: string, limit = 50, offset = 0): Promise<AutomationRun[]> {
     return repo.listRunsByRule(ruleId, limit, offset);
+  }
+
+  /** Localized in-code template catalog (no DB). */
+  listTemplates(locale: string): AutomationTemplate[] {
+    return getTemplateCatalog(locale);
+  }
+
+  /** Read-only metering for a workspace in the current period (YYYYMM, UTC). */
+  getUsage(workspaceId: string): Promise<AutomationUsage> {
+    const now = new Date();
+    const period = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    return repo.getUsage(workspaceId, period);
   }
 }

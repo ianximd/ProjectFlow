@@ -7,6 +7,7 @@ import type {
   AutomationAction,
   AutomationScopeType,
   AutomationRun,
+  AutomationUsage,
 } from '@projectflow/types';
 
 export interface AutomationRuleRow {
@@ -192,5 +193,16 @@ export class AutomationRepository {
       { name: 'Offset', type: sql.Int,              value: offset },
     ]);
     return rows.map(parseRunRow);
+  }
+
+  async getUsage(workspaceId: string, period: string): Promise<AutomationUsage> {
+    const rows = await execSpOne<{ WorkspaceId: string; Period: string; RunCount: number }>(
+      'usp_AutomationUsage_GetCurrent', [
+        { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+        { name: 'Period',      type: sql.Char(6),          value: period },
+      ],
+    );
+    const r = rows[0];
+    return { workspaceId: r.WorkspaceId, period: r.Period, runCount: r.RunCount };
   }
 }

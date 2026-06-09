@@ -179,6 +179,16 @@ docRoutes.post(
   },
 );
 
+docRoutes.get(
+  '/pages/:id',
+  requirePermission('doc.read', { resolveWorkspace: resolvePageWorkspace }),
+  async (c) => {
+    const page = await docsService.getPage(c.req.param('id')!);
+    if (!page) return c.json({ error: { message: 'Page not found' } }, 404);
+    return c.json({ data: page });
+  },
+);
+
 docRoutes.patch(
   '/pages/:id',
   requirePermission('doc.update', { resolveWorkspace: resolvePageWorkspace }),

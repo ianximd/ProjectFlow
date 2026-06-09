@@ -17,6 +17,7 @@ import { registerViewsGraphql } from './views.schema.js';
 import { registerTemplatesGraphql } from './templates.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { registerAutomationGraphql } from './automation.schema.js';
+import { registerDocsGraphql } from './docs.schema.js';
 import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -779,6 +780,13 @@ registerPresenceGraphql();
 // automationRuns queries + create/update/toggle/delete mutations.
 // ─────────────────────────────────────────
 registerAutomationGraphql();
+
+// ─────────────────────────────────────────
+// Docs & Wikis (Phase 7a) — Doc/DocPage/DocPageVersion/DocTaskLink types +
+// docsByScope/doc/docPages/docPageVersions/docPageLinks queries +
+// createDoc/createDocPage/moveDocPage/restoreDocPageVersion/setDocWiki mutations.
+// ─────────────────────────────────────────
+registerDocsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

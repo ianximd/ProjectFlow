@@ -9,6 +9,7 @@ import { registerHierarchyGraphql } from './hierarchy.schema.js';
 import { registerCustomFieldsGraphql } from './customfields.schema.js';
 import { registerTaskTypesGraphql } from './tasktypes.schema.js';
 import { registerTagsGraphql } from './tags.schema.js';
+import { registerWorkLogGraphql } from './worklog.schema.js';
 import { registerWatchersGraphql } from './watchers.schema.js';
 import { registerDependenciesGraphql } from './dependencies.schema.js';
 import { registerRelationshipsGraphql } from './relationships.schema.js';
@@ -740,6 +741,12 @@ registerTaskTypesGraphql();
 // Tags (Phase 2) — Tag type + spaceTags query + create/delete/link/unlink.
 // ─────────────────────────────────────────
 registerTagsGraphql();
+
+// ─────────────────────────────────────────
+// Work Logs (Phase 8a) — WorkLog/TaskTimeRollup types + taskWorkLogs/activeTimer/
+// taskTimeRollup queries + startTimer/stopTimer/create/update/deleteWorkLog.
+// ─────────────────────────────────────────
+registerWorkLogGraphql();
 
 // ─────────────────────────────────────────
 // Watchers (Phase 2) — TaskWatcher type + taskWatchers query + add/remove.

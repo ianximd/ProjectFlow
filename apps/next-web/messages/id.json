@@ -1620,5 +1620,17 @@
       "divider": "Pembatas",
       "task": "Sematkan tugas"
     }
+  },
+  "Whiteboard": {
+    "title": "Papan tulis",
+    "connecting": "Menghubungkan…",
+    "convertToTask": "Ubah jadi tugas",
+    "converting": "Mengubah…",
+    "targetList": "Daftar tujuan",
+    "noLists": "Tidak ada daftar yang tersedia di lingkup ini.",
+    "linkedTasks": "Tugas tertaut",
+    "create": "Papan tulis baru",
+    "rename": "Ganti nama",
+    "delete": "Hapus"
   }
 }

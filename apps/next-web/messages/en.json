@@ -1620,5 +1620,17 @@
       "divider": "Divider",
       "task": "Embed task"
     }
+  },
+  "Whiteboard": {
+    "title": "Whiteboard",
+    "connecting": "Connecting…",
+    "convertToTask": "Convert to task",
+    "converting": "Converting…",
+    "targetList": "Target list",
+    "noLists": "No lists available in this scope.",
+    "linkedTasks": "Linked tasks",
+    "create": "New whiteboard",
+    "rename": "Rename",
+    "delete": "Delete"
   }
 }

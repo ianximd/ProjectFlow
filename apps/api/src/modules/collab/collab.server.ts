@@ -8,6 +8,7 @@ import type { Duplex } from 'node:stream';
 import { authenticateCollab, type CollabAuthContext } from './collab.auth.js';
 import { CollabRepository } from './collab.repository.js';
 import { renderSnapshot, seedYDoc, docNameToTarget } from './yjsPersistence.js';
+import { whiteboardService } from '../whiteboards/whiteboard.service.js';
 import { getRedis } from '../../shared/lib/redis.js';
 import { subLogger } from '../../shared/lib/logger.js';
 
@@ -164,6 +165,18 @@ export function buildCollabServer(): Server {
     async onLoadDocument(data): Promise<Y.Doc> {
       const target = docNameToTarget(data.documentName);
       if (!target) throw new Error('Invalid document name');
+
+      if (target.kind === 'whiteboard') {
+        // Whiteboards persist only the binary Yjs CRDT state. There is no
+        // JSON→Yjs reseed (tldraw state isn't ProseMirror); a brand-new board
+        // simply loads empty and the first store writes its state.
+        const doc = await whiteboardService.getDoc(target.id);
+        if (doc?.docYjs && doc.docYjs.length > 0) {
+          seedYDoc(data.document, doc.docYjs);
+        }
+        return data.document;
+      }
+
       const { bodyYjs, bodyJson } = await repo.loadYjs(target.id);
       if (bodyYjs && bodyYjs.length > 0) {
         // Normal path: rehydrate the CRDT from its binary state.
@@ -190,6 +203,16 @@ export function buildCollabServer(): Server {
     async onStoreDocument(data): Promise<void> {
       const target = docNameToTarget(data.documentName);
       if (!target) return;
+
+      if (target.kind === 'whiteboard') {
+        // Persist the binary CRDT only. DocJson stays null (renderSnapshot is
+        // ProseMirror-specific). No version checkpoint — whiteboards have none.
+        const wbYjs = Buffer.from(Y.encodeStateAsUpdate(data.document));
+        await whiteboardService.saveDoc(target.id, wbYjs, null);
+        log.info({ whiteboardId: target.id, bytes: wbYjs.length }, 'persisted whiteboard doc');
+        return;
+      }
+
       const bodyYjs = Buffer.from(Y.encodeStateAsUpdate(data.document));
       const bodyJson = renderSnapshot(data.document);
       await repo.persistYjs(target.id, bodyYjs, bodyJson);

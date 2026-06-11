@@ -36,13 +36,25 @@ const createSchema = z.object({
   timeSpentSeconds: z.number().int().positive(),
   startedAt:        z.string().datetime(),
   description:      z.string().max(500).optional(),
+  // Phase 8a (0043): closed range + billable flag + source + tag set.
+  endedAt:          z.string().datetime().optional(),
+  billable:         z.boolean().optional(),
+  source:           z.enum(['manual', 'range', 'timer']).optional(),
+  tagIds:           z.array(z.string().uuid()).optional(),
 });
 
 const updateSchema = z.object({
   timeSpentSeconds: z.number().int().positive().optional(),
   startedAt:        z.string().datetime().optional(),
   description:      z.string().max(500).optional(),
+  // Phase 8a (0043): allow editing the range end, billable flag and tag set.
+  endedAt:          z.string().datetime().optional(),
+  billable:         z.boolean().optional(),
+  tagIds:           z.array(z.string().uuid()).optional(),
 });
+
+const startTimerSchema = z.object({ taskId: z.string().uuid() });
+const estimateSchema   = z.object({ estimateSeconds: z.number().int().nonnegative().nullable(), perAssignee: z.boolean().optional() });
 
 export const worklogRoutes = new Hono();
 
@@ -62,11 +74,66 @@ worklogRoutes.post(
   async (c) => {
     const user = (c as any).get('user') as any;
     const userId = user.userId as string;
-    const { taskId, timeSpentSeconds, startedAt, description } = c.req.valid('json');
-    const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, { description });
+    const { taskId, timeSpentSeconds, startedAt, description, billable, source, endedAt, tagIds } = c.req.valid('json');
+    const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, { description, billable, source, endedAt, tagIds });
     return c.json({ log }, 201);
   },
 );
+
+// ── Timer + estimate/rollup (Phase 8a) ───────────────────────────────────────
+// Registered BEFORE the `/:id` PATCH/DELETE so the specific path segments
+// (timer/*, tasks/*) match unambiguously regardless of Hono trie ordering.
+
+// POST /worklogs/timer/start — start a timer on a task (owner = authed user)
+worklogRoutes.post(
+  '/timer/start',
+  zValidator('json', startTimerSchema),
+  requirePermission('worklog.create', { resolveWorkspace: resolveTaskWorkspaceFromBody }),
+  async (c) => {
+    const userId = ((c as any).get('user') as any).userId as string;
+    const { taskId } = c.req.valid('json');
+    const log = await svc.startTimer(taskId, userId);
+    return c.json({ log }, 201);
+  },
+);
+
+// POST /worklogs/timer/stop — stop the authed user's running timer
+worklogRoutes.post('/timer/stop', async (c) => {
+  const userId = ((c as any).get('user') as any).userId as string;
+  const log = await svc.stopTimer(userId);
+  return c.json({ log });
+});
+
+// GET /worklogs/timer/active — the authed user's running timer (or null)
+worklogRoutes.get('/timer/active', async (c) => {
+  const userId = ((c as any).get('user') as any).userId as string;
+  const log = await svc.getActiveTimer(userId);
+  return c.json({ log });
+});
+
+// PUT /worklogs/tasks/:taskId/estimate — set the task (or per-assignee) estimate
+worklogRoutes.put(
+  '/tasks/:taskId/estimate',
+  requirePermission('worklog.create', {
+    resolveWorkspace: async (c: any) => taskRepoForLookup.getWorkspaceId(c.req.param('taskId')),
+  }),
+  zValidator('json', estimateSchema),
+  async (c) => {
+    const userId = ((c as any).get('user') as any).userId as string;
+    const taskId = c.req.param('taskId');
+    const { estimateSeconds, perAssignee } = c.req.valid('json');
+    await svc.setEstimate(taskId, perAssignee ? userId : null, estimateSeconds);
+    const rollup = await svc.getRollup(taskId);
+    return c.json({ rollup });
+  },
+);
+
+// GET /worklogs/tasks/:taskId/rollup — logged/estimate rollup + estimate-vs-actual
+worklogRoutes.get('/tasks/:taskId/rollup', async (c) => {
+  const taskId = c.req.param('taskId');
+  const rollup = await svc.getRollup(taskId);
+  return c.json({ rollup });
+});
 
 // PATCH /worklogs/:id  — owner-only
 worklogRoutes.patch(

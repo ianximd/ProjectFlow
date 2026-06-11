@@ -33,6 +33,8 @@ const TRUNCATION_ORDER = [
   'CommentReactions',
   'Comments',
   'Attachments',
+  // Phase 8a (0043): WorkLogTags FK WorkLogs/Tags — delete before WorkLogs.
+  'WorkLogTags',
   'WorkLogs',
   'Notifications',
   'AuditLog',
@@ -62,6 +64,8 @@ const TRUNCATION_ORDER = [
   // Object-level ACL (0029) — FKs Workspaces/Users/Roles, delete before them.
   'ObjectPermissions',
   // Mid-level
+  // Phase 8a (0043): TaskEstimates FK Tasks/Users — delete before Tasks.
+  'TaskEstimates',
   'Tasks',
   // Phase 2 (0030): Tasks.TaskTypeId FKs TaskTypes — delete after Tasks.
   'TaskTypes',

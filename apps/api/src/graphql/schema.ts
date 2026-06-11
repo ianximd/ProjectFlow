@@ -18,6 +18,7 @@ import { registerTemplatesGraphql } from './templates.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { registerAutomationGraphql } from './automation.schema.js';
 import { registerDocsGraphql } from './docs.schema.js';
+import { registerWhiteboardGraphql } from './whiteboard.schema.js';
 import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -787,6 +788,13 @@ registerAutomationGraphql();
 // createDoc/createDocPage/moveDocPage/restoreDocPageVersion/setDocWiki mutations.
 // ─────────────────────────────────────────
 registerDocsGraphql();
+
+// ─────────────────────────────────────────
+// Whiteboards (Phase 7b) — Whiteboard/WhiteboardSummary/WhiteboardTaskLink/
+// ConvertShapeToTaskResult types + whiteboards/whiteboard queries +
+// createWhiteboard/updateWhiteboard/deleteWhiteboard/convertShapeToTask mutations.
+// ─────────────────────────────────────────
+registerWhiteboardGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

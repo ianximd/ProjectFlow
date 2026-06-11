@@ -4,41 +4,7 @@ import { z } from 'zod';
 import { WhiteboardService } from './whiteboard.service.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
 import { requireObjectAccess } from '../access/access.middleware.js';
-import { ListRepository } from '../hierarchy/list.repository.js';
-import { FolderRepository } from '../hierarchy/folder.repository.js';
-import { ProjectRepository } from '../projects/project.repository.js';
 import type { HierarchyNodeType } from '@projectflow/types';
-
-// Repos used only for workspace derivation from scope (I1 guard).
-const listRepoForScope    = new ListRepository();
-const folderRepoForScope  = new FolderRepository();
-const projectRepoForScope = new ProjectRepository();
-
-/**
- * Derive the workspace that owns a given whiteboard scope node.
- * Mirrors docs.routes.ts resolveScopeWorkspace (lines 40-60).
- * Returns null when the scope cannot be resolved (fail-closed).
- */
-async function resolveScopeWorkspace(
-  scopeType: string | undefined,
-  scopeId:   string | undefined,
-): Promise<string | null> {
-  if (!scopeType || !scopeId) return null;
-  try {
-    switch (scopeType) {
-      case 'SPACE':
-        return await projectRepoForScope.getWorkspaceId(scopeId);
-      case 'LIST':
-        return await listRepoForScope.getWorkspaceId(scopeId);
-      case 'FOLDER':
-        return await folderRepoForScope.getWorkspaceId(scopeId);
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
 
 const svc = new WhiteboardService();
 
@@ -99,8 +65,9 @@ whiteboardRoutes.post(
 
     // I1 guard: re-derive the workspace from the scope node — never trust the
     // caller-supplied workspaceId for the stored value.
-    // Mirror: docs.routes.ts POST /docs handler lines 143-149.
-    const resolvedWorkspaceId = await resolveScopeWorkspace(b.scopeType, b.scopeId);
+    // Delegates to svc.getScopeWorkspaceId (lifted from the local helper for DRY
+    // sharing with the GraphQL create path).
+    const resolvedWorkspaceId = await svc.getScopeWorkspaceId(b.scopeType, b.scopeId);
     if (!resolvedWorkspaceId) {
       return c.json({ error: { code: 'NOT_FOUND', message: 'Scope not found' } }, 404);
     }

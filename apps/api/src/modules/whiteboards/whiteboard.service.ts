@@ -3,6 +3,8 @@ import { extractShapeTitle, type WhiteboardShapeInput } from './whiteboard.shape
 import { TaskService } from '../tasks/task.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { ListRepository } from '../hierarchy/list.repository.js';
+import { FolderRepository } from '../hierarchy/folder.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
 import type {
   Whiteboard, WhiteboardSummary, WhiteboardTaskLink, WhiteboardScopeType,
   ConvertShapeToTaskResult, CreateTaskInput,
@@ -10,6 +12,8 @@ import type {
 
 const repo = new WhiteboardRepository();
 const listRepo = new ListRepository();
+const folderRepo = new FolderRepository();
+const projectRepo = new ProjectRepository();
 const taskService = new TaskService(new TaskRepository());
 
 export class WhiteboardService {
@@ -24,6 +28,25 @@ export class WhiteboardService {
   softDelete(id: string): Promise<Whiteboard | null> { return repo.softDelete(id); }
   getWorkspaceId(id: string): Promise<string | null> { return repo.getWorkspaceId(id); }
   listTaskLinks(whiteboardId: string): Promise<WhiteboardTaskLink[]> { return repo.listTaskLinks(whiteboardId); }
+
+  /**
+   * Derive the authoritative workspaceId from a whiteboard scope node.
+   * Used by the GraphQL create mutation (I1 guard) so that path shares the
+   * same logic as the REST POST / handler — no duplication in each schema.
+   * Returns null when the scope cannot be resolved (fail-closed).
+   */
+  async getScopeWorkspaceId(scopeType: WhiteboardScopeType, scopeId: string): Promise<string | null> {
+    try {
+      switch (scopeType) {
+        case 'SPACE':  return await projectRepo.getWorkspaceId(scopeId);
+        case 'FOLDER': return await folderRepo.getWorkspaceId(scopeId);
+        case 'LIST':   return await listRepo.getWorkspaceId(scopeId);
+        default:       return null;
+      }
+    } catch {
+      return null;
+    }
+  }
 
   // Collab persistence passthrough (used by the collab onLoad/onStore branch in Batch 5).
   getDoc(id: string) { return repo.getDoc(id); }

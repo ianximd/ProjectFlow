@@ -1,0 +1,12 @@
+.root { display: flex; flex-direction: column; gap: 6px; }
+.headerRow { display: flex; align-items: center; justify-content: space-between; }
+.label { font-weight: 600; }
+.editRow { display: inline-flex; gap: 6px; }
+.input { width: 100px; padding: 2px 6px; }
+.barTrack { height: 8px; border-radius: 4px; background: var(--surface-2, #e5e7eb); overflow: hidden; }
+.barFill { height: 100%; background: #22c55e; transition: width .2s; }
+.barFill.over { background: #ef4444; }
+.legend { display: flex; gap: 12px; font-size: 12px; color: var(--text-2, #6b7280); }
+.overText { color: #ef4444; font-weight: 600; }
+.editBtn, .saveBtn { border: none; border-radius: 6px; padding: 2px 10px; cursor: pointer; background: var(--surface-2, #1f2937); color: inherit; }
+.saveBtn:disabled { opacity: .6; cursor: default; }

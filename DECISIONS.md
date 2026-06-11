@@ -1025,3 +1025,49 @@ The `whiteboards.e2e.ts` spec drives the canvas programmatically via dev-only gl
 ### DB-execution policy
 
 All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level: **0041**. SP count: **297**.
+
+## 2026-06-11 — Phase 7c (Forms — intake subsystem)
+
+A new `forms` module: a form **builder** (field types + conditional show/hide branching over prior answers + target-list + field→task mapping + optional Phase 5d template), a **public renderer** that evaluates branching client-side and posts a submission, and a backend that on submit validates against config+branching, creates a task in the form's `TargetListId` with the configured mapping (+ optional `templateService.apply`), and records a `FormSubmissions` row. **7c is independent of the 7a/7b CRDT stack** — no Yjs/Hocuspocus/tldraw.
+
+### Data model (migration `0042_forms`)
+
+- `Forms` (`Config` = `{fields[],branching[]}` JSON, `FieldMapping` = `{formFieldKey:{kind,target}}` JSON, `TargetListId`, `TemplateId` NULL, `IsPublic`/`PublicSlug`/`AuthRequired`, soft-delete) + `FormSubmissions` (`Answers` JSON, `CreatedTaskId` NULL, `SubmittedById` NULL = anonymous, `SubmittedAt`). JSON-in-`NVARCHAR(MAX)` mirrors `SavedViews.Config` / `Templates.Snapshot`.
+- A **filtered unique index** `UQ_Forms_PublicSlug` (`WHERE PublicSlug IS NOT NULL AND DeletedAt IS NULL`) makes a live public slug globally unique without colliding on soft-deleted/non-public rows.
+- SP-per-op (`usp_Form_Create/Update/GetById/GetBySlug/GetWorkspaceId/List/Delete`, `usp_FormSubmission_Create/ListByForm`). Migration reversible+idempotent; deployed SP count **306** (+9), DB now at **0042**.
+
+### Unauthenticated surface
+
+- The `/forms/public/:slug` **render** + `:slug/submit` pair is the **only unauthenticated API surface**. `server.ts` deliberately omits any blanket `app.use('/forms/*', authMiddleware)` (mirrors avatars/git-webhooks); protected CRUD attaches `authMiddleware` **inline** + an object-level ACL gate on the form's scope node (EDIT for write, VIEW for read), plus workspace-membership on create/list.
+- The render returns a **stateless HMAC read token** = `HMAC-SHA256(JWT_SECRET, "form:"+id)` (NOT a secret — the form is public). Submit must echo a token minted for that slug. **Hardening (rate-limit / captcha / token-expiry beyond `AuthRequired`) is deferred to Phase 12.**
+- **Optional-auth submit:** if a valid `Bearer` is present the submission attributes to that user (and `AuthRequired` forms accept it); an invalid/missing token falls through to anonymous (never 401s on its own). `AuthRequired && !actor` → 401. Required-on-**visible** validation + unknown-key rejection (422); `stripHiddenAnswers` drops branched-away values so a hidden answer never persists or maps onto the task. Anonymous submits set the task reporter to the **form creator** (a real `Users` row — `Tasks.ReporterId` is NOT NULL).
+
+### Task creation — corrected vs the plan (load-bearing)
+
+The plan's submit called `taskRepo.create({workspaceId,listId,…})`, but `Tasks` require a **`projectId`** (= the target list's `SpaceId`), which a Form does not store. The service therefore **resolves `projectId`+`workspaceId` from the target LIST** (authoritative) and creates via `TaskService.createTask`, mirroring `docs.service.createTaskFromSelection`. `createTask` returns the raw PascalCase `usp_Task_Create` row (no mapper), so the created id is read **casing-tolerantly** (`(task as any).Id ?? (task as any).id`) — the recurring casing-landmine class. Mapped custom-field values (`customFieldService.setValue`) and the optional template (`templateService.apply`) are best-effort (logged, never fault the submit); a `FormSubmissions` row is always recorded and `publishTaskEvent('created')` fires for live boards.
+
+### Authz integrity — review fixes (cross-tenant)
+
+- **Scope↔workspace reconciliation (final-review class):** the create SP validates the target list ∈ workspace but NOT the scope node. POST `/forms` and GraphQL `createForm` now call `FormService.getScopeWorkspaceId(scopeType, scopeId)` (mirrors `WhiteboardService`), reject `WORKSPACE_MISMATCH` (400), and **store the resolved workspaceId** so a member of workspace A with EDIT on a scope node in workspace B can't mount a cross-tenant form.
+- `usp_Form_Update` adds a **target-list-in-workspace guard** (`THROW 51422`) so a form can't be re-pointed at another tenant's list (the plan's update SP lacked the create guard's check).
+- REST maps SP validation throws `51420/51421/51422` → **422** and unique-slug collisions (`2601/2627`) → **409** (`FormSlugTakenError`), instead of leaking 500s.
+- GraphQL **mirror covers metadata CRUD + submissions only**; public render/submit stay REST-only. Reads gate VIEW, writes gate EDIT.
+
+### Frontend
+
+- **Public route lives at `app/forms/public/[slug]/`** (URL `/forms/public/[slug]`), **not** the plan's `/forms/[slug]` — the latter collides with the authed builder `/forms/[id]` (Next.js forbids two different dynamic slug names at one path level). The chosen path also mirrors the API's `/forms/public/:slug`. It sits **outside `(app)`** (sessionless); the root-layout `IntlProvider` covers it, so `useTranslations` works.
+- **Proxy auth-decision** (`src/proxy.ts` is Next 16's renamed middleware) allowlists `/forms/public/*`; the authed `/forms` list and `/forms/[id]` builder stay protected (they don't match the prefix). Without this the sessionless browser was 302'd to `/login` (caught by the e2e).
+- The builder page builds its target-list picker by **flattening `getLists(spaceId)` across the workspace's projects** — there is no workspace-wide list loader, and `getLists` is space-scoped.
+- i18n catalogs live at `apps/next-web/messages/{en,id}.json` (**not** `src/messages/`); a new `Forms` namespace (en + real Indonesian), `messages.unit` parity green. The renderer evaluates branching client-side via a shared `lib/formBranching.ts` whose logic is identical to the server's `form.branching.ts`, so client hide/show matches server validation.
+
+### Test-fixture change
+
+`truncateAll` gained `FormSubmissions` + `Forms` in child-first FK order (`FormSubmissions` FK Tasks/Forms/Users; `Forms` FK Lists/Workspaces/Users) — without it `beforeEach` cleanup failed `FK_FormSubmissions_Task` once a submission existed (caught when running the forms integration suite).
+
+### Deferrals (documented, not in acceptance)
+
+- **Form hardening** — submission analytics, captcha, rate-limiting, and read-token expiry beyond `AuthRequired` are the Phase 12 follow-up.
+
+### DB-execution policy
+
+All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level: **0042**. SP count: **306**. Verified: API **452 unit / 217 integration**, web **117 unit** (+ en/id parity), API+web builds clean, forms **e2e 1/1** (§6.5).

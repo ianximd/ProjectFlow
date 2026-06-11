@@ -1,0 +1,10 @@
+CREATE OR ALTER PROCEDURE dbo.usp_Form_Delete
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    UPDATE dbo.Forms SET DeletedAt = SYSUTCDATETIME(), UpdatedAt = SYSUTCDATETIME()
+    WHERE Id = @Id AND DeletedAt IS NULL;
+    SELECT * FROM dbo.Forms WHERE Id = @Id;
+END;
+GO

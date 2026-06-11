@@ -1,0 +1,8 @@
+CREATE OR ALTER PROCEDURE dbo.usp_Form_GetWorkspaceId
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT WorkspaceId FROM dbo.Forms WHERE Id = @Id AND DeletedAt IS NULL;
+END;
+GO

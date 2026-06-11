@@ -8,6 +8,8 @@ import {
 import { TaskService } from '../tasks/task.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { ListRepository } from '../hierarchy/list.repository.js';
+import { FolderRepository } from '../hierarchy/folder.repository.js';
+import { ProjectRepository } from '../projects/project.repository.js';
 import { customFieldService } from '../customfields/customfield.service.js';
 import { templateService } from '../templates/template.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
@@ -36,6 +38,8 @@ function verifyReadToken(formId: string, token: string): boolean {
 
 export class FormService {
   private listRepo = new ListRepository();
+  private folderRepo = new FolderRepository();
+  private projectRepo = new ProjectRepository();
   private taskService = new TaskService(new TaskRepository());
 
   constructor(private repo: FormRepository = formRepository) {}
@@ -54,6 +58,20 @@ export class FormService {
   delete(id: string): Promise<Form | null> { return this.repo.delete(id); }
   getWorkspaceId(id: string): Promise<string | null> { return this.repo.getWorkspaceId(id); }
   listSubmissions(formId: string): Promise<FormSubmission[]> { return this.repo.listSubmissions(formId); }
+
+  /** Derive the authoritative workspaceId from a scope node (mirrors WhiteboardService.getScopeWorkspaceId). */
+  async getScopeWorkspaceId(scopeType: 'SPACE' | 'FOLDER' | 'LIST', scopeId: string): Promise<string | null> {
+    try {
+      switch (scopeType) {
+        case 'SPACE':  return await this.projectRepo.getWorkspaceId(scopeId);
+        case 'FOLDER': return await this.folderRepo.getWorkspaceId(scopeId);
+        case 'LIST':   return await this.listRepo.getWorkspaceId(scopeId);
+        default:       return null;
+      }
+    } catch {
+      return null;
+    }
+  }
 
   // ─── Public render (unauthenticated) ─────────────────────────────────────
   /** Resolve a public form by slug into a render payload + a scoped read token. */

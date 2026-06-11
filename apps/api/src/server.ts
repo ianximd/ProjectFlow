@@ -36,6 +36,7 @@ import { integrationRoutes } from './modules/integrations/integration.routes.js'
 import { templateRoutes } from './modules/templates/template.routes.js';
 import { docRoutes } from './modules/docs/docs.routes.js';
 import { whiteboardRoutes } from './modules/whiteboards/whiteboard.routes.js';
+import { formRoutes } from './modules/forms/form.routes.js';
 import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
@@ -210,6 +211,10 @@ app.route('/attachments',    attachmentRoutes);
 // Avatars: GET is public (browser <img> can't carry Bearer tokens); the
 // POST/DELETE handlers attach authMiddleware inline.
 app.route('/avatars',        avatarRoutes);
+// Forms: the /forms/public/* render+submit pair is the ONLY unauthenticated
+// surface (Phase 7c). DELIBERATELY no `app.use('/forms/*', authMiddleware)` —
+// protected CRUD handlers attach authMiddleware inline (like avatars).
+app.route('/forms', formRoutes);
 app.route('/notifications',  notificationRoutes);
 app.route('/search',         searchRoutes);
 app.route('/roadmap',        roadmapRoutes);

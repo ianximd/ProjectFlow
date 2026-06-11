@@ -5,6 +5,7 @@ import { WorkLogService } from './worklog.service.js';
 import { WorkLogRepository } from './worklog.repository.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { requireObjectAccess } from '../access/access.middleware.js';
 
 const svc = new WorkLogService();
 
@@ -31,6 +32,17 @@ async function resolveTaskWorkspaceFromBody(c: any): Promise<string | null> {
   }
 }
 
+// Object-level VIEW gate for the task-scoped READ routes (list + rollup): resolve
+// the task's List so reads are gated exactly like the GraphQL mirror — otherwise
+// any authenticated user could read any task's time totals by GUID (IDOR).
+async function resolveTaskList(c: any): Promise<{ type: 'LIST'; id: string } | null> {
+  const taskId = c.req.param('taskId') ?? c.req.query('taskId');
+  if (!taskId) return null;
+  const task = await taskRepoForLookup.getById(taskId);
+  const listId = (task as any)?.listId ?? (task as any)?.ListId ?? null;
+  return listId ? { type: 'LIST', id: listId } : null;
+}
+
 const createSchema = z.object({
   taskId:           z.string().uuid(),
   timeSpentSeconds: z.number().int().positive(),
@@ -39,7 +51,9 @@ const createSchema = z.object({
   // Phase 8a (0043): closed range + billable flag + source + tag set.
   endedAt:          z.string().datetime().optional(),
   billable:         z.boolean().optional(),
-  source:           z.enum(['manual', 'range', 'timer']).optional(),
+  // 'timer' is created exclusively by usp_WorkLog_StartTimer (the only open-row
+  // path); the manual create surface only accepts completed-entry sources.
+  source:           z.enum(['manual', 'range']).optional(),
   tagIds:           z.array(z.string().uuid()).optional(),
 });
 
@@ -58,13 +72,16 @@ const estimateSchema   = z.object({ estimateSeconds: z.number().int().nonnegativ
 
 export const worklogRoutes = new Hono();
 
-// GET /worklogs?taskId=
-worklogRoutes.get('/', async (c) => {
-  const taskId = c.req.query('taskId');
-  if (!taskId) return c.json({ error: 'taskId required' }, 400);
-  const result = await svc.listByTask(taskId);
-  return c.json(result);
-});
+// GET /worklogs?taskId=  — gated VIEW on the task's List (mirrors GraphQL taskWorkLogs)
+worklogRoutes.get('/',
+  requireObjectAccess('VIEW', resolveTaskList),
+  async (c) => {
+    const taskId = c.req.query('taskId');
+    if (!taskId) return c.json({ error: 'taskId required' }, 400);
+    const result = await svc.listByTask(taskId);
+    return c.json(result);
+  },
+);
 
 // POST /worklogs
 worklogRoutes.post(
@@ -129,11 +146,15 @@ worklogRoutes.put(
 );
 
 // GET /worklogs/tasks/:taskId/rollup — logged/estimate rollup + estimate-vs-actual
-worklogRoutes.get('/tasks/:taskId/rollup', async (c) => {
-  const taskId = c.req.param('taskId');
-  const rollup = await svc.getRollup(taskId);
-  return c.json({ rollup });
-});
+// (gated VIEW on the task's List — mirrors GraphQL taskTimeRollup).
+worklogRoutes.get('/tasks/:taskId/rollup',
+  requireObjectAccess('VIEW', resolveTaskList),
+  async (c) => {
+    const taskId = c.req.param('taskId')!; // guaranteed by the route path
+    const rollup = await svc.getRollup(taskId);
+    return c.json({ rollup });
+  },
+);
 
 // PATCH /worklogs/:id  — owner-only
 worklogRoutes.patch(

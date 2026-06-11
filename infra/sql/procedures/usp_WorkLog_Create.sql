@@ -12,12 +12,13 @@ BEGIN
   SET NOCOUNT ON;
   DECLARE @NewId UNIQUEIDENTIFIER = NEWID();
 
-  -- A non-timer entry is a COMPLETED log, never an open timer. Derive its EndedAt
-  -- from StartedAt + duration when the caller didn't supply one, so it stays OUT of
-  -- the filtered UQ_WorkLog_ActiveTimer (EndedAt IS NULL) index — otherwise a user's
-  -- second manual entry collides with their first. Only Source='timer' rows (created
-  -- via usp_WorkLog_StartTimer) are allowed to stay open (EndedAt NULL).
-  IF @EndedAt IS NULL AND @Source <> 'timer'
+  -- usp_WorkLog_Create only ever creates COMPLETED entries — the single OPEN timer
+  -- row is created exclusively by usp_WorkLog_StartTimer. So always derive a non-NULL
+  -- EndedAt when the caller didn't supply one (regardless of @Source), keeping every
+  -- Create row OUT of the filtered UQ_WorkLog_ActiveTimer (EndedAt IS NULL) index.
+  -- Without this a user's second manual entry — or any source='timer' create —
+  -- collides on that unique index.
+  IF @EndedAt IS NULL
     SET @EndedAt = DATEADD(SECOND, @TimeSpentSeconds, @StartedAt);
 
   INSERT INTO dbo.WorkLogs (Id, TaskId, UserId, TimeSpentSeconds, StartedAt, EndedAt, Description, Billable, Source)

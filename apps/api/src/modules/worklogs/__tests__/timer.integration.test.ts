@@ -91,4 +91,34 @@ describe('worklog timer', () => {
     expect(rollup.estimateVsActual.estimateSeconds).toBe(3000);
     expect(rollup.estimateVsActual.overBudget).toBe(false);
   });
+
+  // ── Cross-tenant authz (final-review fixes) ──────────────────────────────────
+
+  it('blocks an unrelated user from reading a task rollup/list (object VIEW gate)', async () => {
+    const { taskId } = await seedTask();
+    // A second, unrelated user with their own workspace — no access to the task.
+    const intruder = await createTestUser({ email: `intruder-${Date.now()}@projectflow.test` });
+    await createTestWorkspace(intruder.accessToken);
+    const itok = intruder.accessToken;
+
+    const rollupRes = await request(`/worklogs/tasks/${taskId}/rollup`, { token: itok });
+    expect([403, 404]).toContain(rollupRes.status);
+    const listRes = await request(`/worklogs?taskId=${taskId}`, { token: itok });
+    expect([403, 404]).toContain(listRes.status);
+  });
+
+  it('drops a tag (Label) from a different Space when attaching it to a worklog', async () => {
+    const { token, taskId, workspaceId } = await seedTask();
+    // A second Space in the same workspace, with its own Label (foreign to the task's Space).
+    const otherSpace = await createTestProject(workspaceId, token, { name: 'Other', key: `OT${Date.now() % 100000}` });
+    const foreign = (await json<{ data: any }>(await request('/tags', {
+      method: 'POST', token, json: { spaceId: otherSpace.Id, name: 'foreign', color: '#abcdef' },
+    }), 201)).data;
+
+    const log = (await json<{ log: any }>(await request('/worklogs', {
+      method: 'POST', token,
+      json: { taskId, timeSpentSeconds: 60, startedAt: new Date().toISOString(), tagIds: [foreign.id] },
+    }), 201)).log;
+    expect(log.tags ?? []).toHaveLength(0); // foreign-Space label rejected, not attached
+  });
 });

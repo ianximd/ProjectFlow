@@ -1331,3 +1331,68 @@ export interface CreateTaskFromSelectionInput {
   title:     string;
   kind?:     DocTaskLinkKind;   // default 'reference'
 }
+
+// ── Whiteboards (Phase 7b) ────────────────────────────────────────────────────
+
+export type WhiteboardScopeType = 'SPACE' | 'FOLDER' | 'LIST';
+
+/** A whiteboard's metadata. DocYjs is never serialized to the API; DocJson is
+ *  the rendered tldraw snapshot used for SSR first-paint. */
+export interface Whiteboard {
+  id:          string;
+  workspaceId: string;
+  scopeType:   WhiteboardScopeType;
+  scopeId:     string;
+  name:        string;
+  docJson:     string | null;   // rendered tldraw snapshot (SSR)
+  createdById: string;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+/** Lightweight list row (no DocJson/DocYjs). */
+export interface WhiteboardSummary {
+  id:          string;
+  workspaceId: string;
+  scopeType:   WhiteboardScopeType;
+  scopeId:     string;
+  name:        string;
+  createdById: string;
+  createdAt:   string;
+  updatedAt:   string;
+}
+
+export interface WhiteboardTaskLink {
+  id:           string;
+  whiteboardId: string;
+  taskId:       string;
+  shapeId:      string;
+  createdAt:    string;
+  taskTitle:    string;
+  taskStatus:   string;
+  taskIssueKey: string;
+}
+
+export interface CreateWhiteboardInput {
+  workspaceId: string;
+  scopeType:   WhiteboardScopeType;
+  scopeId:     string;
+  name:        string;
+}
+
+export interface UpdateWhiteboardInput {
+  name?: string;
+}
+
+/** Convert a tldraw shape into a task in a target List. `shape` is the raw
+ *  tldraw shape JSON; the server derives the title via extractShapeTitle. */
+export interface ConvertShapeToTaskInput {
+  targetListId: string;
+  shapeId:      string;
+  shape:        { id: string; type: string; props?: Record<string, unknown> };
+}
+
+export interface ConvertShapeToTaskResult {
+  task: Task;
+  link: WhiteboardTaskLink;
+}

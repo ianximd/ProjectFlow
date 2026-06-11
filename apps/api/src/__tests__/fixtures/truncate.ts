@@ -45,6 +45,9 @@ const TRUNCATION_ORDER = [
   'DocPageVersions',
   'DocPages',
   'Docs',
+  // Phase 7b (0041): whiteboards — child-first FK order
+  'WhiteboardTaskLinks',
+  'Whiteboards',
   'MfaRecoveryCodes',
   'RefreshTokens',
   'PasswordResetTokens',

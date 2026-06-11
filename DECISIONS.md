@@ -1071,3 +1071,42 @@ The plan's submit called `taskRepo.create({workspaceId,listId,…})`, but `Tasks
 ### DB-execution policy
 
 All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level: **0042**. SP count: **306**. Verified: API **452 unit / 217 integration**, web **117 unit** (+ en/id parity), API+web builds clean, forms **e2e 1/1** (§6.5).
+
+## 2026-06-11 — Phase 8a — Time Tracking
+
+Turned the existing `WorkLogs` CRUD module into a real time-tracking system: a start/stop running timer (one active per user), billable flag, entry tags, manual/range/timer sources, per-task time estimates with estimate-vs-actual, subtask→parent rollup, and a GraphQL mirror over the one shared `WorkLogService`. Migration **0043**; DB now at **0043**, deployed SP count **312** (+6 new SPs).
+
+### Schema — evolve WorkLogs in place (no TimeEntries table)
+
+- A running timer **IS** an open `WorkLogs` row (`EndedAt IS NULL`, `Source='timer'`). `0043` adds `EndedAt DATETIME2 NULL`, `Billable BIT NOT NULL DEFAULT 0`, `Source NVARCHAR(10) NOT NULL DEFAULT 'manual'` ('manual'|'range'|'timer'). "One active timer per user" is enforced by a **filtered unique index** `UQ_WorkLog_ActiveTimer ON WorkLogs(UserId) WHERE EndedAt IS NULL` plus an auto-stop guard inside `usp_WorkLog_StartTimer` (closes any open row before inserting the new one). New tables: `WorkLogTags(WorkLogId,TagId)` and `TaskEstimates(TaskId,UserId,EstimateSeconds,…)`; `Tasks` gains `TimeEstimateSeconds INT NULL`. Migration idempotent (catalog guards) + reversible (apply→rollback→re-apply verified clean).
+
+### "Tags" are dbo.Labels — the plan's `dbo.Tags` does NOT exist (real bug, caught at deploy)
+
+The plan FK'd `WorkLogTags.TagId` to `dbo.Tags(Id)` and `usp_WorkLogTag_Set` joined `dbo.Tags`, but **this codebase has no `dbo.Tags` table** — user-facing "tags" are stored in **`dbo.Labels(Id, ProjectId, Name, Color, CreatedAt)`** (migration 0011), linked to tasks via `dbo.TaskLabelLinks`. The migration FK + the SP's existence-check + result JOIN were corrected to `dbo.Labels`. The `WorkLogTags`/`TagId`/`tagIds` API vocabulary was kept (matches the REST/TS surface). The dual `ON DELETE CASCADE` (→WorkLogs and →Labels) is safe only because `Tasks.ProjectId` is `NO ACTION`, so there is no multiple-cascade-path to `WorkLogTags` — documented inline in `0043`; do not change `Tasks.ProjectId` to CASCADE without revisiting.
+
+### Manual/range entries derive EndedAt (real bug, caught by integration)
+
+The plan note said "manual/range entries always set EndedAt" but `usp_WorkLog_Create` defaulted `@EndedAt = NULL`, so a manual entry fell under `UQ_WorkLog_ActiveTimer` and a user's **second manual log collided** on the unique index (the integration test surfaced the 2627 duplicate-key). Fix: `usp_WorkLog_Create` now sets `EndedAt = DATEADD(SECOND, @TimeSpentSeconds, @StartedAt)` when `@EndedAt IS NULL AND @Source <> 'timer'`. Only `Source='timer'` rows (created via `usp_WorkLog_StartTimer`) stay open.
+
+### SPs + rollup
+
+- SP-per-op: `usp_WorkLog_StartTimer` (auto-stop + insert open `timer` row), `_StopTimer` (`EndedAt` + `DATEDIFF`), `_GetActiveTimer`, `usp_WorkLogTag_Set` (replace tag set from a **comma-delimited `@TagIds` GUID list** via `STRING_SPLIT` + `TRY_CONVERT` + `EXISTS dbo.Labels` — no TVP, mirrors the flat-string transport used elsewhere; non-existent ids are silently dropped, a deliberate cross-tenant guard), `usp_Task_SetEstimate` (`@UserId` NULL → `Tasks.TimeEstimateSeconds`; else MERGE a per-assignee `TaskEstimates` row), `usp_Task_GetTimeRollup`. Create/Update/ListByTask extended for billable/source/endedAt.
+- `usp_Task_GetTimeRollup` walks a recursive CTE **down `ParentTaskId`** (filtering `DeletedAt IS NULL`, `OPTION (MAXRECURSION 0)`) and returns own-only (`OwnLoggedSeconds`/`OwnEstimateSeconds`) + subtree (`RollupLoggedSeconds`/`RollupEstimateSeconds`). The FROM-less outer SELECT always returns exactly one row (zeros/NULL for a missing task) — `OwnEstimateSeconds` is intentionally nullable (no `ISNULL`), the other three coalesce to 0. Pure `estimateVsActual()` (`rollup.ts`) derives `ratio` (null when no estimate), `remainingSeconds` (clamped ≥0, null when no estimate), `overBudget`.
+
+### GraphQL mirror
+
+`worklog.schema.ts` (`registerWorkLogGraphql()`, registered after `registerTagsGraphql()`) mirrors `recurrence.schema.ts`: `WorkLog`/`TaskTimeRollup` types; `taskWorkLogs`/`activeTimer`/`taskTimeRollup` queries (read paths gate **object-level VIEW** on the task's List); `startTimer`/`stopTimer`/`create/update/deleteWorkLog` mutations (write paths gate `worklog.create` **workspace permission**; update/delete are owner-scoped by the SP's `WHERE UserId=@UserId`). REST stays primary; both delegate to the one `WorkLogService`. `source` uses `t.string(resolve)` (not `exposeString`) since `WorkLogSource` is a union.
+
+### Web data layer
+
+- The REST timer/rollup routes return **raw bodies** `{ log }` / `{ rollup }` (NOT the `{ data }` envelope), so the server actions use `serverFetchBody` (not `serverFetch`, which unwraps `.data`). Loaders (`getActiveTimer`, `getRollup`) return the value directly (or null); mutations (`startTimer`, `stopTimer`, `setEstimate`) return `ActionResult<T>` whose `.data` carries the log/rollup. `addWorkLog`/`editWorkLog` inputs gained optional `billable`/`source`/`tagIds`/`endedAt`.
+- `GlobalTimerWidget` (mounted in the layout-1 header) loads the active timer, ticks a 1s live elapsed counter, and renders **null when idle**. `WorkLogSection` gained a billable toggle, manual/range mode, a Space-tag multi-select (via the existing `loadSpaceTags(spaceId)` action — `spaceId` now threaded from `TaskDrawer`), a "Start timer" button, plus per-entry `data-worklog-source`, billable/running badges, and tag chips. `TaskEstimateBar` (mounted above `WorkLogSection`) shows the estimate field + estimate-vs-actual bar + subtree rollup total; `duration.ts` holds the shared `formatDuration`/`parseDuration`.
+- **Cross-component sync via a `window` CustomEvent `'worklog:timer-changed'`:** `WorkLogSection`'s "Start timer" and the widget's "Stop" both dispatch it; the widget and `WorkLogSection` both listen and refetch. This is what makes a timer started in the task panel light up the header widget, and a timer stopped in the header surface the closed entry back in the panel list.
+
+### e2e
+
+`e2e/time-tracking.spec.ts` (repo-root `e2e/`, modeled on `dependencies.spec.ts`) drives the full headline flow live: open a task drawer → Log work → Start timer → assert the header widget appears ticking → Stop → assert it hides and a `[data-worklog-source="timer"]` entry surfaces → set an estimate → assert the `[data-estimate-bar]` legend. The header widget sits visually **behind** the open `TaskDrawer` (the drawer header intercepts pointer events at the widget's coords), so even a forced coordinate click lands on the drawer — the Stop click uses `locator.dispatchEvent('click')` to invoke the React handler directly. **Follow-up (polish, not acceptance):** raise the global timer widget's z-index / portal it above the drawer so it's pointer-reachable while a drawer is open.
+
+### DB-execution policy
+
+All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — the e2e dev servers were booted by Playwright with a shell-exported local DB env that overrides the prod-pointing `apps/api/.env` (Node `--env-file` precedence). Migration level **0043**, SP count **312**. Verified: API **458 unit / 221 integration** (52 files), web **120 unit** (+ en/id parity), API+web builds clean, time-tracking **e2e 1/1**.

@@ -1,0 +1,17 @@
+.root { display: flex; flex-direction: column; gap: 20px; max-width: 880px; }
+.nameInput { font-size: 20px; font-weight: 600; padding: 6px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; }
+.section { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 14px; }
+.section h3 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-2, #6b7280); }
+.palette { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.paletteBtn, .addBtn { border: 1px dashed var(--border, #cbd5e1); background: transparent; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.fieldList, .ruleList, .mapList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.fieldRow, .ruleRow, .mapRow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fieldLabel { flex: 1; min-width: 140px; padding: 4px 8px; }
+.fieldType { font-size: 12px; color: var(--text-2, #6b7280); }
+.optionsInput, .slugInput { flex: 1; min-width: 160px; padding: 4px 8px; }
+.requiredToggle { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.fieldActions button, .ruleRow button, .mapRow button { border: none; background: transparent; cursor: pointer; }
+.targetRow { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.mapLabel { min-width: 160px; }
+.saveBtn { align-self: flex-start; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; }
+.saveBtn:disabled { opacity: .6; cursor: default; }

@@ -950,3 +950,78 @@ The keystone of Phase 7: stood up the app's **first realtime CRDT collaboration 
 - **Dependencies (resolved).** API: `@hocuspocus/server`/`@hocuspocus/extension-redis` `4.1.0`, `yjs` `13.6.31`, `y-prosemirror` `1.3.x`, `prosemirror-model`, `ws`. Web: `@hocuspocus/provider` `4.1.0`, `@tiptap/{react,starter-kit,extension-collaboration}` **v2.27** + `extension-collaboration-cursor` **v2.26**, `yjs`/`y-prosemirror`. **TipTap pinned to v2** (the plan's unpinned install ERESOLVE'd react@3 against cursor@2; v3 also renamed `extension-collaboration-cursor`→`-caret`, diverging from the plan's `CollaborationCursor` API). `yjs` is a **single deduped instance** across the tree — no `overrides` needed.
 - **Plan-SQL/seam deviations fixed during build:** `usp_DocPage_Move` — the plan's `;WITH … IF EXISTS(…)` is invalid T-SQL (a CTE can't precede a bare `IF`) → rewritten to capture membership into a `@IsDescendant BIT` flag (deploy-caught). `usp_Doc_SetWiki` — added the missing `AND DeletedAt IS NULL` to the trailing SELECT (review). `createTaskFromSelection` — `task.repository.create` returns the raw PascalCase `SELECT *` row, so `task.id` is undefined at runtime → read case-tolerantly (`(task as any).id ?? .Id`) (integration-caught SQL 515; same casing bug-class that bit prior slices). `createTask` real signature is `(input, actorId)` and `createTaskFromSelection` derives `projectId`/`workspaceId` from the **target list** (authoritative). Added `GET /docs/pages/:id` (the plan assumed it). i18n messages live at **`apps/next-web/messages/{en,id}.json`** (NOT `src/messages/`); `next/dist/docs/` is **absent** in this checkout (web conventions mirrored from `worklogs.ts`/`board/page.tsx`).
 - **Deferrals (not in 7a acceptance):** inline doc comments — the Phase 4 comment store is **task-bound** (no generic object id), so doc-anchored comments need a new store → deferred (no second store invented). Slash commands ship as a data-only `SLASH_ITEMS` list (live `@tiptap/suggestion` wiring deferred). `embedTask` ships as a round-trippable atom node (live `TaskCard` node view deferred). `usp_DocPage_Update` ISNULL-coalesce can't clear Icon/Cover to NULL — convention-consistent with every other update SP app-wide; clearing isn't a 7a feature → accepted. Public doc sharing is Phase 10; full-text/vector search is Phase 11. **Stop for review/merge before Slice 7b** (7b reuses this collab server for `whiteboard:<id>`).
+
+---
+
+## 2026-06-11 — Phase 7b (Whiteboards: tldraw + Yjs over the shared collab server)
+
+Phase 7b ships multiplayer, persistent whiteboards backed by [tldraw](https://tldraw.dev/) and Yjs, reusing the Hocuspocus collaboration server and auth layer introduced in 7a without modification. Branch `feat/phase7b-whiteboards`; verified live on Docker `ProjectFlow_Test`: **API 441 unit / 214 integration (50 files), web 113 unit (+ en/id parity), both builds clean, e2e `whiteboards` 2/2 live** (sticky→real task in the chosen list + two-browser co-edit), docs-collab e2e 3/3 (collab regression-clean). All DB work ran ONLY against local Docker `ProjectFlow_Test`.
+
+### Schema and service (migration 0041)
+
+`Whiteboards` stores `DocYjs VARBINARY(MAX)` (Yjs binary, source of truth) and `DocJson NVARCHAR(MAX)` (deferred — always NULL in 7b; `usp_Whiteboard_SaveDoc` `ISNULL`-coalesces so it never overwrites). `WhiteboardTaskLinks` is a join table with a `UNIQUE(WhiteboardId, TaskId, ShapeId)` constraint — `usp_WhiteboardTaskLink_Upsert` is idempotent. 10 new SPs; local Docker `ProjectFlow_Test` is now at migration **0041**, deployed SP count **297**.
+
+**Whiteboards are scoped objects** (`ScopeType ∈ SPACE|FOLDER|LIST`, `ScopeId`) exactly like `SavedViews` — metadata + CRUD over REST (primary) with a GraphQL mirror, both routing through a single `WhiteboardService`. There is **no `WHITEBOARD` ACL node type** — authz rides the board's scope node. `requireObjectAccess`/`requireObjectLevel` only resolve `SPACE|FOLDER|LIST`; no new node kind was added. Workspace-RBAC slugs `whiteboard.create`/`whiteboard.read`/`whiteboard.update`/`whiteboard.delete` are seeded idempotently in `0041_whiteboards.sql` (owner/admin/member = all four, viewer = read only).
+
+### Live canvas over the shared 7a Hocuspocus server
+
+The whiteboard live canvas travels under doc name `whiteboard:<id>` — exactly the kind `docNameToTarget` already reserved in 7a, so **the server was not modified**. The load/store hooks for the `whiteboard` branch live **inline** in `apps/api/src/modules/collab/collab.server.ts`; there is no separate `collab.persistence.ts` (the plan assumed one — this deviation is intentional: the Hocuspocus extension API gives a single `onLoadDocument`/`onStoreDocument` pair, splitting by kind inside that pair keeps the load path and store path co-located and avoids a registration-order dependency).
+
+`onAuthenticate` was extended to handle the `whiteboard:<id>` prefix: it calls `whiteboardService.getById(id)`, resolves the board's scope, and requires `accessService.can(userId, scopeType, scopeId, 'EDIT')` — fail-closed (unknown kind → reject). The doc-page path is unchanged.
+
+`onLoadDocument` for a whiteboard branch seeds from `DocYjs` via `Y.applyUpdate(ydoc, row.DocYjs)`. There is **no JSON reseed** (tldraw is not ProseMirror; `prosemirrorJSONToYXmlFragment` is irrelevant here — DocYjs binary is the sole on-disk form).
+
+`onStoreDocument` for a whiteboard persists `Y.encodeStateAsUpdate(ydoc)` to `DocYjs` via `usp_Whiteboard_SaveDoc`. It does **not** call `renderSnapshot()` (ProseMirror-only helper) and creates **no version checkpoint** (tldraw has no cheap server-side snapshot to render; versioning is deferred). 4 new collab-auth unit tests lock in the whiteboard scope-gate and the early-return boundary.
+
+### DocJson is NULL — deliberately deferred
+
+tldraw has no cheap server-side JSON serialization path analogous to `yXmlFragmentToProsemirrorJSON`. `usp_Whiteboard_SaveDoc` accepts `@DocJson NVARCHAR(MAX) = NULL` and `ISNULL`-coalesces so a NULL call never overwrites a previously set value. `DocYjs` (binary) is the authoritative source of truth; SSR first-paint of a whiteboard page is an empty canvas until Yjs syncs from the server. This is acceptable for v1. A future board-thumbnail or full-text search feature would require a client-pushed JSON snapshot on idle.
+
+### convert-shape → task
+
+The convert action calls `TaskService.createTask` (so notification fanout, webhooks, and progress rollup all fire as normal) then writes an idempotent `WhiteboardTaskLinks` row via `usp_WhiteboardTaskLink_Upsert`. The shape title is extracted by the **pure, unit-tested** `extractShapeTitle` helper (`packages/types/src/whiteboard/shape.ts`): reads `props.text` then `props.richText`, collapses internal whitespace, clamps to 500 characters, falls back to `'Untitled'`. The helper is shared verbatim between API and web (no serialization gap).
+
+The helper was split into its own module (`shape.ts`) rather than inlined in the whiteboard service because the hook that calls it in the web layer transitively imports a server-only Next.js action — keeping the extractor in a pure `packages/types` file avoids a jsdom-incompatible import in the web unit-test suite.
+
+### Cross-tenant hardenings (caught by final/opus review — single-tenant tests missed both)
+
+**C1 — convert workspace derivation.** When converting a shape to a task, the task's workspace is derived **authoritatively from the target list** (`listRepo.getWorkspaceId(targetListId)`) and NOT from the whiteboard's own scope. A board in workspace A whose convert panel selects a list in workspace B would otherwise mint a task whose `WorkspaceId` mismatches the list's workspace — `usp_Task_Create` does not validate list-vs-workspace at the SP level. This mirrors the identical fix applied in `docs.service.createTaskFromSelection` (7a). The convert dual-gate: `task.create` permission on the **board's** workspace + `requireObjectAccess('EDIT')` on the **target list's** scope node; the GraphQL `convertShape` mutation additionally gates VIEW on the board scope (parity with REST) and throws `BAD_REQUEST` on invalid `shapeJson` (no phantom-task fallback on parse failure).
+
+**I1 — create workspace reconciliation.** `POST /whiteboards` (REST) and `createWhiteboard` (GraphQL) both accept a caller-supplied `workspaceId`. Before saving, `WhiteboardService.getScopeWorkspaceId` resolves the scope's real workspace (SPACE → `ProjectRepository.getWorkspaceId`, FOLDER → `FolderRepository.getWorkspaceId`, LIST → `ListRepository.getWorkspaceId`) and rejects any mismatch with `WORKSPACE_MISMATCH` (→ HTTP 400). A member of one workspace cannot create a whiteboard scoped into another workspace's hierarchy. Negative-authz integration tests cover both holes: workspace mismatch on create → 400; convert with a cross-workspace target list lands the new task in the list's workspace, not the board's.
+
+### The PascalCase casing landmine (reaffirmed)
+
+`TaskService.createTask` returns the raw `usp_Task_Create` `SELECT *` row cast as `Task`. The **real** primary-key column is `.Id` (PascalCase), not `.id` (camelCase) — `.id` is `undefined` at runtime. The whiteboard→task link insert and the GraphQL `ConvertResult` resolver both read `(task as any).id ?? (task as any).Id`. **This is load-bearing, not dead code.** During 7b development an "obvious simplification" to `task.id` broke the convert with a NULL `TaskId` in the `WhiteboardTaskLinks` insert (caught by the integration test before merge). The case-tolerant read is commented in the source to prevent re-simplification.
+
+### Frontend: tldraw 5.1.0 + manual Yjs store binding
+
+**tldraw 5.1.0** declares `react ^18.2.0 || ^19.2.1` as a peer — compatible with the repo's React 19.2.4; clean install, no `transpilePackages` entry needed in `next.config`.
+
+There is **no first-party tldraw↔Yjs binding** at v5; the binding is manual (`apps/next-web/src/lib/tldraw/yjsBinding.ts`):
+
+- **Write path:** `store.listen({ source: 'user', scope: 'document' }, changes)` runs on every local user edit; added/updated records are written into a `Y.Map<TLRecord>` under an origin-tagged `ydoc.transact`; removed records are deleted from the map. Only `source: 'user'` events trigger this (pointer-only hover events are excluded).
+- **Read path:** the `Y.Map` observer applies remote changes via `store.mergeRemoteChanges` and **skips its own origin** (the origin tag checked via `transaction.origin === ORIGIN`) — this prevents an echo loop where a local write triggers a remote event that triggers another local write.
+
+The Hocuspocus provider reuses 7a's `getRealtimeToken` JWT fetcher and `NEXT_PUBLIC_COLLAB_URL` env var (default `ws://localhost:3001/collab`). No new env vars.
+
+**React 19 Strict-Mode lifecycle fixes applied:**
+
+- The Hocuspocus provider is not instantiated during render — it is created once in a `useRef` inside a `useEffect` to avoid the Strict-Mode double-mount orphan race.
+- `initialDocJson` was removed from the Yjs bind-effect's dependency array; it only seeds an empty room on first connect and must not re-run when the prop reference changes (the binding is idempotent only on first call, not on re-invocation against an already-populated store).
+- tldraw's `onMount` callback does not support a React cleanup return value (tldraw ignores the return). The selection listener that drives the convert panel is therefore torn down via a **dedicated unmount `useEffect`** whose cleanup calls `editor.off('change-selected-shapes')`, rather than relying on `onMount`'s non-functional cleanup slot.
+
+### e2e: `window.__wbEditor` + `window.__wbTldraw` test handles
+
+The `whiteboards.e2e.ts` spec drives the canvas programmatically via dev-only globals exposed on `window` (`NODE_ENV !== 'production'` guard): `window.__wbEditor` (the whiteboard service instance) and `window.__wbTldraw` (the tldraw `Editor`). This is more robust than attempting to simulate canvas pointer events or rely on tldraw's internal DOM structure, which changes between minor versions. **One e2e-driven UI fix:** the convert panel was repositioned to `top-center` with `z-index: 9999` because tldraw's native selection style panel (which renders top-right on any active selection) was intercepting pointer events on the convert button. Headline acceptance LIVE-VERIFIED: a sticky note shape is converted to a real task that appears in the chosen list; two browsers editing the same whiteboard converge without conflict.
+
+### Deferrals (documented, not in acceptance)
+
+- **Live multiplayer cursors/awareness** on the tldraw canvas (tldraw has a presence API; the Hocuspocus awareness channel is available but the cursor rendering extension was not wired up — deferred).
+- **Full on-canvas custom embed shapes** for linked tasks — currently rendered as a simple `/tasks/{id}` link card atom; a rich `TaskCard` node view with live status is deferred (mirrors the 7a `embedTask` deferral pattern).
+- **FOLDER/LIST-scoped convert list-pickers** — the convert panel passes the scope's child lists for SPACE-scoped boards; FOLDER/LIST boards currently pass `[]` (the target list input accepts free entry). Deferred until a proper scope-aware list picker component exists.
+- **DocJson null** — no client-pushed snapshot; see above.
+- **DocYjs/DocJson unbounded growth** — no pruning or compaction. Acceptable for v1; a background compaction job is a follow-up.
+
+### DB-execution policy
+
+All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level: **0041**. SP count: **297**.

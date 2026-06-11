@@ -33,4 +33,13 @@ describe('decideAuth', () => {
     expect(decideAuth('/oauth/finish', true)).toBe('allow');
     expect(decideAuth('/loginx', true)).toBe('allow');
   });
+  it('treats the public form render route as public but keeps the authed forms surface protected', () => {
+    expect(decideAuth('/forms/public', false)).toBe('allow');
+    expect(decideAuth('/forms/public/my-intake', false)).toBe('allow');
+    // The authed list + builder stay protected for unauthenticated users.
+    expect(decideAuth('/forms', false)).toBe('redirect-login');
+    expect(decideAuth('/forms/abc123', false)).toBe('redirect-login');
+    // Prefix-colliding path is NOT public.
+    expect(decideAuth('/forms/publicx', false)).toBe('redirect-login');
+  });
 });

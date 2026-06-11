@@ -1,8 +1,10 @@
 export type AuthDecision = 'allow' | 'redirect-login' | 'redirect-app';
 
 // Routes reachable without a session. Everything else is protected.
+// `/forms/public/*` is the Phase 7c public form-render/submit surface (the authed
+// `/forms` list and `/forms/[id]` builder stay protected — they don't match this).
 const PUBLIC_EXACT = new Set(['/']);
-const PUBLIC_PREFIXES = ['/login', '/register', '/oauth'];
+const PUBLIC_PREFIXES = ['/login', '/register', '/oauth', '/forms/public'];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;

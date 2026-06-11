@@ -19,6 +19,7 @@ import { registerPresenceGraphql } from './presence.schema.js';
 import { registerAutomationGraphql } from './automation.schema.js';
 import { registerDocsGraphql } from './docs.schema.js';
 import { registerWhiteboardGraphql } from './whiteboard.schema.js';
+import { registerFormsGraphql } from './form.schema.js';
 import { requireObjectLevel } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -795,6 +796,12 @@ registerDocsGraphql();
 // createWhiteboard/updateWhiteboard/deleteWhiteboard/convertShapeToTask mutations.
 // ─────────────────────────────────────────
 registerWhiteboardGraphql();
+
+// ─────────────────────────────────────────
+// Forms (Phase 7c) — Form/FormSubmission types + forms/form/formSubmissions
+// queries + createForm/updateForm/deleteForm mutations.
+// ─────────────────────────────────────────
+registerFormsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

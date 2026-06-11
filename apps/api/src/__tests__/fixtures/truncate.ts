@@ -48,6 +48,10 @@ const TRUNCATION_ORDER = [
   // Phase 7b (0041): whiteboards — child-first FK order
   'WhiteboardTaskLinks',
   'Whiteboards',
+  // Phase 7c (0042): forms — FormSubmissions FK Tasks/Forms/Users (delete before
+  // Tasks/Users); Forms FK Lists/Workspaces/Users (delete before them).
+  'FormSubmissions',
+  'Forms',
   'MfaRecoveryCodes',
   'RefreshTokens',
   'PasswordResetTokens',

@@ -63,7 +63,7 @@ worklogRoutes.post(
     const user = (c as any).get('user') as any;
     const userId = user.userId as string;
     const { taskId, timeSpentSeconds, startedAt, description } = c.req.valid('json');
-    const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, description);
+    const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, { description });
     return c.json({ log }, 201);
   },
 );

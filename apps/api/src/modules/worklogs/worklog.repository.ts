@@ -1,6 +1,6 @@
 import sql from 'mssql';
 import { execSp, execSpOne } from '../../shared/lib/sqlClient.js';
-import type { WorkLog, WorkLogTotals, WorkLogListResult } from '@projectflow/types';
+import type { WorkLog, WorkLogTotals, WorkLogListResult, TaskTimeRollup, WorkLogTag } from '@projectflow/types';
 
 interface WorkLogRow {
   Id:               string;
@@ -10,7 +10,10 @@ interface WorkLogRow {
   AvatarUrl:        string | null;
   TimeSpentSeconds: number;
   StartedAt:        Date;
+  EndedAt:          Date | null;
   Description:      string | null;
+  Billable:         boolean;
+  Source:           string;
   CreatedAt:        Date;
 }
 
@@ -28,7 +31,10 @@ function rowToLog(row: WorkLogRow): WorkLog {
     user:             { id: row.UserId, name: row.UserName, avatarUrl: row.AvatarUrl },
     timeSpentSeconds: row.TimeSpentSeconds,
     startedAt:        row.StartedAt instanceof Date ? row.StartedAt.toISOString() : String(row.StartedAt),
+    endedAt:          row.EndedAt == null ? null : (row.EndedAt instanceof Date ? row.EndedAt.toISOString() : String(row.EndedAt)),
     description:      row.Description,
+    billable:         Boolean(row.Billable),
+    source:           (row.Source as WorkLog['source']) ?? 'manual',
     createdAt:        row.CreatedAt instanceof Date  ? row.CreatedAt.toISOString()  : String(row.CreatedAt),
   };
 }
@@ -64,14 +70,22 @@ export class WorkLogRepository {
     userId:           string,
     timeSpentSeconds: number,
     startedAt:        string,
-    description?:     string,
+    opts: {
+      description?: string;
+      billable?:    boolean;
+      source?:      WorkLog['source'];
+      endedAt?:     string;
+    } = {},
   ): Promise<WorkLog> {
     const rows = await execSpOne<WorkLogRow>('usp_WorkLog_Create', [
-      { name: 'TaskId',           type: sql.UniqueIdentifier, value: taskId },
-      { name: 'UserId',           type: sql.UniqueIdentifier, value: userId },
-      { name: 'TimeSpentSeconds', type: sql.Int,              value: timeSpentSeconds },
-      { name: 'StartedAt',        type: sql.DateTime2,        value: new Date(startedAt) },
-      { name: 'Description',      type: sql.NVarChar(500),    value: description ?? null },
+      { name: 'TaskId',           type: sql.UniqueIdentifier,   value: taskId },
+      { name: 'UserId',           type: sql.UniqueIdentifier,   value: userId },
+      { name: 'TimeSpentSeconds', type: sql.Int,                value: timeSpentSeconds },
+      { name: 'StartedAt',        type: sql.DateTime2,          value: new Date(startedAt) },
+      { name: 'Description',      type: sql.NVarChar(500),      value: opts.description ?? null },
+      { name: 'Billable',         type: sql.Bit,                value: opts.billable ?? false },
+      { name: 'Source',           type: sql.NVarChar(10),       value: opts.source ?? 'manual' },
+      { name: 'EndedAt',          type: sql.DateTime2,          value: opts.endedAt ? new Date(opts.endedAt) : null },
     ]);
     return rowToLog(rows[0]);
   }
@@ -83,6 +97,8 @@ export class WorkLogRepository {
       timeSpentSeconds?: number;
       startedAt?:        string;
       description?:      string;
+      billable?:         boolean;
+      endedAt?:          string;
     },
   ): Promise<WorkLog | null> {
     const rows = await execSpOne<WorkLogRow>('usp_WorkLog_Update', [
@@ -91,8 +107,68 @@ export class WorkLogRepository {
       { name: 'TimeSpentSeconds', type: sql.Int,              value: patch.timeSpentSeconds ?? null },
       { name: 'StartedAt',        type: sql.DateTime2,        value: patch.startedAt ? new Date(patch.startedAt) : null },
       { name: 'Description',      type: sql.NVarChar(500),    value: patch.description ?? null },
+      { name: 'Billable',         type: sql.Bit,              value: patch.billable ?? null },
+      { name: 'EndedAt',          type: sql.DateTime2,        value: patch.endedAt ? new Date(patch.endedAt) : null },
     ]);
     return rows[0] ? rowToLog(rows[0]) : null;
+  }
+
+  async startTimer(taskId: string, userId: string): Promise<WorkLog> {
+    const rows = await execSpOne<WorkLogRow>('usp_WorkLog_StartTimer', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+    return rowToLog(rows[0]);
+  }
+
+  async stopTimer(userId: string): Promise<WorkLog | null> {
+    const rows = await execSpOne<WorkLogRow>('usp_WorkLog_StopTimer', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+    return rows[0] ? rowToLog(rows[0]) : null;
+  }
+
+  async getActiveTimer(userId: string): Promise<WorkLog | null> {
+    const rows = await execSpOne<WorkLogRow>('usp_WorkLog_GetActiveTimer', [
+      { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
+    ]);
+    return rows[0] ? rowToLog(rows[0]) : null;
+  }
+
+  async setTags(workLogId: string, tagIds: string[]): Promise<WorkLogTag[]> {
+    const rows = await execSpOne<{ Id: string; Name: string; Color: string | null }>('usp_WorkLogTag_Set', [
+      { name: 'WorkLogId', type: sql.UniqueIdentifier,  value: workLogId },
+      { name: 'TagIds',    type: sql.NVarChar(sql.MAX), value: tagIds.length ? tagIds.join(',') : null },
+    ]);
+    return Array.from(rows).map((r) => ({ id: r.Id, name: r.Name, color: r.Color }));
+  }
+
+  async setEstimate(taskId: string, userId: string | null, estimateSeconds: number | null): Promise<void> {
+    await execSpOne('usp_Task_SetEstimate', [
+      { name: 'TaskId',          type: sql.UniqueIdentifier, value: taskId },
+      { name: 'UserId',          type: sql.UniqueIdentifier, value: userId },
+      { name: 'EstimateSeconds', type: sql.Int,              value: estimateSeconds },
+    ]);
+  }
+
+  async getTimeRollup(taskId: string): Promise<TaskTimeRollup> {
+    const rows = await execSpOne<{
+      TaskId:                string;
+      OwnLoggedSeconds:      number;
+      OwnEstimateSeconds:    number | null;
+      RollupLoggedSeconds:   number;
+      RollupEstimateSeconds: number;
+    }>('usp_Task_GetTimeRollup', [
+      { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
+    ]);
+    const r = rows[0];
+    return {
+      taskId:                r.TaskId,
+      ownLoggedSeconds:      r.OwnLoggedSeconds,
+      ownEstimateSeconds:    r.OwnEstimateSeconds,
+      rollupLoggedSeconds:   r.RollupLoggedSeconds,
+      rollupEstimateSeconds: r.RollupEstimateSeconds,
+    };
   }
 
   async getContext(id: string): Promise<{ workspaceId: string; ownerId: string } | null> {

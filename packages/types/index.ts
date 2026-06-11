@@ -582,14 +582,26 @@ export interface WorkLogUser {
   avatarUrl: string | null;
 }
 
+export type WorkLogSource = 'manual' | 'range' | 'timer';
+
+export interface WorkLogTag {
+  id:    string;
+  name:  string;
+  color: string | null;
+}
+
 export interface WorkLog {
   id:               string;
   taskId:           string;
   user:             WorkLogUser;
   timeSpentSeconds: number;
   startedAt:        string;
+  endedAt:          string | null;
   description:      string | null;
+  billable:         boolean;
+  source:           WorkLogSource;
   createdAt:        string;
+  tags?:            WorkLogTag[];
 }
 
 export interface WorkLogTotals {
@@ -602,17 +614,38 @@ export interface WorkLogListResult {
   totals: WorkLogTotals[];
 }
 
+/** The caller's currently-running timer, or null when none is active. */
+export interface ActiveTimer {
+  log: WorkLog | null;
+}
+
+/** Own + subtree-rolled time aggregates for a task (logged & estimated). */
+export interface TaskTimeRollup {
+  taskId:                string;
+  ownLoggedSeconds:      number;
+  ownEstimateSeconds:    number | null;
+  rollupLoggedSeconds:   number;
+  rollupEstimateSeconds: number;
+}
+
 export interface CreateWorkLogInput {
   taskId:           string;
   timeSpentSeconds: number;
   startedAt:        string;
   description?:     string;
+  endedAt?:         string;
+  billable?:        boolean;
+  source?:          WorkLogSource;
+  tagIds?:          string[];
 }
 
 export interface UpdateWorkLogInput {
   timeSpentSeconds?: number;
   startedAt?:        string;
   description?:      string;
+  endedAt?:          string;
+  billable?:         boolean;
+  tagIds?:           string[];
 }
 
 // ── Versions ──────────────────────────────────────────────────────────────────

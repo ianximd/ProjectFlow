@@ -1,39 +1,15 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { addWorkLog, editWorkLog, deleteWorkLog, loadWorkLogs } from '@/server/actions/worklogs';
+import { addWorkLog, editWorkLog, deleteWorkLog, loadWorkLogs, startTimer } from '@/server/actions/worklogs';
+import { loadSpaceTags } from '@/server/actions/tags';
 import { notifyActionError } from '@/lib/apiErrorToast';
+import { formatDuration, parseDuration } from '@/lib/duration';
 import styles from './WorkLogSection.module.css';
-import type { WorkLog, WorkLogTotals, WorkLogListResult } from '@projectflow/types';
+import type { WorkLog, WorkLogTotals, WorkLogListResult, Tag } from '@projectflow/types';
 import { useTranslations } from 'next-intl';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-
-/** Format seconds → "2h 30m" / "45m" / "30s" */
-function formatDuration(seconds: number): string {
-  if (seconds <= 0) return '0m';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const parts: string[] = [];
-  if (h) parts.push(`${h}h`);
-  if (m) parts.push(`${m}m`);
-  if (!h && s) parts.push(`${s}s`);
-  return parts.join(' ') || '0m';
-}
-
-/** Parse "1h 30m", "2h", "45m", "90m" → seconds */
-function parseDuration(input: string): number | null {
-  const str = input.trim().toLowerCase();
-  let total = 0;
-  const hMatch = str.match(/(\d+)\s*h/);
-  const mMatch = str.match(/(\d+)\s*m/);
-  const sMatch = str.match(/(\d+)\s*s/);
-  if (hMatch) total += parseInt(hMatch[1], 10) * 3600;
-  if (mMatch) total += parseInt(mMatch[1], 10) * 60;
-  if (sMatch) total += parseInt(sMatch[1], 10);
-  return total > 0 ? total : null;
-}
 
 function relativeTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
@@ -55,10 +31,13 @@ interface Props {
   taskId: string;
   /** Current viewer's user id — controls edit/delete affordances. */
   currentUserId: string | null;
+  /** Space (project) id the task belongs to — used to load taggable tags. */
+  spaceId?: string | null;
 }
 
-export function WorkLogSection({ taskId, currentUserId }: Props) {
-  const t = useTranslations('WorkLog');
+export function WorkLogSection({ taskId, currentUserId, spaceId }: Props) {
+  const t  = useTranslations('WorkLog');
+  const tt = useTranslations('Timer');
   const [data, setData]       = useState<WorkLogListResult | null>(null);
   const [loaded, setLoaded]   = useState(false);
   const [pending, start]      = useTransition();
@@ -72,6 +51,13 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
   const [showForm,  setShowForm]    = useState(false);
   const [error,     setError]       = useState<string | null>(null);
 
+  const [billable, setBillable]             = useState(false);
+  const [mode, setMode]                     = useState<'manual' | 'range'>('manual');
+  const [rangeStart, setRangeStart]         = useState('');
+  const [rangeEnd, setRangeEnd]             = useState('');
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [spaceTags, setSpaceTags]           = useState<Tag[]>([]);
+
   const refetch = () => loadWorkLogs(taskId).then((d) => {
     setData(d);
     setLoaded(true);
@@ -82,23 +68,57 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
     if (taskId) refetch();
   }, [taskId]);
 
+  useEffect(() => {
+    if (spaceId) loadSpaceTags(spaceId).then(setSpaceTags).catch(() => {});
+  }, [spaceId]);
+
+  function resetForm() {
+    setError(null); setTimeInput(''); setDescInput(''); setRangeStart(''); setRangeEnd('');
+    setBillable(false); setSelectedTagIds([]); setShowForm(false);
+  }
+
+  const toggleTag = (id: string) =>
+    setSelectedTagIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
   const onCreate = () => {
-    const secs = parseDuration(timeInput);
-    if (!secs) { setError(t('invalidTimeFormat')); return; }
-    start(async () => {
-      const r = await addWorkLog(taskId, {
-        timeSpentSeconds: secs,
-        startedAt:        new Date(dateInput).toISOString(),
-        description:      descInput.trim() || undefined,
+    if (mode === 'manual') {
+      const secs = parseDuration(timeInput);
+      if (!secs) { setError(t('invalidTimeFormat')); return; }
+      start(async () => {
+        const r = await addWorkLog(taskId, {
+          timeSpentSeconds: secs,
+          startedAt:        new Date(dateInput).toISOString(),
+          description:      descInput.trim() || undefined,
+          billable,
+          source:           'manual',
+          tagIds:           selectedTagIds.length ? selectedTagIds : undefined,
+        });
+        if (!r.ok) { setError(r.error); notifyActionError(r); return; }
+        resetForm(); await refetch();
       });
-      if (!r.ok) { setError(r.error); notifyActionError(r); return; }
-      setError(null);
-      setTimeInput('');
-      setDescInput('');
-      setShowForm(false);
-      await refetch();
-    });
+    } else {
+      if (!rangeStart || !rangeEnd) { setError(t('invalidRange')); return; }
+      const startIso = new Date(rangeStart).toISOString();
+      const endIso   = new Date(rangeEnd).toISOString();
+      const secs = Math.max(0, Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000));
+      if (secs <= 0) { setError(t('invalidRange')); return; }
+      start(async () => {
+        const r = await addWorkLog(taskId, {
+          timeSpentSeconds: secs, startedAt: startIso, endedAt: endIso,
+          description: descInput.trim() || undefined, billable, source: 'range',
+          tagIds: selectedTagIds.length ? selectedTagIds : undefined,
+        });
+        if (!r.ok) { setError(r.error); notifyActionError(r); return; }
+        resetForm(); await refetch();
+      });
+    }
   };
+
+  const onStartTimerHere = () => start(async () => {
+    const r = await startTimer(taskId);
+    if (!r.ok) { notifyActionError(r); return; }
+    window.dispatchEvent(new CustomEvent('worklog:timer-changed'));
+  });
 
   const onUpdate = (id: string) => start(async () => {
     const secs = parseDuration(editTime);
@@ -134,39 +154,121 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
       {/* log work form */}
       {showForm && (
         <div className={styles.form}>
-          <div className={styles.formRow}>
-            <div className={styles.formField}>
-              <label className={styles.fieldLabel}>{t('timeSpentLabel')}</label>
-              <input
-                className={styles.input}
-                placeholder={t('timeSpentPlaceholder')}
-                value={timeInput}
-                onChange={e => setTimeInput(e.target.value)}
-              />
-            </div>
-            <div className={styles.formField}>
-              <label className={styles.fieldLabel}>{t('dateLabel')}</label>
-              <input
-                className={styles.input}
-                type="date"
-                value={dateInput}
-                onChange={e => setDateInput(e.target.value)}
-              />
-            </div>
+          {/* manual / range mode toggle */}
+          <div className={styles.formRow} role="group" style={{ gap: 8 }}>
+            <button
+              type="button"
+              className={styles.logBtn}
+              aria-pressed={mode === 'manual'}
+              style={{ fontWeight: mode === 'manual' ? 600 : 400 }}
+              onClick={() => setMode('manual')}
+            >{t('modeManual')}</button>
+            <button
+              type="button"
+              className={styles.logBtn}
+              aria-pressed={mode === 'range'}
+              style={{ fontWeight: mode === 'range' ? 600 : 400 }}
+              onClick={() => setMode('range')}
+            >{t('modeRange')}</button>
           </div>
+
+          {mode === 'manual' ? (
+            <div className={styles.formRow}>
+              <div className={styles.formField}>
+                <label className={styles.fieldLabel}>{t('timeSpentLabel')}</label>
+                <input
+                  className={styles.input}
+                  placeholder={t('timeSpentPlaceholder')}
+                  value={timeInput}
+                  onChange={e => setTimeInput(e.target.value)}
+                />
+              </div>
+              <div className={styles.formField}>
+                <label className={styles.fieldLabel}>{t('dateLabel')}</label>
+                <input
+                  className={styles.input}
+                  type="date"
+                  value={dateInput}
+                  onChange={e => setDateInput(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={styles.formRow}>
+              <div className={styles.formField}>
+                <label className={styles.fieldLabel}>{t('rangeStart')}</label>
+                <input
+                  className={styles.input}
+                  type="datetime-local"
+                  value={rangeStart}
+                  onChange={e => setRangeStart(e.target.value)}
+                />
+              </div>
+              <div className={styles.formField}>
+                <label className={styles.fieldLabel}>{t('rangeEnd')}</label>
+                <input
+                  className={styles.input}
+                  type="datetime-local"
+                  value={rangeEnd}
+                  onChange={e => setRangeEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
           <textarea
             className={styles.textarea}
             placeholder={t('workDescPlaceholder')}
             value={descInput}
             onChange={e => setDescInput(e.target.value)}
           />
+
+          <label className={styles.fieldLabel} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input type="checkbox" checked={billable} onChange={e => setBillable(e.target.checked)} />
+            {t('billable')}
+          </label>
+
+          {spaceTags.length > 0 && (
+            <div className={styles.formField}>
+              <label className={styles.fieldLabel}>{t('tags')}</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {spaceTags.map((tag) => {
+                  const on = selectedTagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleTag(tag.id)}
+                      style={{
+                        padding: '2px 10px', borderRadius: 999, cursor: 'pointer',
+                        fontSize: '0.75rem', lineHeight: 1.6,
+                        border: '1px solid var(--border, #d0d0d0)',
+                        background: on ? (tag.color ?? 'var(--accent, #2563eb)') : 'transparent',
+                        color: on ? '#fff' : 'inherit',
+                      }}
+                    >{tag.name}</button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className={styles.formActions}>
             <button
               className={styles.saveBtn}
               onClick={onCreate}
-              disabled={pending || !timeInput.trim()}
+              disabled={pending || (mode === 'manual' ? !timeInput.trim() : !(rangeStart && rangeEnd))}
             >
               {pending ? t('saving') : t('save')}
+            </button>
+            <button
+              className={styles.logBtn}
+              type="button"
+              onClick={onStartTimerHere}
+              disabled={pending}
+            >
+              {tt('startHere')}
             </button>
           </div>
           {error && <p className={styles.error}>{error}</p>}
@@ -194,7 +296,7 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
 
       <div className={styles.logList}>
         {data?.logs.map((log: WorkLog) => (
-          <div key={log.id} className={styles.logItem}>
+          <div key={log.id} className={styles.logItem} data-worklog-source={log.source}>
             {editingId === log.id ? (
               <div className={styles.editForm}>
                 <input
@@ -230,7 +332,32 @@ export function WorkLogSection({ taskId, currentUserId }: Props) {
                       {new Date(log.startedAt).toLocaleDateString()}
                       {' · '}
                       {relativeTime(log.createdAt)}
+                      {log.endedAt === null && (
+                        <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem', background: 'var(--accent, #2563eb)', color: '#fff' }}>
+                          {t('running')}
+                        </span>
+                      )}
+                      {log.billable && (
+                        <span style={{ marginLeft: 6, padding: '1px 6px', borderRadius: 4, fontSize: '0.7rem', background: 'var(--success, #16a34a)', color: '#fff' }}>
+                          {t('billable')}
+                        </span>
+                      )}
                     </span>
+                    {log.tags && log.tags.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                        {log.tags.map((tag) => (
+                          <span
+                            key={tag.id}
+                            style={{
+                              padding: '1px 8px', borderRadius: 999, fontSize: '0.7rem',
+                              border: '1px solid var(--border, #d0d0d0)',
+                              background: tag.color ?? 'transparent',
+                              color: tag.color ? '#fff' : 'inherit',
+                            }}
+                          >{tag.name}</span>
+                        ))}
+                      </div>
+                    )}
                     {log.description && <p className={styles.logDesc}>{log.description}</p>}
                   </div>
                 </div>

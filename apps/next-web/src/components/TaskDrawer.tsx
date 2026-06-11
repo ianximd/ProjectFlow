@@ -8,6 +8,7 @@ import { usePresence } from '@/components/presence/usePresence';
 import { PresenceBar } from '@/components/presence/PresenceBar';
 import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
+import { TaskEstimateBar } from './TaskEstimateBar';
 import { PullRequestsSection } from './PullRequestsSection';
 import type { AssigneeRow } from './TaskCard';
 import {
@@ -1113,7 +1114,8 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
-            <WorkLogSection taskId={taskId} currentUserId={currentUserId} />
+            <TaskEstimateBar taskId={taskId} />
+            <WorkLogSection taskId={taskId} currentUserId={currentUserId} spaceId={spaceId} />
           </div>
 
           <div className={styles.section}>

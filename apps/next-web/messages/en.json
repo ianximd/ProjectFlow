@@ -743,7 +743,15 @@
     "descriptionPlaceholder": "Description",
     "edit": "Edit",
     "delete": "Delete",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "billable": "Billable",
+    "modeManual": "Duration",
+    "modeRange": "Start / end",
+    "rangeStart": "Start",
+    "rangeEnd": "End",
+    "invalidRange": "End must be after start",
+    "tags": "Tags",
+    "running": "Running"
   },
   "PullRequests": {
     "loading": "Loading…",
@@ -1689,5 +1697,14 @@
     "stop": "Stop",
     "stopping": "Stopping…",
     "startHere": "Start timer"
+  },
+  "Estimate": {
+    "estimate": "Estimate",
+    "setEstimate": "Set estimate",
+    "save": "Save",
+    "logged": "Logged {duration}",
+    "rollup": "Subtotal {duration}",
+    "remaining": "{duration} left",
+    "overBudget": "Over estimate"
   }
 }

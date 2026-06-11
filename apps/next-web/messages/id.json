@@ -743,7 +743,15 @@
     "descriptionPlaceholder": "Deskripsi",
     "edit": "Ubah",
     "delete": "Hapus",
-    "cancel": "Batal"
+    "cancel": "Batal",
+    "billable": "Dapat ditagih",
+    "modeManual": "Durasi",
+    "modeRange": "Mulai / selesai",
+    "rangeStart": "Mulai",
+    "rangeEnd": "Selesai",
+    "invalidRange": "Selesai harus setelah mulai",
+    "tags": "Tag",
+    "running": "Berjalan"
   },
   "PullRequests": {
     "loading": "Memuat…",
@@ -1689,5 +1697,14 @@
     "stop": "Hentikan",
     "stopping": "Menghentikan…",
     "startHere": "Mulai pengatur waktu"
+  },
+  "Estimate": {
+    "estimate": "Estimasi",
+    "setEstimate": "Atur estimasi",
+    "save": "Simpan",
+    "logged": "Tercatat {duration}",
+    "rollup": "Subtotal {duration}",
+    "remaining": "Sisa {duration}",
+    "overBudget": "Melebihi estimasi"
   }
 }

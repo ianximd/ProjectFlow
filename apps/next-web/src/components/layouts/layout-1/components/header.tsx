@@ -17,6 +17,7 @@ import {
 import { SearchDialog } from '@/components/layouts/layout-1/shared/dialogs/search/search-dialog';
 import { NotificationsSheet } from '@/components/layouts/layout-1/shared/topbar/notifications-sheet';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { GlobalTimerWidget } from '@/components/GlobalTimerWidget';
 import { UserDropdownMenu } from '@/components/layouts/layout-1/shared/topbar/user-dropdown-menu';
 import { useLayout } from './context';
 import { SidebarMenu } from './sidebar-menu';
@@ -99,6 +100,7 @@ export function Header() {
 
         {/* Topbar actions */}
         <div className="flex items-center gap-3">
+          <GlobalTimerWidget />
           {!mobileMode && (
             <SearchDialog
               trigger={

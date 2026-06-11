@@ -1683,5 +1683,11 @@
     "create": "New whiteboard",
     "rename": "Rename",
     "delete": "Delete"
+  },
+  "Timer": {
+    "running": "Timer running",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "startHere": "Start timer"
   }
 }

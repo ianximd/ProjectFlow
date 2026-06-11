@@ -1683,5 +1683,11 @@
     "create": "Papan tulis baru",
     "rename": "Ganti nama",
     "delete": "Hapus"
+  },
+  "Timer": {
+    "running": "Pengatur waktu berjalan",
+    "stop": "Hentikan",
+    "stopping": "Menghentikan…",
+    "startHere": "Mulai pengatur waktu"
   }
 }

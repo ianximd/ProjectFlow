@@ -1,0 +1,6 @@
+.root { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; background: var(--surface-2, #1f2937); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse 1.2s infinite; }
+.elapsed { font-variant-numeric: tabular-nums; font-weight: 600; }
+.stopBtn { border: none; border-radius: 6px; padding: 2px 10px; cursor: pointer; background: #ef4444; color: #fff; }
+.stopBtn:disabled { opacity: .6; cursor: default; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }

@@ -1396,3 +1396,112 @@ export interface ConvertShapeToTaskResult {
   task: Task;
   link: WhiteboardTaskLink;
 }
+
+// ── Forms (Phase 7c — intake) ─────────────────────────────────────────────────
+
+export type FormFieldType =
+  | 'short_text' | 'long_text' | 'number' | 'email'
+  | 'select' | 'multiselect' | 'checkbox' | 'date';
+
+export interface FormField {
+  key:       string;            // stable key (answers + mapping + branching reference this)
+  label:     string;
+  type:      FormFieldType;
+  required:  boolean;
+  options?:  string[];          // for select / multiselect
+  placeholder?: string;
+}
+
+/** Show/hide a field when a PRIOR field's answer matches. Default = visible. */
+export interface FormBranchingRule {
+  fieldKey: string;             // the field this rule controls
+  action:   'show' | 'hide';
+  when:     {
+    fieldKey: string;           // a field that appears EARLIER in fields[]
+    op:       'equals' | 'not_equals' | 'includes' | 'is_empty' | 'is_not_empty';
+    value?:   string;
+  };
+}
+
+export interface FormConfig {
+  fields:    FormField[];
+  branching: FormBranchingRule[];
+}
+
+/** form field key -> where its answer lands on the created task. */
+export type FormFieldMapping = Record<string, FormFieldMappingTarget>;
+export interface FormFieldMappingTarget {
+  kind:   'task' | 'custom_field';
+  target: string;               // task: 'title'|'description'|'priority'; custom_field: the field id
+}
+
+export interface Form {
+  id:           string;
+  workspaceId:  string;
+  scopeType:    'SPACE' | 'FOLDER' | 'LIST';
+  scopeId:      string;
+  name:         string;
+  config:       FormConfig;
+  targetListId: string;
+  fieldMapping: FormFieldMapping;
+  templateId:   string | null;
+  isPublic:     boolean;
+  publicSlug:   string | null;
+  authRequired: boolean;
+  createdById:  string;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface FormSubmission {
+  id:            string;
+  formId:        string;
+  answers:       Record<string, unknown>;
+  createdTaskId: string | null;
+  submittedById: string | null;
+  submittedAt:   string;
+}
+
+/** The unauthenticated render payload (no internal ids leaked beyond config). */
+export interface PublicFormView {
+  id:           string;
+  name:         string;
+  config:       FormConfig;
+  authRequired: boolean;
+  readToken:    string;         // scoped, echoed back on submit
+}
+
+export interface CreateFormInput {
+  workspaceId:  string;
+  scopeType:    'SPACE' | 'FOLDER' | 'LIST';
+  scopeId:      string;
+  name:         string;
+  config:       FormConfig;
+  targetListId: string;
+  fieldMapping: FormFieldMapping;
+  templateId?:  string | null;
+  isPublic?:    boolean;
+  publicSlug?:  string | null;
+  authRequired?: boolean;
+}
+
+export interface UpdateFormInput {
+  name?:         string;
+  config?:       FormConfig;
+  targetListId?: string;
+  fieldMapping?: FormFieldMapping;
+  templateId?:   string | null;   // null clears
+  isPublic?:     boolean;
+  publicSlug?:   string | null;    // null clears
+  authRequired?: boolean;
+}
+
+export interface SubmitFormInput {
+  answers:   Record<string, unknown>;
+  readToken: string;
+}
+
+export interface SubmitFormResult {
+  submissionId:  string;
+  createdTaskId: string | null;
+}

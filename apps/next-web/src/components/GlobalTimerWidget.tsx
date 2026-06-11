@@ -51,6 +51,8 @@ export function GlobalTimerWidget() {
     const r = await stopTimer();
     if (!r.ok) { notifyActionError(r); return; }
     setActive(null);
+    // Let task-scoped views (WorkLogSection) refetch so the closed entry shows.
+    window.dispatchEvent(new CustomEvent('worklog:timer-changed'));
   });
 
   if (!active) return null; // hidden when idle; tasks start it via WorkLogSection

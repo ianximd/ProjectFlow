@@ -72,6 +72,15 @@ export function WorkLogSection({ taskId, currentUserId, spaceId }: Props) {
     if (spaceId) loadSpaceTags(spaceId).then(setSpaceTags).catch(() => {});
   }, [spaceId]);
 
+  // Keep the log list in sync when a timer is started/stopped elsewhere
+  // (e.g. the global timer widget), so the just-closed entry appears here.
+  useEffect(() => {
+    const onTimerChanged = () => { if (taskId) refetch(); };
+    window.addEventListener('worklog:timer-changed', onTimerChanged as EventListener);
+    return () => window.removeEventListener('worklog:timer-changed', onTimerChanged as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
   function resetForm() {
     setError(null); setTimeInput(''); setDescInput(''); setRangeStart(''); setRangeEnd('');
     setBillable(false); setSelectedTagIds([]); setShowForm(false);

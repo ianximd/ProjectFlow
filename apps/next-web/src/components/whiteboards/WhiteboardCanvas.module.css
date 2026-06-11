@@ -29,8 +29,11 @@
 .convertPanel {
   position: absolute;
   top: 0.75rem;
-  right: 0.75rem;
-  z-index: 60;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Above all tldraw UI chrome (its style panel renders top-right on selection
+     and would otherwise intercept clicks on the convert button). */
+  z-index: 9999;
   width: 16rem;
   display: flex;
   flex-direction: column;

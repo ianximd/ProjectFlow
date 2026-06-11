@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Tldraw, type Editor, type TLShape } from 'tldraw';
+import { Tldraw, createShapeId, toRichText, type Editor, type TLShape } from 'tldraw';
 import type { WhiteboardTaskLink } from '@projectflow/types';
 import 'tldraw/tldraw.css';
 import { useWhiteboardYProvider } from './useWhiteboardYProvider';
@@ -58,6 +58,20 @@ export function WhiteboardCanvas({
   // discarded, so we store refs here and tear them down in a dedicated effect.
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor;
+
+    // Dev/e2e-only debug handle: expose the live editor + the two module-level
+    // tldraw helpers (createShapeId / toRichText) the e2e needs to drive shape
+    // creation deterministically from page.evaluate (these are module exports,
+    // not editor methods, so they aren't otherwise reachable in the page realm).
+    // Gated to non-production so it never ships in prod builds.
+    if (typeof window !== 'undefined' && process.env.NODE_ENV !== 'production') {
+      const w = window as Window & {
+        __wbEditor?: unknown;
+        __wbTldraw?: { createShapeId: typeof createShapeId; toRichText: typeof toRichText };
+      };
+      w.__wbEditor = editor;
+      w.__wbTldraw = { createShapeId, toRichText };
+    }
 
     // Track the single-selected shape reactively. Selection lives in the
     // session-scoped store, so listen across all scopes and re-read.

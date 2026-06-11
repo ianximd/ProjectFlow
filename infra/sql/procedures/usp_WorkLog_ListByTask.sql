@@ -4,27 +4,17 @@ AS
 BEGIN
   SET NOCOUNT ON;
 
-  -- Individual log entries
   SELECT
-    wl.Id,
-    wl.TaskId,
-    wl.UserId,
-    u.Name           AS UserName,
-    u.AvatarUrl,
-    wl.TimeSpentSeconds,
-    wl.StartedAt,
-    wl.Description,
-    wl.CreatedAt
+    wl.Id, wl.TaskId, wl.UserId, u.Name AS UserName, u.AvatarUrl,
+    wl.TimeSpentSeconds, wl.StartedAt, wl.EndedAt, wl.Billable, wl.Source,
+    wl.Description, wl.CreatedAt
   FROM dbo.WorkLogs wl
-  JOIN dbo.Users    u  ON u.Id = wl.UserId
+  JOIN dbo.Users    u ON u.Id = wl.UserId
   WHERE wl.TaskId = @TaskId
   ORDER BY wl.StartedAt DESC;
 
-  -- Aggregate totals per user (second result set)
   SELECT
-    wl.UserId,
-    u.Name     AS UserName,
-    u.AvatarUrl,
+    wl.UserId, u.Name AS UserName, u.AvatarUrl,
     SUM(wl.TimeSpentSeconds) AS TotalSeconds
   FROM dbo.WorkLogs wl
   JOIN dbo.Users    u ON u.Id = wl.UserId

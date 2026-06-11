@@ -16,7 +16,7 @@ export default async function FormsPage() {
           <li key={f.id}>
             <Link href={`/forms/${f.id}`}>{f.name}</Link>
             {f.isPublic && f.publicSlug && (
-              <span> · <Link href={`/forms/${f.publicSlug}`} target="_blank">{t('openPublic')}</Link></span>
+              <span> · <Link href={`/forms/public/${f.publicSlug}`} target="_blank">{t('openPublic')}</Link></span>
             )}
           </li>
         ))}

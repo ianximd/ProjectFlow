@@ -36,6 +36,9 @@ const TRUNCATION_ORDER = [
   // Phase 8a (0043): WorkLogTags FK WorkLogs/Tags — delete before WorkLogs.
   'WorkLogTags',
   'WorkLogs',
+  // Phase 8b (0044): Timesheets FK Users (UserId + ReviewedById) — delete before
+  // Users or the Users DELETE fails FK_Timesheets_User once an envelope exists.
+  'Timesheets',
   'Notifications',
   'AuditLog',
   'GitPullRequests',

@@ -1,4 +1,26 @@
 {
+  "Sprints": {
+    "title": "Sprint",
+    "setupTitle": "Pengaturan folder sprint",
+    "markAsSprintFolder": "Jadikan ini folder sprint",
+    "durationDays": "Durasi sprint (hari)",
+    "startDayOfWeek": "Hari mulai dalam minggu",
+    "autoStart": "Mulai otomatis pada tanggal mulai",
+    "autoComplete": "Selesai otomatis pada tanggal akhir",
+    "autoRollForward": "Pindahkan tugas yang belum selesai ke sprint berikutnya",
+    "pointsField": "Bidang story point",
+    "save": "Simpan pengaturan",
+    "addSprint": "Tambah sprint",
+    "status": "Status",
+    "startDate": "Tanggal mulai",
+    "endDate": "Tanggal akhir",
+    "points": "Poin",
+    "pointsByAssignee": "Poin per penerima tugas",
+    "noSprints": "Belum ada sprint",
+    "statusPlanned": "Direncanakan",
+    "statusActive": "Aktif",
+    "statusCompleted": "Selesai"
+  },
   "Forms": {
     "title": "Formulir",
     "newForm": "Formulir baru",

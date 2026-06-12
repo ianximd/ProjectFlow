@@ -1,4 +1,26 @@
 {
+  "Sprints": {
+    "title": "Sprints",
+    "setupTitle": "Sprint folder settings",
+    "markAsSprintFolder": "Make this a sprint folder",
+    "durationDays": "Sprint length (days)",
+    "startDayOfWeek": "Start day of week",
+    "autoStart": "Auto-start at start date",
+    "autoComplete": "Auto-complete at end date",
+    "autoRollForward": "Roll unfinished tasks to next sprint",
+    "pointsField": "Story points field",
+    "save": "Save settings",
+    "addSprint": "Add sprint",
+    "status": "Status",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "points": "Points",
+    "pointsByAssignee": "Points by assignee",
+    "noSprints": "No sprints yet",
+    "statusPlanned": "Planned",
+    "statusActive": "Active",
+    "statusCompleted": "Completed"
+  },
   "Forms": {
     "title": "Forms",
     "newForm": "New form",

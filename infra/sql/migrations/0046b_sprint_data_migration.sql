@@ -6,16 +6,15 @@
 --   3. re-home tasks currently referencing Sprints.Id via SprintId into the List
 --      (Tasks.ListId/ListPath set; Tasks.SprintId denorm retained).
 -- Idempotent: only processes Sprints whose ListId IS NULL; the Folder is reused
--- if it already exists. GO-batched. LOCAL-DOCKER ONLY (prod cutover deferred,
+-- if it already exists. LOCAL-DOCKER ONLY (prod cutover deferred,
 -- see DECISIONS.md / spec §10.6).
 --
 -- NOTE: renumbered from the plan's 0045b (0044/0045 were taken by Phase 8b).
 -- =============================================================================
 
-SET NOCOUNT ON;
-GO
-
 BEGIN
+    SET NOCOUNT ON;
+
     DECLARE @sid UNIQUEIDENTIFIER, @pid UNIQUEIDENTIFIER, @wsid UNIQUEIDENTIFIER,
             @sname NVARCHAR(255), @folderId UNIQUEIDENTIFIER, @listId UNIQUEIDENTIFIER,
             @folderPath NVARCHAR(900), @listPath NVARCHAR(900);
@@ -31,6 +30,8 @@ BEGIN
     FETCH NEXT FROM sprint_cur INTO @sid, @pid, @wsid, @sname;
     WHILE @@FETCH_STATUS = 0
     BEGIN
+        SET @folderId = NULL;  -- reset per-iteration (top of loop, before lookup)
+
         -- 1) Ensure ONE sprint Folder per Project (reuse if present).
         SELECT TOP 1 @folderId = f.Id
         FROM   dbo.Folders f
@@ -61,8 +62,6 @@ BEGIN
         UPDATE dbo.Tasks
         SET ListId = @listId, ListPath = @listPath, UpdatedAt = GETUTCDATE()
         WHERE SprintId = @sid AND DeletedAt IS NULL;
-
-        SET @folderId = NULL;  -- reset per-iteration
 
         FETCH NEXT FROM sprint_cur INTO @sid, @pid, @wsid, @sname;
     END

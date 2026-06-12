@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { SavedView, ViewConfig, ViewGroup } from '@projectflow/types';
+import type { SavedView, ViewConfig, ViewGroup, CapacityResult } from '@projectflow/types';
 import { ApiError } from '../api';
 import { runGraphql } from '../actions/graphql';
 import { normalizeTask, type Task } from './normalize-task';
@@ -235,4 +235,46 @@ export const previewViewTasks = cache(async (
     tasks: (r?.tasks ?? []).map(normalizeTask),
     groups: r?.groups ?? [],
   };
+});
+
+const VIEW_CAPACITY_QUERY = /* GraphQL */ `
+  query ViewCapacity(
+    $scopeType: String!, $scopeId: String, $config: String!,
+    $from: String, $to: String, $workspaceId: String
+  ) {
+    viewCapacity(
+      scopeType: $scopeType, scopeId: $scopeId, config: $config,
+      from: $from, to: $to, workspaceId: $workspaceId
+    ) {
+      metric
+      from
+      to
+      rows {
+        userId name email avatarUrl
+        assignedSeconds assignedPoints taskCount
+        capacity status ratio
+      }
+    }
+  }
+`;
+
+/** Per-assignee capacity for a Workload/Box view (over/at/under, sums of assigned
+ *  estimates + points within an optional date range). `config` is serialized to
+ *  the JSON-string arg the schema expects. */
+export const getViewCapacity = cache(async (
+  scopeType: SavedView['scopeType'],
+  scopeId: string | null,
+  config: ViewConfig,
+  range: { from: string | null; to: string | null },
+  workspaceId?: string,
+): Promise<CapacityResult> => {
+  const { viewCapacity } = await gqlData<{ viewCapacity: CapacityResult | null }>(VIEW_CAPACITY_QUERY, {
+    scopeType,
+    scopeId: scopeId ?? null,
+    config: JSON.stringify(config),
+    from: range.from,
+    to: range.to,
+    workspaceId: workspaceId ?? null,
+  });
+  return viewCapacity ?? { metric: config.capacityMetric ?? 'time', from: range.from, to: range.to, rows: [] };
 });

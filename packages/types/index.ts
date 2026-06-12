@@ -648,6 +648,45 @@ export interface UpdateWorkLogInput {
   tagIds?:           string[];
 }
 
+// ── Timesheets (Phase 8b) ─────────────────────────────────────────────────────
+
+export type TimesheetStatus = 'draft' | 'submitted' | 'approved' | 'rejected';
+
+export interface Timesheet {
+  id:           string;
+  workspaceId:  string;
+  userId:       string;
+  periodStart:  string;   // ISO date (YYYY-MM-DD)
+  periodEnd:    string;   // ISO date (YYYY-MM-DD)
+  status:       TimesheetStatus;
+  submittedAt:  string | null;
+  reviewedById: string | null;
+  reviewedAt:   string | null;
+  note:         string | null;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export interface TimesheetAggregateRow {
+  workDate:           string;   // ISO date
+  taskId:             string;
+  taskTitle:          string;
+  totalSeconds:       number;
+  billableSeconds:    number;
+  nonBillableSeconds: number;
+}
+
+export interface TimesheetAggregateTotals {
+  totalSeconds:       number;
+  billableSeconds:    number;
+  nonBillableSeconds: number;
+}
+
+export interface TimesheetAggregate {
+  rows:   TimesheetAggregateRow[];
+  totals: TimesheetAggregateTotals;
+}
+
 // ── Versions ──────────────────────────────────────────────────────────────────
 
 export type VersionStatus = 'UNRELEASED' | 'RELEASED' | 'ARCHIVED';

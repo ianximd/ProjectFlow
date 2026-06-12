@@ -44,6 +44,7 @@ import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.
 import { startOAuthMaintenanceWorker } from './modules/auth/oauth/workers/oauth-maintenance.worker.js';
 import { startRecurrenceWorker } from './modules/recurrence/recurrence.worker.js';
 import { startSchedulerWorker } from './modules/automation/automation.scheduler.worker.js';
+import { startSprintWorker } from './modules/sprints/sprint.worker.js';
 import { requestIdMiddleware } from './shared/middleware/requestId.middleware.js';
 import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.middleware.js';
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
@@ -333,6 +334,12 @@ if (process.env.NODE_ENV !== 'test') {
     );
     startSchedulerWorker().catch((err) =>
       logger.warn({ err: err?.message }, 'automation scheduler worker failed to start'),
+    );
+
+    // Start the sprint scheduled sweep (Phase 8c). Conditional on Redis — the
+    // BullMQ queue/worker need it. Manual sprint start/complete works without it.
+    startSprintWorker().catch((err) =>
+      logger.warn({ err: err?.message }, 'sprint worker failed to start'),
     );
   }
 

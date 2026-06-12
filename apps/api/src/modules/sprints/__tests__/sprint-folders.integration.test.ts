@@ -14,6 +14,8 @@ import sql from 'mssql';
 import { getPool, closePool } from '../../../shared/lib/db.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
+import { SprintRepository } from '../sprint.repository.js';
+import { sprintService } from '../sprint.service.js';
 
 afterAll(async () => { await closePool(); });
 
@@ -210,14 +212,16 @@ describe('usp_Sprint_GetPointsRollup + summary list-membership', () => {
       VALUES (@id, '${space.Id}', '${ws.Id}', 'PR-2', 'T2', 'To Do', '${owner.user.Id}', '${s1.Id}', '${s1.ListId}', 3);`);
 
     const res = await pool.request().input('SprintId', sql.UniqueIdentifier, s1.Id).execute('usp_Sprint_GetPointsRollup');
-    const total = res.recordsets[0][0];
-    const perAssignee = res.recordsets[1];
+    const rollupSets = res.recordsets as unknown as any[][];
+    const total = rollupSets[0][0];
+    const perAssignee = rollupSets[1];
     expect(total.TotalPoints).toBe(8);
     expect(perAssignee.find((r: any) => r.UserId === owner.user.Id)?.Points).toBe(5);
 
     const summary = await pool.request().input('SprintId', sql.UniqueIdentifier, s1.Id).execute('usp_Report_SprintSummary');
-    expect(summary.recordsets[0][0].TotalIssues).toBe(2);
-    expect(summary.recordsets[0][0].TotalPoints).toBe(8);
+    const summarySets = summary.recordsets as unknown as any[][];
+    expect(summarySets[0][0].TotalIssues).toBe(2);
+    expect(summarySets[0][0].TotalPoints).toBe(8);
   });
 });
 
@@ -247,5 +251,69 @@ describe('usp_Sprint_ListDueFolders', () => {
       .input('Id', sql.UniqueIdentifier, folderId)
       .execute('usp_Folder_GetWorkspaceId')).recordset[0];
     expect(wsRow.WorkspaceId).toBe(ws.Id);
+  });
+});
+
+describe('SprintRepository — folder/settings/create/roll-forward/points', () => {
+  it('round-trips settings, creates a sprint in a folder, and reads points', async () => {
+    await truncateAll();
+    const repo = new SprintRepository();
+    const owner = await createTestUser({ email: `repo-${Date.now()}@projectflow.test` });
+    const ws = await createTestWorkspace(owner.accessToken);
+    const space = await createTestProject(ws.Id, owner.accessToken, { name: 'Repo Space', key: `RP${Date.now() % 100000}` });
+    const pool = await getPool();
+    const folderId = (await pool.request().query(`
+      DECLARE @id UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO dbo.Folders (Id, WorkspaceId, SpaceId, Name, Position, Path)
+      VALUES (@id, '${ws.Id}', '${space.Id}', 'F', 0, '/${space.Id}/x/');
+      SELECT @id AS Id;`)).recordset[0].Id;
+
+    const settings = await repo.setSprintSettings(folderId, { durationDays: 7, startDayOfWeek: 1, autoStart: true, autoComplete: true, autoRollForward: true, pointsFieldId: null });
+    expect((settings as any).DurationDays).toBe(7);
+
+    const sprint = await repo.createInFolder(folderId, 'Sprint 1', null, null, null);
+    expect((sprint as any).ListId).not.toBeNull();
+
+    const rollup = await repo.getPointsRollup((sprint as any).Id);
+    expect(rollup.total.TotalPoints).toBe(0);
+    expect(Array.isArray(rollup.perAssignee)).toBe(true);
+
+    const fwsid = await repo.getFolderWorkspaceId(folderId);
+    expect(fwsid).toBe(ws.Id);
+  });
+});
+
+describe('sprintService — sprint-folder ops', () => {
+  it('sets settings, creates in folder, completes (emits hook), and rolls forward', async () => {
+    await truncateAll();
+    const owner = await createTestUser({ email: `svc-${Date.now()}@projectflow.test` });
+    const ws = await createTestWorkspace(owner.accessToken);
+    const space = await createTestProject(ws.Id, owner.accessToken, { name: 'Svc Space', key: `SV${Date.now() % 100000}` });
+    const pool = await getPool();
+    const folderId = (await pool.request().query(`
+      DECLARE @id UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO dbo.Folders (Id, WorkspaceId, SpaceId, Name, Position, Path)
+      VALUES (@id, '${ws.Id}', '${space.Id}', 'F', 0, '/${space.Id}/x/');
+      SELECT @id AS Id;`)).recordset[0].Id;
+
+    await sprintService.setSettings(folderId, { durationDays: 14, startDayOfWeek: null, autoStart: false, autoComplete: false, autoRollForward: false, pointsFieldId: null });
+    const s1: any = await sprintService.createInFolder(folderId, 'S1', null, null, null);
+    const s2: any = await sprintService.createInFolder(folderId, 'S2', null, null, null);
+
+    // One open task in s1.
+    await pool.request().query(`
+      DECLARE @id UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO dbo.Tasks (Id, ProjectId, WorkspaceId, IssueKey, Title, Status, ReporterId, SprintId, ListId)
+      VALUES (@id, '${space.Id}', '${ws.Id}', 'SV-1', 'T', 'To Do', '${owner.user.Id}', '${s1.Id}', '${s1.ListId}');`);
+
+    await sprintService.start(s1.Id);
+    await sprintService.complete(s1.Id);
+    // complete() nulls SprintId on the open task; rollForward keys on the source
+    // List, so the task still moves to s2 (validates the List-membership design).
+    const rolled = await sprintService.rollForward(s1.Id, s2.Id);
+    expect(rolled).toBe(1);
+
+    const points = await sprintService.getPoints(s2.Id);
+    expect(points.total.TotalPoints).toBe(0);
   });
 });

@@ -29,4 +29,20 @@ export const sprintService = {
     }
     return sprint;
   },
+
+  // ── Sprint-folder hierarchy (Phase 8c) ────────────────────────────────────
+  getSettings: (folderId: string) => repo.getSprintSettings(folderId),
+
+  setSettings: (folderId: string, s: {
+    durationDays: number; startDayOfWeek: number | null;
+    autoStart: boolean; autoComplete: boolean; autoRollForward: boolean;
+    pointsFieldId: string | null;
+  }) => repo.setSprintSettings(folderId, s),
+
+  createInFolder: (folderId: string, name: string, goal: string | null, startDate: Date | null, endDate: Date | null) =>
+    repo.createInFolder(folderId, name, goal, startDate, endDate),
+
+  rollForward: (fromSprintId: string, toSprintId: string) => repo.rollForward(fromSprintId, toSprintId),
+
+  getPoints: (sprintId: string) => repo.getPointsRollup(sprintId),
 };

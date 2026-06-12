@@ -91,4 +91,58 @@ describe('Timesheets REST', () => {
     });
     expect(res.status).toBe(409);
   });
+
+  it('forbids a non-member (403) on get-or-create / read / aggregate / submit / review', async () => {
+    const owner = await createTestUser({ email: 'ts-authz-owner@projectflow.test' });
+    const ws    = await createTestWorkspace(owner.accessToken);
+    const listed = await request(
+      `/timesheets?workspaceId=${ws.Id}&periodStart=${PERIOD.periodStart}&periodEnd=${PERIOD.periodEnd}`,
+      { token: owner.accessToken },
+    );
+    const { data } = await json<{ data: Timesheet }>(listed, 200);
+
+    // A second user who is NOT a member of `ws` must be fail-closed on every surface.
+    const intruder = await createTestUser({ email: 'ts-authz-intruder@projectflow.test' });
+
+    const getOrCreate = await request(
+      `/timesheets?workspaceId=${ws.Id}&periodStart=${PERIOD.periodStart}&periodEnd=${PERIOD.periodEnd}`,
+      { token: intruder.accessToken },
+    );
+    expect(getOrCreate.status).toBe(403);
+    expect((await request(`/timesheets/${data.id}`,           { token: intruder.accessToken })).status).toBe(403);
+    expect((await request(`/timesheets/${data.id}/aggregate`, { token: intruder.accessToken })).status).toBe(403);
+    expect((await request(`/timesheets/${data.id}/submit`, { method: 'POST', token: intruder.accessToken, json: {} })).status).toBe(403);
+    expect((await request(`/timesheets/${data.id}/review`, { method: 'POST', token: intruder.accessToken, json: { decision: 'approved' } })).status).toBe(403);
+  });
+
+  it('locks an UPDATE that moves a worklog OUT of a submitted period → 422', async () => {
+    const owner   = await createTestUser({ email: 'ts-moveout@projectflow.test' });
+    const ws      = await createTestWorkspace(owner.accessToken);
+    const project = await createTestProject(ws.Id, owner.accessToken);
+    const task    = await createTestTask(project.Id, ws.Id, owner.accessToken);
+
+    // A closed entry INSIDE the period.
+    const created = await request('/worklogs', {
+      method: 'POST', token: owner.accessToken,
+      json: { taskId: task.Id, timeSpentSeconds: 3600, startedAt: '2026-06-02T09:00:00.000Z', source: 'manual' },
+    });
+    const { log } = await json<{ log: { id: string } }>(created, 201);
+
+    // Submit → the period is now locked.
+    const listed = await request(
+      `/timesheets?workspaceId=${ws.Id}&periodStart=${PERIOD.periodStart}&periodEnd=${PERIOD.periodEnd}`,
+      { token: owner.accessToken },
+    );
+    const { data } = await json<{ data: Timesheet }>(listed, 200);
+    await request(`/timesheets/${data.id}/submit`, { method: 'POST', token: owner.accessToken, json: {} });
+
+    // Trying to MOVE the locked entry to an unlocked date must still be rejected:
+    // locked time is immutable (the lock checks the entry's CURRENT date, not just
+    // the destination).
+    const moved = await request(`/worklogs/${log.id}`, {
+      method: 'PATCH', token: owner.accessToken,
+      json: { startedAt: '2026-07-15T09:00:00.000Z' },
+    });
+    expect(moved.status).toBe(422);
+  });
 });

@@ -56,14 +56,18 @@ export class WorkLogService {
       tagIds?:           string[];
     },
   ): Promise<WorkLog | null> {
-    // Phase 8b period-lock: reject if the entry's work date falls inside a
-    // submitted/approved period. The effective date is the patch's startedAt
-    // when present, otherwise the existing row's StartedAt (PascalCase from
-    // usp_WorkLog_GetById).
-    const existing  = patch.startedAt ? null : await repo.getById(id);
-    const effective = patch.startedAt ?? (existing?.StartedAt as string | Date | undefined);
-    if (effective) {
-      const workDate = effective instanceof Date ? effective.toISOString() : String(effective);
+    // Phase 8b period-lock: locked time is immutable. Reject the update if the
+    // entry's CURRENT work date is inside a submitted/approved period (you may
+    // not edit locked time) OR if a new startedAt would MOVE it into one. We
+    // must always read the existing row so an edit can't escape the lock by
+    // moving the entry OUT of a locked period to an unlocked date. StartedAt is
+    // PascalCase from usp_WorkLog_GetById.
+    const existing = await repo.getById(id);
+    const candidateDates: Array<string | Date> = [];
+    if (existing?.StartedAt) candidateDates.push(existing.StartedAt as string | Date); // origin (current) date
+    if (patch.startedAt)     candidateDates.push(patch.startedAt);                       // destination date
+    for (const d of candidateDates) {
+      const workDate = d instanceof Date ? d.toISOString() : String(d);
       if (await repo.isPeriodLocked(userId, workDate)) throw new PeriodLockedError();
     }
     const log = await repo.update(id, userId, {

@@ -61,9 +61,12 @@ async function setDueDate(taskId: string, iso: string): Promise<void> {
 
 // ── test suite ────────────────────────────────────────────────────────────────
 
+// File-scope lifecycle (hoisted above both describe blocks per the repo's
+// multi-describe integration convention) — one truncate per test, one pool close.
+beforeEach(async () => { await truncateAll(); });
+afterAll(async () => { await closePool(); });
+
 describe('ViewService.capacity — integration', () => {
-  beforeEach(async () => { await truncateAll(); });
-  afterAll(async () => { await closePool(); });
 
   // Shared setup helper: one workspace + two assignees, each with tasks in
   // [2026-06-01, 2026-06-05].  Alice has 6 tasks (8h each, 3 pts each);
@@ -249,8 +252,6 @@ describe('ViewService.capacity — integration', () => {
 // ── negative-authz: route-level (GET /views/capacity) ────────────────────────
 
 describe('GET /views/capacity — negative-authz', () => {
-  beforeEach(async () => { await truncateAll(); });
-  afterAll(async () => { await closePool(); });
 
   const emptyConfig = JSON.stringify({
     filter: { conjunction: 'AND', rules: [] },

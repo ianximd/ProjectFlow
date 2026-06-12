@@ -39,12 +39,12 @@ capacityRoutes.get('/capacity', async (c) => {
   const scopeId    = c.req.query('scopeId') ?? null;
   const workspaceId = c.req.query('workspaceId') ?? undefined;
 
-  let config: ViewConfig;
-  try { config = JSON.parse(c.req.query('config') ?? '') as ViewConfig; }
-  catch { return c.json({ error: { message: 'Invalid config JSON' } }, 400); }
-
-  // ── Fail-closed authorization (mirrors views.schema.ts requireEverythingWorkspace
-  //    / requireObjectLevel gate — both surfaces enforce the same rules) ──────────
+  // ── Fail-closed authorization FIRST (before parsing config or doing any work).
+  //    These gates are intentionally inlined rather than composed as middleware,
+  //    because the EVERYTHING-vs-node branch needs two different resolvers; they
+  //    mirror views.schema.ts requireEverythingWorkspace / requireObjectLevel so
+  //    both surfaces enforce identical rules. Parsing config before the gate would
+  //    leak a tiny shape oracle (bad-config 400 vs unauthorized 403/404). ─────────
   if (scopeType === 'EVERYTHING') {
     if (!workspaceId) {
       return c.json({ error: { message: 'workspaceId is required for EVERYTHING-scoped capacity' } }, 400);
@@ -67,6 +67,12 @@ capacityRoutes.get('/capacity', async (c) => {
     // or no access), and a non-null ObjectPermissionLevel when they have at least
     // the lowest level. VIEW is the floor level so any resolved level is sufficient.
   }
+
+  // Authorized — now parse the caller-supplied config (after the gate, mirroring
+  // the GraphQL resolver's authorize-then-parse order).
+  let config: ViewConfig;
+  try { config = JSON.parse(c.req.query('config') ?? '') as ViewConfig; }
+  catch { return c.json({ error: { message: 'Invalid config JSON' } }, 400); }
 
   const result = await viewService.capacity(
     scopeType, scopeId, config,

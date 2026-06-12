@@ -62,6 +62,7 @@
     "roadmap": "Roadmap",
     "dashboard": "Dashboard",
     "notifications": "Notifications",
+    "timesheets": "Timesheets",
     "epics": "Epics",
     "versions": "Versions",
     "templates": "Templates",
@@ -1708,6 +1709,11 @@
     "overBudget": "Over estimate"
   },
   "Timesheets": {
+    "title": "Timesheets",
+    "heading": "My timesheet",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "noWorkspace": "Create a workspace to start tracking timesheets.",
     "colDate": "Date",
     "colTask": "Task",
     "colTotal": "Total",

@@ -1161,3 +1161,25 @@ Accepted residuals (documented, not blocking): `UQ_Timesheet_Period`/`GetOrCreat
 ### DB-execution policy
 
 All DB work (migration apply/idempotency/rollback, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level **0045**, SP count **319** (+7 SPs; 0045 is permission DML). Verified: API **471 unit / 228 integration** (incl. `timesheet.routes`: get-or-create/aggregate/submit→approve, illegal-review 409, locked-period 422, **non-member 403**, **move-out 422**), web **125 unit** (+ en/id parity), API+web builds clean (FULL TURBO), timesheets **e2e 1/1**.
+
+## 2026-06-12 — Phase 8b follow-up — `/timesheets` page route
+
+Closes the one documented 8b deferral: the `timesheet-grid` / `timesheet-review` components existed + were unit-tested but were not wired to a page. **Web-only — no API, schema, SP, or migration change** (DB stays at **0045** / SP **319**).
+
+### Surface — the caller's own weekly timesheet
+The page is **My timesheet**: a Monday→Sunday week for the signed-in user. `?period=YYYY-MM-DD` (any day in the week) is normalized to the week's Mon→Sun bounds; default is the current week. Prev/next week are plain `<Link>` GET navigations that re-run the server page (no client refetch). The single active workspace auto-scopes via `resolveActiveId` (same as `/board`); no-workspace renders a localized empty state.
+
+### Reviewer panel is permission-gated, not role-played
+`TimesheetReview` (approve/reject) renders only when the caller holds `timesheet.approve`, checked server-side via `/auth/me/permissions?workspaceId=` (auth-only, never 403 — workspace-member gets read+submit, owner/admin additionally approve). The grid's Submit is the owner action; both are also disabled by status in the components themselves.
+
+### Pure period math, TDD-first
+`apps/next-web/src/lib/timesheet-period.ts` (`weekPeriodOf`/`currentWeekPeriod`/`shiftWeekPeriod`) does all week boundary math in **UTC on date-only values** so it is TZ/DST-independent (a `Date` arg contributes only its local Y/M/D, re-anchored at UTC midnight). 9 unit tests written before the impl. Display dates render via noon-anchored ISO (`…T12:00:00`) through the fixed-en-US formatter to avoid day shift (matches `lib/date.ts`).
+
+### Data layer mirrors existing patterns
+New `server/queries/timesheets.ts` (get-or-create + aggregate + `canApproveTimesheets`) and `server/actions/timesheets.ts` (`submitTimesheet`/`reviewTimesheet`, `revalidatePath('/timesheets')`) — same `serverFetch` + `ActionResult` + `requireSession` idioms as `forms`/`worklogs`. Client view calls the actions in a `useTransition` and `router.refresh()` on success; errors surface via `notifyActionError`.
+
+### Accepted residual + follow-up
+This page cannot be a **team reviewer queue**: the API's timesheet `list` is caller-scoped (`list(workspaceId, userId)`), so there is no "all submitted timesheets in the workspace" feed. An approver therefore reviews their *own* submitted sheet here. A proper review queue needs a new list-all-in-workspace endpoint (+ authz) — deferred, noted as the next timesheets follow-up. Nav link added under **Workspace** (`Clock` icon, `Nav.timesheets`).
+
+### Verification (web-only)
+Web **138 unit** (+9 period, +4 view; was 125) incl. en/id i18n parity, `tsc --noEmit` clean, `next build` clean (`/timesheets` dynamic route present), **timesheets-page e2e 1/1** on local Docker `ProjectFlow_Test` (seed → view aggregate `1h 0m` → submit→Submitted → approve→Approved → cleanup 204). No DB writes beyond the e2e's own seeded+deleted workspace.

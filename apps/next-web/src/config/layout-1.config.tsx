@@ -4,6 +4,7 @@ import {
   BookOpen,
   Braces,
   Building2,
+  Clock,
   FileStack,
   Folder,
   GitBranch,
@@ -27,6 +28,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Roadmap',       labelKey: 'roadmap',       icon: GitBranch,       path: '/roadmap' },
   { title: 'Dashboard',     labelKey: 'dashboard',     icon: BarChart2,       path: '/dashboard' },
   { title: 'Notifications', labelKey: 'notifications', icon: Bell,            path: '/notifications' },
+  { title: 'Timesheets',    labelKey: 'timesheets',    icon: Clock,           path: '/timesheets' },
 
   { heading: 'Plan',          headingKey: 'headingPlan' },
   { title: 'Epics',     labelKey: 'epics',     icon: Layers,          path: '/epics' },

@@ -62,6 +62,7 @@
     "roadmap": "Peta Jalan",
     "dashboard": "Dasbor",
     "notifications": "Notifikasi",
+    "timesheets": "Lembar Waktu",
     "epics": "Epik",
     "versions": "Versi",
     "templates": "Templat",
@@ -1708,6 +1709,11 @@
     "overBudget": "Melebihi estimasi"
   },
   "Timesheets": {
+    "title": "Lembar Waktu",
+    "heading": "Lembar waktu saya",
+    "prevWeek": "Minggu sebelumnya",
+    "nextWeek": "Minggu berikutnya",
+    "noWorkspace": "Buat ruang kerja untuk mulai melacak lembar waktu.",
     "colDate": "Tanggal",
     "colTask": "Tugas",
     "colTotal": "Total",

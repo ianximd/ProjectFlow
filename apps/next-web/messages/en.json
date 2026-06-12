@@ -855,6 +855,13 @@
       "removeFilter": "Remove filter",
       "removeGroup": "Remove group",
       "removeSortKey": "Remove sort key"
+    },
+    "workload": {
+      "empty": "No assignees with work in this range.",
+      "overCapacity": "Over capacity",
+      "points": "{value} pts",
+      "taskCount": "{count, plural, one {# task} other {# tasks}}",
+      "barAria": "Capacity for {name}"
     }
   },
   "Hierarchy": {

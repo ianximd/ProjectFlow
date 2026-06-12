@@ -72,10 +72,14 @@ const TRUNCATION_ORDER = [
   'Tasks',
   // Phase 2 (0030): Tasks.TaskTypeId FKs TaskTypes — delete after Tasks.
   'TaskTypes',
+  // Phase 8c (0046): SprintSettings FK Folders; Sprints now FK Lists/Folders
+  // (0046 added Sprints.ListId/FolderId). Both MUST be deleted BEFORE Lists/Folders
+  // or the Lists/Folders DELETE fails the new FK once a sprint row exists.
+  'SprintSettings',
+  'Sprints',
   // Hierarchy (0029): Tasks FK Lists; Lists FK Folders; both FK Projects/Workflows.
   'Lists',
   'Folders',
-  'Sprints',
   'Versions',
   'Components',
   'Labels',

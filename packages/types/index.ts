@@ -1206,7 +1206,7 @@ export interface TaskWatcher {
 
 // ───────────────────────── Views Engine (Phase 3) ─────────────────────────
 export type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
-export type ViewType = 'list' | 'board' | 'table' | 'calendar';
+export type ViewType = 'list' | 'board' | 'table' | 'calendar' | 'workload' | 'box';
 export type CapacityStatus = 'over' | 'at' | 'under';
 
 export type FieldRefKind = 'builtin' | 'custom';
@@ -1228,6 +1228,10 @@ export interface ViewConfig {
   dateField?: FieldRef;
   meMode?: boolean;
   pageSize?: number;            // default 25
+  // Phase 8d Workload/Box config-only keys (no schema change — live in SavedViews.config).
+  capacityMetric?: CapacityMetric;        // default 'time'
+  capacityPerDaySeconds?: number;         // per-assignee daily capacity for metric='time'
+  capacityPerSprintPoints?: number;       // per-assignee capacity for metric='points'
 }
 
 export interface SavedView {
@@ -1246,6 +1250,32 @@ export interface SavedView {
 
 export interface ViewGroup { key: string; label: string; count: number }
 export interface ViewTaskPage { tasks: Task[]; total: number; groups?: ViewGroup[] }
+
+// ─── Workload / Box capacity (Phase 8d) ────────────────────────────────────
+/** Which unit a Workload view measures capacity in. 'time' sums assigned
+ *  TimeEstimateSeconds; 'points' sums assigned StoryPoints. */
+export type CapacityMetric = 'time' | 'points';
+
+/** One assignee's assigned load vs capacity over the requested range. */
+export interface CapacityRow {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  assignedSeconds: number;   // sum of TimeEstimateSeconds across assigned in-range tasks
+  assignedPoints: number;    // sum of StoryPoints across assigned in-range tasks
+  taskCount: number;
+  capacity: number;          // capacity in the active metric's unit (seconds or points)
+  status: CapacityStatus;    // classifier verdict for the active metric
+  ratio: number;             // assigned / capacity in the active metric
+}
+
+export interface CapacityResult {
+  metric: CapacityMetric;
+  from: string | null;       // ISO date (inclusive) or null = unbounded
+  to: string | null;         // ISO date (inclusive) or null = unbounded
+  rows: CapacityRow[];
+}
 
 export type BulkAction =
   | { kind: 'set_status'; status: string }

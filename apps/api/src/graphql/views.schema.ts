@@ -6,7 +6,7 @@ import { ViewNotFoundError, ViewValidationError } from '../modules/views/view.er
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import { pubsub } from './pubsub.js';
 import type { GQLContext } from './context.js';
-import type { SavedView, ViewTaskPage, ViewConfig, HierarchyNodeType } from '@projectflow/types';
+import type { SavedView, ViewTaskPage, ViewConfig, HierarchyNodeType, CapacityResult, CapacityRow } from '@projectflow/types';
 
 /**
  * The view scope types (LIST/FOLDER/SPACE/EVERYTHING) map 1:1 onto hierarchy
@@ -18,9 +18,9 @@ function authzNode(scopeType: string): HierarchyNodeType | null {
 }
 
 type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
-type ViewType = 'list' | 'board' | 'table' | 'calendar';
+type ViewType = 'list' | 'board' | 'table' | 'calendar' | 'workload' | 'box';
 const SCOPE_TYPES: readonly ViewScopeType[] = ['LIST', 'FOLDER', 'SPACE', 'EVERYTHING'];
-const VIEW_TYPES: readonly ViewType[] = ['list', 'board', 'table', 'calendar'];
+const VIEW_TYPES: readonly ViewType[] = ['list', 'board', 'table', 'calendar', 'workload', 'box'];
 
 /** Validate a scopeType arg at the resolver boundary so a bad value throws a
  * clean BAD_REQUEST instead of surfacing as a raw mssql 500 from the SP CHECK. */
@@ -130,6 +130,29 @@ export function registerViewsGraphql(): void {
     tasks:  t.field({ type: [TaskType], resolve: (p) => (p.tasks as any[]).map(mapTaskRow) as any }),
   }) });
 
+  const CapacityRowType = builder.objectRef<CapacityRow>('ViewCapacityRow');
+  CapacityRowType.implement({ fields: (t) => ({
+    userId:          t.exposeString('userId'),
+    name:            t.string({ nullable: true, resolve: (r) => r.name }),
+    email:           t.string({ nullable: true, resolve: (r) => r.email }),
+    avatarUrl:       t.string({ nullable: true, resolve: (r) => r.avatarUrl }),
+    assignedSeconds: t.exposeFloat('assignedSeconds'),
+    assignedPoints:  t.exposeFloat('assignedPoints'),
+    taskCount:       t.exposeInt('taskCount'),
+    capacity:        t.exposeFloat('capacity'),
+    status:          t.exposeString('status'),
+    // ratio can be Infinity (zero-capacity row) — clamp to 1e9 so JSON stays safe.
+    ratio:           t.float({ resolve: (r) => (Number.isFinite(r.ratio) ? r.ratio : 1e9) }),
+  }) });
+
+  const CapacityResultType = builder.objectRef<CapacityResult>('ViewCapacityResult');
+  CapacityResultType.implement({ fields: (t) => ({
+    metric: t.exposeString('metric'),
+    from:   t.string({ nullable: true, resolve: (r) => r.from }),
+    to:     t.string({ nullable: true, resolve: (r) => r.to }),
+    rows:   t.field({ type: [CapacityRowType], resolve: (r) => r.rows }),
+  }) });
+
   const WorkflowStatusType = builder.objectRef<{ id: string; name: string; category: string; color: string; position: number }>('ViewWorkflowStatus');
   WorkflowStatusType.implement({ fields: (t) => ({
     id:       t.exposeString('id'),
@@ -213,6 +236,34 @@ export function registerViewsGraphql(): void {
         catch { throw new GraphQLError('Invalid config JSON', { extensions: { code: 'VIEW_VALIDATION' } }); }
         try {
           return await viewService.runConfig(scopeType, a.scopeId ?? null, config, { page: a.page ?? 1, meMode: a.meMode ?? undefined }, a.workspaceId ?? undefined, userId);
+        } catch (e) { throw toGraphqlError(e); }
+      },
+    }),
+    viewCapacity: t.field({
+      type: CapacityResultType,
+      args: {
+        scopeType:   t.arg.string({ required: true }),
+        scopeId:     t.arg.string({ required: false }),
+        config:      t.arg.string({ required: true }),
+        from:        t.arg.string({ required: false }),
+        to:          t.arg.string({ required: false }),
+        workspaceId: t.arg.string({ required: false }),
+      },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        const scopeType = assertScopeType(a.scopeType);
+        const node = authzNode(scopeType);
+        if (node) await requireObjectLevel(ctx, node, a.scopeId, 'VIEW');
+        else await requireEverythingWorkspace(ctx, a.workspaceId);
+        let config: ViewConfig;
+        try { config = JSON.parse(a.config) as ViewConfig; }
+        catch { throw new GraphQLError('Invalid config JSON', { extensions: { code: 'VIEW_VALIDATION' } }); }
+        try {
+          return await viewService.capacity(
+            scopeType, a.scopeId ?? null, config,
+            { from: a.from ?? null, to: a.to ?? null },
+            a.workspaceId ?? undefined, userId,
+          );
         } catch (e) { throw toGraphqlError(e); }
       },
     }),

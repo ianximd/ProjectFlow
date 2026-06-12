@@ -16,6 +16,7 @@ import { registerRelationshipsGraphql } from './relationships.schema.js';
 import { registerRecurrenceGraphql } from './recurrence.schema.js';
 import { registerViewsGraphql } from './views.schema.js';
 import { registerTemplatesGraphql } from './templates.schema.js';
+import { registerTimesheetsGraphql } from './timesheets.schema.js';
 import { registerPresenceGraphql } from './presence.schema.js';
 import { registerAutomationGraphql } from './automation.schema.js';
 import { registerDocsGraphql } from './docs.schema.js';
@@ -777,6 +778,12 @@ registerRecurrenceGraphql();
 // ─────────────────────────────────────────
 registerViewsGraphql();
 registerTemplatesGraphql();
+
+// ─────────────────────────────────────────
+// Timesheets (Phase 8b) — Timesheet/TimesheetAggregate types + timesheet/
+// timesheetAggregate queries + submitTimesheet/reviewTimesheet mutations.
+// ─────────────────────────────────────────
+registerTimesheetsGraphql();
 
 // ─────────────────────────────────────────
 // Presence (Phase 3.5c) — PresenceUser type + presenceHeartbeat/presenceLeave

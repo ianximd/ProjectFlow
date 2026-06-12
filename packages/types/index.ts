@@ -1207,6 +1207,7 @@ export interface TaskWatcher {
 // ───────────────────────── Views Engine (Phase 3) ─────────────────────────
 export type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
 export type ViewType = 'list' | 'board' | 'table' | 'calendar';
+export type CapacityStatus = 'over' | 'at' | 'under';
 
 export type FieldRefKind = 'builtin' | 'custom';
 export interface FieldRef { kind: FieldRefKind; key: string } // custom key = CustomFields.Id (GUID)

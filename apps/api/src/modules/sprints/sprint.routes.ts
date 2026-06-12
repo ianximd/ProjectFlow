@@ -3,6 +3,7 @@ import { sprintService } from './sprint.service.js';
 import { SprintRepository } from './sprint.repository.js';
 import { ProjectRepository } from '../projects/project.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { runSprintSweep } from './sprint.worker.js';
 
 export const sprintRoutes = new Hono();
 
@@ -154,3 +155,14 @@ sprintRoutes.post(
     }
   },
 );
+
+// Test/dev-only manual sweep trigger (NEVER mounted in production). Lets e2e
+// drive the scheduler deterministically without waiting for the 15-min tick.
+if (process.env.NODE_ENV !== 'production') {
+  sprintRoutes.post('/_sweep', async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const now = body?.now ? new Date(body.now) : new Date();
+    const result = await runSprintSweep(now);
+    return c.json({ data: result });
+  });
+}

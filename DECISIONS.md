@@ -887,6 +887,45 @@ Phase 6d closes the final automation slice: an 18-template in-code catalog with 
 
 `automation.templates.ts` defines 18 templates (catalog keys: `auto-assign-on-create`, `webhook-on-done`, etc.) in the 15–20 band. The gallery PRE-FILLS the create-rule dialog with the template's `name`, `trigger`, `conditions`, and `actions`. **No tenant rows are seeded** — the catalog is static code, served via `GET /automations/templates`.
 
+---
+
+## 2026-06-12 — Phase 8c (Sprints / Agile)
+
+Re-models flat per-Project `Sprints` into the Phase-1 hierarchy: a Sprint becomes a **List under a sprint-flagged Folder**, with cadence-driven auto-start/auto-complete/auto-roll-forward and per-assignee story-point rollups. The legacy `Tasks.SprintId` denorm is retained (maintained) so existing reports/automation keep working.
+
+### Migration renumber (plan predated 8a/8b)
+
+The plan (2026-06-07) used `0045_sprint_folders` / `0045b`, but `0044`/`0045` were taken by Phase 8b timesheets. Renumbered to **`0046_sprint_folders.sql`** (schema: `Folders.IsSprintFolder`, `SprintSettings` 1:1 with the sprint Folder, `Sprints.ListId`/`FolderId` + `UQ_Sprint_List` filtered-unique + `IX_Sprint_Folder`), **`0046b_sprint_data_migration.sql`** (idempotent legacy fold, local-Docker only), and **`0047_sprint_manage_perm.sql`** (RBAC seed). Local Docker `ProjectFlow_Test` advances **0045 → 0047**; SP count **319 → 325** (+6: `usp_Folder_Set/GetSprintSettings`, `usp_Sprint_CreateInFolder/RollForward/GetPointsRollup/ListDueFolders`; `usp_Report_SprintSummary` modified; `usp_Folder_GetWorkspaceId` already existed and is reused with its `@Id` param, NOT recreated).
+
+### `sprint.manage` is seeded NOW (not deferred) — the 8b fail-closed lesson
+
+The plan invented a `sprint.manage` slug for folder-settings + roll-forward but only noted it as an "RBAC seed follow-up". `requirePermission` fail-closes (403) on an unseeded slug — exactly what bit Phase 8b's `timesheet.*`. So **0047 seeds `sprint.manage`** into `Permissions` + grants it to `workspace-owner` + `workspace-admin` (the management tier, mirroring `sprint.delete` from 0019). The REST integration test runs as the workspace **owner** (no super-admin bypass) to prove the seed end-to-end, plus a non-member → 403 negative test.
+
+### Roll-forward keys on source-List membership, NOT `SprintId` (headline correctness)
+
+The existing `usp_Sprint_Complete` already **nulls `SprintId`** on unfinished tasks at completion (leaving `ListId` intact). The plan's `usp_Sprint_RollForward` matched `WHERE SprintId = @FromSprintId`, which would roll **zero** tasks after an auto-complete (the sweep completes BEFORE rolling forward). Fix: roll-forward matches `WHERE ListId = @FromListId` — the List is the authoritative membership signal in the sprint-folder model (1:1 sprint↔List via `UQ_Sprint_List`). DONE-category / resolved / soft-deleted tasks are excluded. A `THROW 50048` guards a NULL source List (Batch-B review). This is validated at three layers: the isolated `usp_Sprint_RollForward` test, the `sprintService` test (start→complete→rollForward), and the `runSprintSweep` integration + e2e.
+
+### truncate.ts FK reorder (would have broken the WHOLE integration suite)
+
+`0046`'s new `Sprints.ListId→Lists` / `Sprints.FolderId→Folders` FKs mean `Lists`/`Folders` can no longer be deleted before `Sprints`. `truncateAll`'s order was `Lists → Folders → Sprints`; moving `SprintSettings` + `Sprints` **before** `Lists`/`Folders` is mandatory or every integration test's `beforeEach` fails FK 547. (The reconciliation flagged the missing-`SprintSettings` gap; the Sprints-ordering break from the new FKs was caught at first migrate.)
+
+### PascalCase landmine — GraphQL `createSprintInFolder` normalizes the row
+
+`usp_Sprint_CreateInFolder` returns a raw `SELECT *` (PascalCase) row, but `SprintType` uses `t.exposeString('id')` (camelCase). The mutation resolver **normalizes** the row to the camelCase `SprintShape` so the exposeString resolvers resolve (the pre-existing `sprints` query, which returns raw `usp_Sprint_List` rows, is likely already casing-broken for `id`/`status` — left as a pre-existing issue, out of scope). New `SprintType.listId/folderId/points` resolvers are case-tolerant (`s.x ?? s.X`).
+
+### Accepted residuals / documented follow-ups
+
+- **Data migration `0046b` is local-Docker-only**; a production cutover runbook is deferred (spec §10.6).
+- `usp_Sprint_GetPointsRollup` / `usp_Report_SprintSummary` membership use `(@ListId IS NOT NULL AND t.ListId=@ListId) OR t.SprintId=@SprintId` — the `OR SprintId` is a **mid-migration fallback**; once all sprints are List-bound it is redundant (1:1 `UQ_Sprint_List` precludes double-count in steady state). Remove the fallback in a later cleanup.
+- Per-assignee rollup excludes unassigned tasks' points (they appear in the total but not the per-assignee sum) — by design.
+- Test/dev-only `POST /sprints/_sweep` (NODE_ENV `!== 'production'` guard) lets the e2e drive the scheduler deterministically; never mounted in prod.
+- The two web components (`SprintSetup`/`SprintList`) are built + unit-tested but **not yet wired to a page route** (the plan specified no `page.tsx`) — a surfacing follow-up, mirroring the 8b page-route follow-up.
+- **Pre-existing (out of scope, noted):** `scripts/db-migrate.ts` records `MigrationHistory` outside the per-migration transaction (a crash between record + commit could skip a migration); `usp_Sprint_Complete` has no `BEGIN TRANSACTION` and uses unqualified table names. None are 8c regressions.
+
+### Verification (local Docker `ProjectFlow_Test`)
+
+Migrations reversible (rollback drops auto-named FK + default constraints before columns) + idempotent; **API 482 unit / 243 integration (57 files), web 139 unit + en/id parity, apps/api tsc + next build clean, `sprint-agile` e2e 1/1** (auto-complete → next sprint created → task rolled forward → points ≥ 5). All DB work ran ONLY against local Docker.
+
 ### Shared `ruleShapeSchema` and pre-existing route bug fixed
 
 `ruleShapeSchema` (the Zod shape shared by create + update + the catalog integrity test) was lifted verbatim from `automation.routes.ts` into `automation.templates.schema.ts` (single source of truth). This lift also **fixed a pre-existing 6a route bug**: `triggerSchema` lacked the `field` key, so a `FIELD_CHANGED` rule's `trigger.field` was silently stripped on save (the route validated and persisted a `trigger` without `field`). The fix adds `field: z.string().optional()` to `triggerSchema`; a new integration round-trip test covers the before/after.

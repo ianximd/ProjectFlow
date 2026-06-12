@@ -16,6 +16,8 @@ BEGIN
 
         DECLARE @FromListId UNIQUEIDENTIFIER;
         SELECT @FromListId = ListId FROM dbo.Sprints WHERE Id = @FromSprintId;
+        IF @FromListId IS NULL
+            THROW 50048, 'Source sprint not found or has no List.', 1;
 
         -- Move unfinished tasks from the SOURCE sprint's List into the target
         -- sprint's List, maintaining the SprintId denorm. Membership is keyed on

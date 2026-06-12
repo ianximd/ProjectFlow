@@ -1706,5 +1706,24 @@
     "rollup": "Subtotal {duration}",
     "remaining": "Sisa {duration}",
     "overBudget": "Melebihi estimasi"
+  },
+  "Timesheets": {
+    "colDate": "Tanggal",
+    "colTask": "Tugas",
+    "colTotal": "Total",
+    "colBillable": "Dapat ditagih",
+    "colNonBillable": "Tidak dapat ditagih",
+    "noEntries": "Tidak ada waktu yang dicatat pada periode ini",
+    "total": "Total periode",
+    "submit": "Kirim",
+    "approve": "Setujui",
+    "reject": "Tolak",
+    "reviewTitle": "Tinjau lembar waktu",
+    "status": {
+      "draft": "Draf",
+      "submitted": "Terkirim",
+      "approved": "Disetujui",
+      "rejected": "Ditolak"
+    }
   }
 }

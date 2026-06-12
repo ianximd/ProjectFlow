@@ -1706,5 +1706,24 @@
     "rollup": "Subtotal {duration}",
     "remaining": "{duration} left",
     "overBudget": "Over estimate"
+  },
+  "Timesheets": {
+    "colDate": "Date",
+    "colTask": "Task",
+    "colTotal": "Total",
+    "colBillable": "Billable",
+    "colNonBillable": "Non-billable",
+    "noEntries": "No time logged in this period",
+    "total": "Period total",
+    "submit": "Submit",
+    "approve": "Approve",
+    "reject": "Reject",
+    "reviewTitle": "Review timesheet",
+    "status": {
+      "draft": "Draft",
+      "submitted": "Submitted",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
   }
 }

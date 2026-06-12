@@ -1228,3 +1228,32 @@ This page cannot be a **team reviewer queue**: the API's timesheet `list` is cal
 
 ### Verification (web-only)
 Web **138 unit** (+9 period, +4 view; was 125) incl. en/id i18n parity, `tsc --noEmit` clean, `next build` clean (`/timesheets` dynamic route present), **timesheets-page e2e 1/1** on local Docker `ProjectFlow_Test` (seed → view aggregate `1h 0m` → submit→Submitted → approve→Approved → cleanup 204). No DB writes beyond the e2e's own seeded+deleted workspace.
+
+## 2026-06-12 — Phase 8d (Workload & Box Views)
+
+Adds two Views-Engine view types: **`workload`** (per-assignee capacity bars flagging over/at/under capacity) and **`box`** (assignee-swimlane board). One shared `viewService.capacity()` built on the existing Phase-3 query **compiler**, surfaced as a GraphQL `viewCapacity` query **and** a parallel REST `GET /views/capacity` mirror; pure unit-tested helpers do the classification/fold. Built subagent-driven (per-task TDD implementer + spec + code-quality review, final whole-slice opus review).
+
+### Architecture — capacity computed live, no new task SQL
+Capacity is summed **live** from existing columns — `Tasks.TimeEstimateSeconds` (8a) + `Tasks.StoryPoints` — per assignee over the SAME compiled WHERE the view's task page uses, so it inherits the Views Engine's tenant/scope/filter isolation (`ViewRepository.capacityByAssignee` reuses `compiled.whereSql` + `compiled.params`, joins `TaskAssignees`→`Users`). Two pure helpers do the logic: `classifyCapacity(assigned, capacity)` → `over|at|under` + ratio (2% tolerance band, `Infinity` for zero-capacity), and `aggregateCapacity(rawRows, opts)` folds PascalCase SQL rows → classified camelCase `CapacityResult`, sorted by descending ratio. The only persisted config is **config-only `SavedViews.config` keys** (`capacityMetric`, `capacityPerDaySeconds`, `capacityPerSprintPoints`) — no new SP.
+
+### Fail-closed authz, dual surface
+Both surfaces authorize BEFORE any work and mirror `previewViewTasks`: node scopes (LIST/FOLDER/SPACE) require object-level `VIEW`; EVERYTHING requires `workspace.read`. The node-scope workspace is derived SOLELY from the authorized scope node (`getScopeNode(scopeId)`) — a caller-supplied `workspaceId` is never consulted for node scopes, so it cannot widen the aggregation cross-tenant. `config` (caller JSON) can only *narrow within* the authorized scope (filter AND-appended after the mandatory tenant+scope predicates), never widen it. Final opus review traced both surfaces end-to-end: **zero cross-tenant holes**.
+
+### Deviation from plan — migration 0048 WAS required (caught by the live e2e)
+The plan's DoD asserted "**No DB migration**", but `SavedViews` carries `CK_SavedViews_Type CHECK (Type IN ('list','board','table','calendar'))` from migration 0032 — so `createSavedView('workload'|'box')` failed at the DB CHECK. Every unit/integration test missed it because they exercised `viewService.capacity` directly, never inserting a `workload`/`box` row through the constrained table; the **Playwright e2e (the only path that creates a real saved view)** caught it. Added **migration `0048_savedviews_workload_box_types.sql`** (idempotent drop+recreate of the CHECK to include the two types) + matching `rollback/0048_*.down.sql`. Local DB now **0048**; **SP count unchanged at 325**.
+
+### Review-caught fixes (per-task)
+1. **DueDate is DATETIME2 (0024), not DATE.** The range bound was binding `sql.Date`, truncating `@to` to midnight and silently dropping same-day-afternoon tasks. Fixed to `sql.DateTime2` with a half-open upper bound (`DueDate < DATEADD(DAY,1,@to)`) — whole `to` day inclusive, index-sargable. Regression-guarded by an integration case with a `15:30` due time.
+2. **Capacity-range vs day-count coherence.** `ViewService.capacity` normalizes the range to **date-only once** at the service boundary and feeds that to BOTH the SQL range and `daySpanInclusive`, so the days counted == the calendar days the SQL includes (no skew from date-vs-datetime input).
+3. **REST authorizes before parsing config** (was parse-then-authz) — removes a tiny shape oracle, matching the GraphQL order.
+4. **Infinity-ratio JSON safety on both surfaces** (REST `sanitizeRow`→1e9; GraphQL `t.float` clamp→1e9).
+5. **Negative-authz integration coverage** added (non-member→403 node, missing scope→404, unauth→401) — the codebase's most-regressed bug class.
+
+### Accepted residuals / follow-ups (final opus review — all Minor, none blocking)
+1. **`days=0` (no range) fallback** multiplies per-day capacity by 1 while the SQL sums ALL assigned tasks → a workload view opened with no `?from/&to` can show misleading "over" flags. The fold's behavior is a documented, unit-pinned contract; per the approved plan the range is **URL-param driven** (`?from=&to=`) with **no default range and no range-picker UI this slice**. Follow-up: default the page to a sensible window (e.g. current week) or render a neutral "capacity unknown" state when no range is given.
+2. **No create-view UI for the new types** — they arrive via API/config/seeding (same as `board` pre-engine). Follow-up: add `workload`/`box` to the view-create affordance.
+3. **Box view has no live sub** (`view-surface` passes only `taskPage`+`activeView`; no `useLiveTasks`) — v1 groups client-side from the SSR page; updates need an SSR re-seed. Follow-up: wire `useLiveTasks` like the other engine surfaces.
+4. **meMode + co-assignee fan-out (cosmetic):** a me-mode workload view can surface co-assignees of the caller's shared tasks. Acceptable for v1.
+
+### DB-execution policy
+All DB work (migration 0048 apply + rollback file, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env` (shell-exported `DB_*` override `--env-file-if-exists`; prod cutover of 0048 deferred to ops). Local DB **0048**, SP **325** (unchanged — 8d adds no SP). Verified: API **493 unit / 252 integration**, web **146 unit** (incl. en/id parity), API+web builds clean, **workload-box e2e 2/2** (Workload flags an over-capacity assignee; Box groups tasks into per-assignee swimlanes). Final whole-slice opus review: **READY TO MERGE — zero Critical/Important, cross-tenant + PascalCase/camelCase seam + full wire-up all verified clean.**

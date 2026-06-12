@@ -4,6 +4,17 @@ import type { WorkLog, WorkLogListResult, WorkLogSource, TaskTimeRollup } from '
 
 const repo = new WorkLogRepository();
 
+/**
+ * Phase 8b — thrown when a worklog write targets a date inside a
+ * submitted/approved Timesheet period. Routes map this to HTTP 422.
+ */
+export class PeriodLockedError extends Error {
+  constructor() {
+    super('Time period is locked by a submitted or approved timesheet');
+    this.name = 'PeriodLockedError';
+  }
+}
+
 export class WorkLogService {
   listByTask(taskId: string): Promise<WorkLogListResult> {
     return repo.listByTask(taskId);
@@ -22,6 +33,7 @@ export class WorkLogService {
       tagIds?:      string[];
     } = {},
   ): Promise<WorkLog> {
+    if (await repo.isPeriodLocked(userId, startedAt)) throw new PeriodLockedError();
     const log = await repo.create(taskId, userId, timeSpentSeconds, startedAt, {
       description: opts.description,
       billable:    opts.billable,
@@ -44,6 +56,16 @@ export class WorkLogService {
       tagIds?:           string[];
     },
   ): Promise<WorkLog | null> {
+    // Phase 8b period-lock: reject if the entry's work date falls inside a
+    // submitted/approved period. The effective date is the patch's startedAt
+    // when present, otherwise the existing row's StartedAt (PascalCase from
+    // usp_WorkLog_GetById).
+    const existing  = patch.startedAt ? null : await repo.getById(id);
+    const effective = patch.startedAt ?? (existing?.StartedAt as string | Date | undefined);
+    if (effective) {
+      const workDate = effective instanceof Date ? effective.toISOString() : String(effective);
+      if (await repo.isPeriodLocked(userId, workDate)) throw new PeriodLockedError();
+    }
     const log = await repo.update(id, userId, {
       timeSpentSeconds: patch.timeSpentSeconds,
       startedAt:        patch.startedAt,

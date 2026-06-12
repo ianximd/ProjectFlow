@@ -1,7 +1,7 @@
 import { Hono }        from 'hono';
 import { zValidator }  from '@hono/zod-validator';
 import { z }           from 'zod';
-import { WorkLogService } from './worklog.service.js';
+import { WorkLogService, PeriodLockedError } from './worklog.service.js';
 import { WorkLogRepository } from './worklog.repository.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
@@ -92,8 +92,13 @@ worklogRoutes.post(
     const user = (c as any).get('user') as any;
     const userId = user.userId as string;
     const { taskId, timeSpentSeconds, startedAt, description, billable, source, endedAt, tagIds } = c.req.valid('json');
-    const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, { description, billable, source, endedAt, tagIds });
-    return c.json({ log }, 201);
+    try {
+      const log = await svc.create(taskId, userId, timeSpentSeconds, startedAt, { description, billable, source, endedAt, tagIds });
+      return c.json({ log }, 201);
+    } catch (err) {
+      if (err instanceof PeriodLockedError) return c.json({ error: err.message }, 422);
+      throw err;
+    }
   },
 );
 
@@ -169,9 +174,14 @@ worklogRoutes.patch(
     const user   = (c as any).get('user') as any;
     const userId = user.userId as string;
     const patch  = c.req.valid('json');
-    const log    = await svc.update(id, userId, patch);
-    if (!log) return c.json({ error: 'Not found or forbidden' }, 404);
-    return c.json({ log });
+    try {
+      const log = await svc.update(id, userId, patch);
+      if (!log) return c.json({ error: 'Not found or forbidden' }, 404);
+      return c.json({ log });
+    } catch (err) {
+      if (err instanceof PeriodLockedError) return c.json({ error: err.message }, 422);
+      throw err;
+    }
   },
 );
 

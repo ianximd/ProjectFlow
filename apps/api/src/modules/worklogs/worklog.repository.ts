@@ -51,6 +51,18 @@ export class WorkLogRepository {
     return rows[0] ?? null;
   }
 
+  /**
+   * Phase 8b period-lock: true when a submitted/approved Timesheet for this user
+   * covers the given work date, so the create/update write path can reject it.
+   */
+  async isPeriodLocked(userId: string, workDate: string): Promise<boolean> {
+    const rows = await execSpOne<{ IsLocked: boolean }>('usp_WorkLog_PeriodLocked', [
+      { name: 'UserId',   type: sql.UniqueIdentifier, value: userId },
+      { name: 'WorkDate', type: sql.Date,             value: workDate.slice(0, 10) },
+    ]);
+    return Boolean(rows[0]?.IsLocked);
+  }
+
   async listByTask(taskId: string): Promise<WorkLogListResult> {
     const sets = await execSp<WorkLogRow | TotalsRow>('usp_WorkLog_ListByTask', [
       { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },

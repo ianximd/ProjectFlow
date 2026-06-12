@@ -344,6 +344,11 @@ export class ViewService {
    * query compiler so the same scope/filter/tenant guarantees apply, then sums
    * assigned estimates (8a) + points (8c) per assignee over an optional DueDate
    * range and classifies each assignee over/at/under capacity (pure helpers).
+   *
+   * @param workspaceId required when scopeType is 'EVERYTHING' (resolveScope throws
+   *   otherwise); forwarded from the authenticated workspace context by the caller.
+   * @param range inclusive calendar-day bounds (ISO 'YYYY-MM-DD'). Capacity is
+   *   per-day granular, so any time component is dropped (see normalization below).
    */
   async capacity(
     scopeType: ViewScopeType,
@@ -360,16 +365,22 @@ export class ViewService {
       scope: { scopeType, scopePath: scope.scopePath },
       catalog,
       filter: config.filter ?? { conjunction: 'AND', rules: [] },
-      sort: [], // capacity does not sort tasks; assignee sort is applied in the fold
+      sort: [], // capacity does not sort tasks; rows are re-ordered by overload ratio in aggregateCapacity
       meUserId: config.meMode ? userId : undefined,
     });
-    const raw = await this.repo.capacityByAssignee(compiled, range);
+    // Capacity is calendar-day granular (capacityPerDaySeconds × days). Normalize the
+    // bounds to date-only ONCE here so the SQL DueDate range (Task 3, whole-`to`-day
+    // inclusive) and the daySpanInclusive day-count always agree, whether the caller
+    // passes a date or a datetime string.
+    const from = range.from ? range.from.slice(0, 10) : null;
+    const to = range.to ? range.to.slice(0, 10) : null;
+    const raw = await this.repo.capacityByAssignee(compiled, { from, to });
     const metric = config.capacityMetric ?? 'time';
-    const days = daySpanInclusive(range.from, range.to);
+    const days = daySpanInclusive(from, to);
     return aggregateCapacity(raw, {
       metric,
-      from: range.from,
-      to: range.to,
+      from,
+      to,
       capacityPerDaySeconds: config.capacityPerDaySeconds,
       capacityPerSprintPoints: config.capacityPerSprintPoints,
       days,

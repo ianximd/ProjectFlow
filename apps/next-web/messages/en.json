@@ -862,6 +862,9 @@
       "points": "{value} pts",
       "taskCount": "{count, plural, one {# task} other {# tasks}}",
       "barAria": "Capacity for {name}"
+    },
+    "box": {
+      "unassigned": "Unassigned"
     }
   },
   "Hierarchy": {

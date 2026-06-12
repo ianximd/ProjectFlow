@@ -1116,3 +1116,39 @@ The plan note said "manual/range entries always set EndedAt" but `usp_WorkLog_Cr
 ### DB-execution policy
 
 All DB work (migration apply/rollback/re-apply, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — the e2e dev servers were booted by Playwright with a shell-exported local DB env that overrides the prod-pointing `apps/api/.env` (Node `--env-file` precedence). Migration level **0043**, SP count **312**. Verified: API **458 unit / 223 integration** (52 files, incl. 2 cross-tenant neg tests), web **120 unit** (+ en/id parity), API+web builds clean, time-tracking **e2e 1/1**.
+
+## 2026-06-12 — Phase 8b — Timesheets
+
+A submit/approve **envelope** over the 8a `WorkLogs`. The new `Timesheets` table carries only `Status` (`draft|submitted|approved|rejected`) + review metadata; the line data stays in `WorkLogs`, aggregated within `[PeriodStart, PeriodEnd]` by `usp_Timesheet_Aggregate`. One envelope per `(UserId, PeriodStart, PeriodEnd)`. Migration **0044**; DB now at **0044**, deployed SP count **319** (+7 new SPs). A new `timesheets` API module (SP-per-op repo → shared `timesheetService` → Hono REST primary + Pothos GraphQL mirror) follows the `worklogs`/`sprints` shape. Stop-for-review before 8c.
+
+### Schema — envelope only, line data stays in WorkLogs
+
+- `0044` adds `Timesheets(Id, WorkspaceId, UserId, PeriodStart DATE, PeriodEnd DATE, Status, SubmittedAt, ReviewedById, ReviewedAt, Note, CreatedAt, UpdatedAt)` with `CK_Timesheets_Status`, `UQ_Timesheet_Period (UserId, PeriodStart, PeriodEnd)`, and a `IX_Timesheet_Workspace (WorkspaceId, Status)` cover. Idempotent (catalog guards, GO-batched) + reversible (forward→down→forward proven on `ProjectFlow_Test`).
+
+### SPs (7) + aggregation
+
+- `usp_Timesheet_GetOrCreate` (insert-if-missing then select), `_GetById`, `_List`, `_Aggregate`, `_Submit`, `_Review`, and `usp_WorkLog_PeriodLocked`.
+- **`usp_Timesheet_Aggregate`** groups `WorkLogs` by `(CAST(StartedAt AS DATE), TaskId)` within the period, splitting `Billable` vs non-billable seconds; **`EndedAt IS NOT NULL` excludes running timers**. Returns two result sets: per-day×task rows + a period grand-totals row (mapped to `{ rows, totals }`).
+- Status-transition guards throw distinct SQL error numbers: **51810** (illegal submit source), **51811** (illegal review source), **51812** (not found), **51813** (bad decision), **51820** (aggregate of a missing timesheet). Submit/Review use `UPDLOCK, ROWLOCK` + TRY/CATCH/TRANSACTION; submit is `draft|rejected → submitted` (re-submit allowed), review is `submitted → approved|rejected`.
+
+### Period lock (touches the 8a write path)
+
+`usp_WorkLog_PeriodLocked(@UserId, @WorkDate)` returns `IsLocked BIT` = 1 when a `submitted`/`approved` timesheet covers that user's work date. `WorkLogService.create`/`update` call `repo.isPeriodLocked` before writing and throw `PeriodLockedError`; `worklog.routes` maps it to **HTTP 422** on POST and PATCH. Reopening (reviewer setting the sheet back to `rejected`/`draft`) lifts the lock because only `submitted`/`approved` rows count. The worklog suite is otherwise unchanged (unlocked writes still succeed).
+
+### REST primary + GraphQL mirror, one service
+
+- REST: `GET /timesheets` (with `periodStart`+`periodEnd` → get-or-create that envelope; without → list the user's), `GET /timesheets/:id`, `GET /timesheets/:id/aggregate`, `POST /timesheets/:id/submit`, `POST /timesheets/:id/review`. SP error-number → HTTP: 51810/51811/51813 → **409**, 51812 → **404**.
+- GraphQL: `timesheet`/`timesheetAggregate` queries + `submitTimesheet`/`reviewTimesheet` mutations; illegal transitions throw `ILLEGAL_TRANSITION`.
+- Authorization is fail-closed: **`timesheet.read`** (reads), **`timesheet.submit`** (submit), **`timesheet.approve`** (review) — REST `requirePermission`, GraphQL `requireWorkspacePermission`; mutating GraphQL resolvers resolve the envelope's `workspaceId` via `getById` first.
+
+### Frontend
+
+- `timesheet-grid.tsx` — TanStack Table (day×task rows, period totals + billable split in `tfoot`, seconds→"Xh Ym") with a submit button disabled for `submitted`/`approved`. `timesheet-review.tsx` — approve/reject with status badges, buttons enabled only while `submitted`. New `Timesheets.*` i18n namespace in `en.json` + `id.json` (real Indonesian); `messages.unit` parity green.
+
+### e2e — two latent bugs caught running the authored spec live
+
+`e2e/timesheets.spec.ts` (REST-driven: log a closed 1h billable entry → get-or-create envelope → aggregate → submit → approve → confirm a later worklog in the approved period 422s). The spec was authored in the prior session but **never run**; the first live run surfaced two real bugs in its own seeding: (1) it read the token from the **register** response's non-existent `.accessToken` (the API returns the token from a separate **login** at `data.token`); (2) workspace create posted only `{ name }` but the route requires `name` **and** `slug`, so the seed cascade 400'd and surfaced late as a 400 on the worklog write. Both fixed + per-step id assertions added so a seed failure pins to its own call. No production code changed — these were test-seeding bugs.
+
+### DB-execution policy
+
+All DB work (migration apply/idempotency/rollback, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Migration level **0044**, SP count **319** (+7). Verified: API **471 unit / 226 integration** (incl. `timesheet.routes`: get-or-create/aggregate/submit→approve, illegal-review 409, locked-period 422), web **125 unit** (+ en/id parity), API+web builds clean (FULL TURBO), timesheets **e2e 1/1**.

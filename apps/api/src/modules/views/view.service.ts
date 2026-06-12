@@ -11,7 +11,8 @@ import { WorkflowService } from '../workflows/workflow.service.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
 import { accessService } from '../access/access.service.js';
 import { roleService } from '../roles/role.service.js';
-import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult } from '@projectflow/types';
+import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult, CapacityResult } from '@projectflow/types';
+import { aggregateCapacity } from './capacity/capacity-aggregate.js';
 
 // Bulk action → the workspace permission slug its single-task REST route enforces.
 // set_custom_field / move_to_list are intentionally absent: their single-task
@@ -34,6 +35,14 @@ const MAX_PAGE_SIZE = 200;
 // usp_Task_GetById returns SELECT * (PascalCase); read both casings defensively.
 // Mirrors the helper used by the single-task REST custom-field route.
 const taskListId = (t: any): string | null => t?.listId ?? t?.ListId ?? null;
+
+/** Inclusive whole-day span between two ISO dates; 0 when either side is open. */
+function daySpanInclusive(from: string | null, to: string | null): number {
+  if (!from || !to) return 0;
+  const ms = Date.parse(to) - Date.parse(from);
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.floor(ms / 86_400_000) + 1;
+}
 
 interface ScopeNode { workspaceId: string; scopePath: string | null }
 
@@ -328,6 +337,43 @@ export class ViewService {
       page.groups = await this.repo.groupCounts(compiled, builtinGroupExpr(catalog, config.groupBy));
     }
     return page;
+  }
+
+  /**
+   * Phase 8d — capacity aggregation for the Workload/Box views. Reuses the Views
+   * query compiler so the same scope/filter/tenant guarantees apply, then sums
+   * assigned estimates (8a) + points (8c) per assignee over an optional DueDate
+   * range and classifies each assignee over/at/under capacity (pure helpers).
+   */
+  async capacity(
+    scopeType: ViewScopeType,
+    scopeId: string | null,
+    config: ViewConfig,
+    range: { from: string | null; to: string | null },
+    workspaceId: string | undefined,
+    userId: string,
+  ): Promise<CapacityResult> {
+    const scope = await this.resolveScope(scopeType, scopeId, workspaceId);
+    const catalog = await this.catalogFor(scopeType, scopeId);
+    const compiled = compile({
+      workspaceId: scope.workspaceId,
+      scope: { scopeType, scopePath: scope.scopePath },
+      catalog,
+      filter: config.filter ?? { conjunction: 'AND', rules: [] },
+      sort: [], // capacity does not sort tasks; assignee sort is applied in the fold
+      meUserId: config.meMode ? userId : undefined,
+    });
+    const raw = await this.repo.capacityByAssignee(compiled, range);
+    const metric = config.capacityMetric ?? 'time';
+    const days = daySpanInclusive(range.from, range.to);
+    return aggregateCapacity(raw, {
+      metric,
+      from: range.from,
+      to: range.to,
+      capacityPerDaySeconds: config.capacityPerDaySeconds,
+      capacityPerSprintPoints: config.capacityPerSprintPoints,
+      days,
+    });
   }
 }
 

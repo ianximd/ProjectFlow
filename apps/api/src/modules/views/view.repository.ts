@@ -229,8 +229,10 @@ export class ViewRepository {
    * view's task page uses (tenant + scope + filter), so it can never leak across
    * workspaces/scopes. Sums TimeEstimateSeconds (8a) and StoryPoints (8c) for each
    * assignee on the in-scope, in-range, non-deleted tasks. `range` bounds on DueDate
-   * (NULL bound = unbounded on that side). `groupExpr`/`_fid` join params from the
-   * compiler are intentionally NOT applied — capacity has no sort joins.
+   * (NULL bound = unbounded on that side). Tasks with a NULL DueDate are excluded
+   * whenever either bound is set (an unscheduled task counts against no date range).
+   * `groupExpr`/`_fid` join params from the compiler are intentionally NOT applied —
+   * capacity has no sort joins.
    */
   async capacityByAssignee(
     compiled: CompiledQuery,
@@ -243,9 +245,13 @@ export class ViewRepository {
     const req = pool.request();
     for (const [k, v] of Object.entries(compiled.params)) req.input(k, v as any);
 
+    // DueDate is DATETIME2 (migration 0024). Bind range bounds as datetime and use a
+    // half-open upper bound (< to + 1 day) so the WHOLE `to` day is inclusive regardless
+    // of a task's time component, while keeping the predicate index-sargable. Binding as
+    // sql.Date would truncate @to to midnight and silently drop same-day afternoon tasks.
     const rangeParts: string[] = [];
-    if (range.from) { req.input('__capFrom', sql.Date, range.from); rangeParts.push('t.DueDate >= @__capFrom'); }
-    if (range.to)   { req.input('__capTo',   sql.Date, range.to);   rangeParts.push('t.DueDate <= @__capTo'); }
+    if (range.from) { req.input('__capFrom', sql.DateTime2, range.from); rangeParts.push('t.DueDate >= @__capFrom'); }
+    if (range.to)   { req.input('__capTo',   sql.DateTime2, range.to);   rangeParts.push('t.DueDate < DATEADD(DAY, 1, @__capTo)'); }
     const rangeSql = rangeParts.length ? ` AND ${rangeParts.join(' AND ')}` : '';
 
     const res = await req.query(

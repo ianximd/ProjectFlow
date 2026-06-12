@@ -855,6 +855,16 @@
       "removeFilter": "Hapus filter",
       "removeGroup": "Hapus grup",
       "removeSortKey": "Hapus kunci urutan"
+    },
+    "workload": {
+      "empty": "Tidak ada penerima tugas dengan pekerjaan dalam rentang ini.",
+      "overCapacity": "Melebihi kapasitas",
+      "points": "{value} poin",
+      "taskCount": "{count, plural, other {# tugas}}",
+      "barAria": "Kapasitas untuk {name}"
+    },
+    "box": {
+      "unassigned": "Belum ditugaskan"
     }
   },
   "Hierarchy": {

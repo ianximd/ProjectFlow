@@ -10,12 +10,14 @@ import { TableView } from '@/components/views/table-view';
 import { ListView } from '@/components/views/list-view';
 import { CalendarView } from '@/components/views/calendar-view';
 import { BoardViewEngine, type BoardWorkflowStatus } from '@/components/views/board-view-engine';
+import { WorkloadView } from '@/components/views/workload-view';
+import { BoxView } from '@/components/views/box-view';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ViewTaskPageResult } from '@/server/queries/views';
-import type { CustomField, SavedView, ViewScopeType, ViewType } from '@projectflow/types';
+import type { CapacityResult, CustomField, SavedView, ViewScopeType, ViewType } from '@projectflow/types';
 
 /**
  * Live-subscription scope for the view surfaces, resolved SSR in the views page
@@ -62,6 +64,8 @@ interface Props {
   /** Live-subscription scope (created/updated/deleted) for the active surface,
    *  resolved SSR in the page. See {@link LiveScopeProp}. */
   live: LiveScopeProp;
+  /** Per-assignee capacity, resolved SSR for a Workload active view. Null otherwise. */
+  capacity?: CapacityResult | null;
 }
 
 export function ViewSurface({
@@ -75,6 +79,7 @@ export function ViewSurface({
   customFields,
   boardWorkflowStatuses,
   live,
+  capacity,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -190,6 +195,7 @@ export function ViewSurface({
             boardWorkflowStatuses={boardWorkflowStatuses}
             onSelectionChange={onSelectionChange}
             live={live}
+            capacity={capacity}
           />
         ) : (
           <EmptyViewsState />
@@ -221,6 +227,7 @@ function ViewBody({
   boardWorkflowStatuses,
   onSelectionChange,
   live,
+  capacity,
 }: {
   type: ViewType;
   taskPage: ViewTaskPageResult | null;
@@ -231,6 +238,7 @@ function ViewBody({
   boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
   onSelectionChange?: (ids: string[]) => void;
   live: LiveScopeProp;
+  capacity?: CapacityResult | null;
 }) {
   switch (type) {
     case 'table':
@@ -268,6 +276,10 @@ function ViewBody({
           live={live}
         />
       );
+    case 'workload':
+      return <WorkloadView capacity={capacity ?? null} />;
+    case 'box':
+      return <BoxView taskPage={taskPage} activeView={activeView} />;
     default:
       return (
         <ListView

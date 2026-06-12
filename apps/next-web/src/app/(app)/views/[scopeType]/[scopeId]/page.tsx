@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { requireSession } from '@/server/session';
-import { getSavedViews, getViewTasks, getViewWorkflowStatuses, type ViewTaskPageResult } from '@/server/queries/views';
+import { getSavedViews, getViewTasks, getViewWorkflowStatuses, getViewCapacity, type ViewTaskPageResult } from '@/server/queries/views';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface, type LiveScopeProp } from '@/components/views/view-surface';
@@ -22,7 +22,7 @@ export default async function ViewsPage({
   searchParams,
 }: {
   params: Promise<{ scopeType: string; scopeId: string }>;
-  searchParams: Promise<{ viewId?: string; page?: string; meMode?: string; view?: string }>;
+  searchParams: Promise<{ viewId?: string; page?: string; meMode?: string; view?: string; from?: string; to?: string }>;
 }) {
   await requireSession();
 
@@ -77,6 +77,21 @@ export default async function ViewsPage({
       ? await getViewWorkflowStatuses(scopeType, scopeId)
       : null;
 
+  // Workload view: resolve per-assignee capacity SSR from the active view's config
+  // (config-only capacity keys) over an optional [from,to] DueDate range (from
+  // searchParams, else unbounded). Box view groups client-side from taskPage, so
+  // it needs no extra SSR fetch.
+  const capacity =
+    activeView?.type === 'workload'
+      ? await getViewCapacity(
+          scopeType,
+          nodeScopeId,
+          activeView.config,
+          { from: sp.from ?? null, to: sp.to ?? null },
+          workspaceId,
+        )
+      : null;
+
   // Live-subscription scope for the surface (drives useLiveTasks):
   //   - SPACE       → scopeId IS the owning project (a Space is a project here).
   //   - LIST/FOLDER → the owning Space (project) id. There is no client-reachable
@@ -101,6 +116,7 @@ export default async function ViewsPage({
       customFields={customFields}
       boardWorkflowStatuses={boardWorkflowStatuses}
       live={live}
+      capacity={capacity}
     />
   );
 }

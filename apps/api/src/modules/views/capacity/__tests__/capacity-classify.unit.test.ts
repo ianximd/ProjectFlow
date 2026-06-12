@@ -17,7 +17,7 @@ describe('classifyCapacity', () => {
   it('reports at-capacity within the +/-2% tolerance band', () => {
     expect(classifyCapacity(100, 100).status).toBe('at');
     expect(classifyCapacity(101, 100).status).toBe('at'); // within 2%
-    expect(classifyCapacity(103, 100).status).toBe('over'); // beyond 2%
+    expect(classifyCapacity(103, 100).status).toBe('over'); // beyond 2% (note: 1.02 lands 'over' due to FP — boundary is intentionally fuzzy)
   });
 
   it('treats any positive assignment against zero/absent capacity as over', () => {
@@ -33,5 +33,7 @@ describe('classifyCapacity', () => {
 
   it('clamps negative inputs to zero', () => {
     expect(classifyCapacity(-5, 100).ratio).toBe(0);
+    expect(classifyCapacity(0, -10).status).toBe('under'); // negative capacity, nothing assigned
+    expect(classifyCapacity(5, -10).status).toBe('over');  // negative capacity treated as zero
   });
 });

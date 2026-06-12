@@ -913,6 +913,12 @@ The existing `usp_Sprint_Complete` already **nulls `SprintId`** on unfinished ta
 
 `usp_Sprint_CreateInFolder` returns a raw `SELECT *` (PascalCase) row, but `SprintType` uses `t.exposeString('id')` (camelCase). The mutation resolver **normalizes** the row to the camelCase `SprintShape` so the exposeString resolvers resolve (the pre-existing `sprints` query, which returns raw `usp_Sprint_List` rows, is likely already casing-broken for `id`/`status` — left as a pre-existing issue, out of scope). New `SprintType.listId/folderId/points` resolvers are case-tolerant (`s.x ?? s.X`).
 
+### Final whole-slice review — two cross-tenant write holes caught + fixed
+
+The final opus review found the exact class of bug prior slices' final reviews caught:
+- **C1 — GraphQL `createSprintInFolder`/`rollForwardSprint` gated on `requireAuth` only**, ignoring the codebase's enforced GraphQL-authz convention (`graphql/authz.ts` → `requireWorkspacePermission`, mirrored by every other recent module). Any authenticated user could write into another tenant's folder/sprint. **Fixed:** both mutations now `await requireWorkspacePermission(ctx, <folder/source-sprint workspaceId>, 'sprint.create' | 'sprint.manage')` (workspace resolved via new `sprintService.getFolderWorkspaceId`/`getSprintWorkspaceId`); + a non-member→FORBIDDEN GraphQL test.
+- **C2 — roll-forward never validated the TARGET sprint shares the source's workspace** (REST middleware only resolved the source `:id`), so tasks could be teleported across tenants. **Fixed at the data layer** (covers REST + GraphQL + the worker uniformly): `usp_Sprint_RollForward` now `THROW 50049` when the source and target Lists' `WorkspaceId` differ; REST maps 50049 → 422; + an SP-level cross-workspace negative test.
+
 ### Accepted residuals / documented follow-ups
 
 - **Data migration `0046b` is local-Docker-only**; a production cutover runbook is deferred (spec §10.6).
@@ -924,7 +930,7 @@ The existing `usp_Sprint_Complete` already **nulls `SprintId`** on unfinished ta
 
 ### Verification (local Docker `ProjectFlow_Test`)
 
-Migrations reversible (rollback drops auto-named FK + default constraints before columns) + idempotent; **API 482 unit / 243 integration (57 files), web 139 unit + en/id parity, apps/api tsc + next build clean, `sprint-agile` e2e 1/1** (auto-complete → next sprint created → task rolled forward → points ≥ 5). All DB work ran ONLY against local Docker.
+Migrations reversible (rollback drops auto-named FK + default constraints before columns) + idempotent; **API 482 unit / 245 integration (57 files, incl. 2 cross-tenant negative-authz tests from the final review), web 139 unit + en/id parity, apps/api tsc + next build clean, `sprint-agile` e2e 1/1** (auto-complete → next sprint created → task rolled forward → points ≥ 5). All DB work ran ONLY against local Docker.
 
 ### Shared `ruleShapeSchema` and pre-existing route bug fixed
 

@@ -179,6 +179,38 @@ describe('usp_Sprint_RollForward', () => {
     expect(done.ListId).toBe(s1.ListId);
     expect(done.SprintId).toBe(s1.Id);
   });
+
+  it('refuses to roll forward into a different-workspace sprint (50049 cross-tenant guard)', async () => {
+    await truncateAll();
+    const owner = await createTestUser({ email: `rfx-${Date.now()}@projectflow.test` });
+    const wsA = await createTestWorkspace(owner.accessToken);
+    const spaceA = await createTestProject(wsA.Id, owner.accessToken, { name: 'A', key: `XA${Date.now() % 100000}` });
+    const wsB = await createTestWorkspace(owner.accessToken);
+    const spaceB = await createTestProject(wsB.Id, owner.accessToken, { name: 'B', key: `XB${Date.now() % 100000}` });
+    const pool = await getPool();
+    const mkFolder = async (ws: any, space: any) => (await pool.request().query(`
+      DECLARE @id UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO dbo.Folders (Id, WorkspaceId, SpaceId, Name, Position, Path, IsSprintFolder)
+      VALUES (@id, '${ws.Id}', '${space.Id}', 'Sprints', 0, '/${space.Id}/f/', 1);
+      SELECT @id AS Id;`)).recordset[0].Id;
+    const fA = await mkFolder(wsA, spaceA);
+    const fB = await mkFolder(wsB, spaceB);
+    const mkSprint = async (fid: string) => (await pool.request()
+      .input('FolderId', sql.UniqueIdentifier, fid)
+      .input('Name', sql.NVarChar(255), 'S')
+      .input('Goal', sql.NVarChar(sql.MAX), null)
+      .input('StartDate', sql.DateTime2, null)
+      .input('EndDate', sql.DateTime2, null)
+      .execute('usp_Sprint_CreateInFolder')).recordset[0];
+    const sA = await mkSprint(fA);
+    const sB = await mkSprint(fB);
+
+    await expect(pool.request()
+      .input('FromSprintId', sql.UniqueIdentifier, sA.Id)
+      .input('ToSprintId', sql.UniqueIdentifier, sB.Id)
+      .execute('usp_Sprint_RollForward'),
+    ).rejects.toThrow(/different workspaces/i);
+  });
 });
 
 describe('usp_Sprint_GetPointsRollup + summary list-membership', () => {

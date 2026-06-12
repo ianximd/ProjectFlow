@@ -19,6 +19,13 @@ BEGIN
         IF @FromListId IS NULL
             THROW 50048, 'Source sprint not found or has no List.', 1;
 
+        -- Cross-tenant guard: source + target sprints must share a workspace (via
+        -- their Lists). Without this, a caller authorized on the SOURCE workspace
+        -- could teleport its tasks into another tenant's sprint List.
+        IF (SELECT WorkspaceId FROM dbo.Lists WHERE Id = @FromListId)
+           <> (SELECT WorkspaceId FROM dbo.Lists WHERE Id = @ToListId)
+            THROW 50049, 'Source and target sprints are in different workspaces.', 1;
+
         -- Move unfinished tasks from the SOURCE sprint's List into the target
         -- sprint's List, maintaining the SprintId denorm. Membership is keyed on
         -- the source List (Tasks.ListId = @FromListId), NOT on Tasks.SprintId:

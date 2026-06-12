@@ -149,8 +149,8 @@ sprintRoutes.post(
       const rolled = await sprintService.rollForward(c.req.param('id')!, toSprintId);
       return c.json({ data: { rolled } });
     } catch (err: any) {
-      // 50047 target sprint has no List; 50048 source sprint missing/no List.
-      if (err.number === 50047 || err.number === 50048) return c.json({ error: { message: err.message } }, 422);
+      // 50047 target has no List; 50048 source missing/no List; 50049 cross-tenant.
+      if (err.number === 50047 || err.number === 50048 || err.number === 50049) return c.json({ error: { message: err.message } }, 422);
       return c.json({ error: { message: 'Internal Server Error' } }, 500);
     }
   },

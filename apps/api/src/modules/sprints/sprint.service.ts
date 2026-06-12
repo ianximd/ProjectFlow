@@ -45,4 +45,8 @@ export const sprintService = {
   rollForward: (fromSprintId: string, toSprintId: string) => repo.rollForward(fromSprintId, toSprintId),
 
   getPoints: (sprintId: string) => repo.getPointsRollup(sprintId),
+
+  // Workspace resolvers for GraphQL authz (mirror the REST resolveWorkspace fns).
+  getFolderWorkspaceId: (folderId: string) => repo.getFolderWorkspaceId(folderId),
+  getSprintWorkspaceId: (sprintId: string) => repo.getWorkspaceId(sprintId),
 };

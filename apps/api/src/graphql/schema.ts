@@ -22,7 +22,7 @@ import { registerAutomationGraphql } from './automation.schema.js';
 import { registerDocsGraphql } from './docs.schema.js';
 import { registerWhiteboardGraphql } from './whiteboard.schema.js';
 import { registerFormsGraphql } from './form.schema.js';
-import { requireObjectLevel } from './authz.js';
+import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
 // Services (resolvers delegate to these)
@@ -533,6 +533,8 @@ builder.mutationType({
       },
       resolve: async (_, a, ctx) => {
         requireAuth(ctx);
+        // Mirror the REST gate: caller needs sprint.create in the folder's workspace.
+        await requireWorkspacePermission(ctx as any, await sprintService.getFolderWorkspaceId(a.folderId), 'sprint.create');
         const row: any = await sprintService.createInFolder(
           a.folderId, a.name, a.goal ?? null,
           a.startDate ? new Date(a.startDate as any) : null,
@@ -561,6 +563,9 @@ builder.mutationType({
       args: { fromSprintId: t.arg.string({ required: true }), toSprintId: t.arg.string({ required: true }) },
       resolve: async (_, a, ctx) => {
         requireAuth(ctx);
+        // Gate on the SOURCE workspace; usp_Sprint_RollForward throws 50049 if the
+        // target sprint is in a different workspace (cross-tenant teleport guard).
+        await requireWorkspacePermission(ctx as any, await sprintService.getSprintWorkspaceId(a.fromSprintId), 'sprint.manage');
         return await sprintService.rollForward(a.fromSprintId, a.toSprintId);
       },
     }),

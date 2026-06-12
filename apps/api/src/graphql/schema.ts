@@ -101,6 +101,8 @@ interface ProjectShape {
 interface SprintShape {
   id: string;
   projectId: string;
+  listId?: string | null;
+  folderId?: string | null;
   name: string;
   goal?: string | null;
   status: string;
@@ -229,6 +231,17 @@ SprintType.implement({
     startDate: t.field({ type: 'Date', nullable: true, resolve: (s) => s.startDate ? new Date(s.startDate) : null }),
     endDate:   t.field({ type: 'Date', nullable: true, resolve: (s) => s.endDate   ? new Date(s.endDate)   : null }),
     createdAt: t.field({ type: 'Date', resolve: (s) => new Date(s.createdAt) }),
+    // Phase 8c sprint-folder fields. Case-tolerant: SP rows are PascalCase.
+    listId:    t.string({ nullable: true, resolve: (s: any) => s.listId ?? s.ListId ?? null }),
+    folderId:  t.string({ nullable: true, resolve: (s: any) => s.folderId ?? s.FolderId ?? null }),
+    points:    t.field({
+      type: 'Float', nullable: true,
+      resolve: async (s: any) => {
+        const id = s.id ?? s.Id; if (!id) return null;
+        const r = await sprintService.getPoints(id);
+        return Number(r.total?.TotalPoints ?? 0);
+      },
+    }),
   }),
 });
 
@@ -505,6 +518,50 @@ builder.mutationType({
         const task = await taskService.createTask(input as any, actorId);
         await publishTaskEvent('created', { projectId: eventProjectId(task), task });
         return task as any;
+      },
+    }),
+
+    /** Phase 8c: create a sprint as a List under a sprint-flagged Folder. */
+    createSprintInFolder: t.field({
+      type: SprintType,
+      args: {
+        folderId:  t.arg.string({ required: true }),
+        name:      t.arg.string({ required: true }),
+        goal:      t.arg.string({ required: false }),
+        startDate: t.arg({ type: 'Date', required: false }),
+        endDate:   t.arg({ type: 'Date', required: false }),
+      },
+      resolve: async (_, a, ctx) => {
+        requireAuth(ctx);
+        const row: any = await sprintService.createInFolder(
+          a.folderId, a.name, a.goal ?? null,
+          a.startDate ? new Date(a.startDate as any) : null,
+          a.endDate ? new Date(a.endDate as any) : null,
+        );
+        // usp_Sprint_CreateInFolder returns a raw PascalCase SELECT * row; normalize
+        // to the camelCase SprintShape so SprintType's exposeString resolvers work.
+        return {
+          id:        row.id        ?? row.Id,
+          projectId: row.projectId ?? row.ProjectId,
+          listId:    row.listId    ?? row.ListId    ?? null,
+          folderId:  row.folderId  ?? row.FolderId  ?? null,
+          name:      row.name      ?? row.Name,
+          goal:      row.goal      ?? row.Goal      ?? null,
+          status:    row.status    ?? row.Status,
+          startDate: row.startDate ?? row.StartDate ?? null,
+          endDate:   row.endDate   ?? row.EndDate   ?? null,
+          createdAt: row.createdAt ?? row.CreatedAt,
+        } as SprintShape;
+      },
+    }),
+
+    /** Phase 8c: roll unfinished tasks from one sprint into another; returns count. */
+    rollForwardSprint: t.field({
+      type: 'Int',
+      args: { fromSprintId: t.arg.string({ required: true }), toSprintId: t.arg.string({ required: true }) },
+      resolve: async (_, a, ctx) => {
+        requireAuth(ctx);
+        return await sprintService.rollForward(a.fromSprintId, a.toSprintId);
       },
     }),
 

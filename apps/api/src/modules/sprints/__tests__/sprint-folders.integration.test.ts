@@ -16,6 +16,7 @@ import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
 import { SprintRepository } from '../sprint.repository.js';
 import { sprintService } from '../sprint.service.js';
+import { request, json } from '../../../__tests__/setup/testServer.js';
 
 afterAll(async () => { await closePool(); });
 
@@ -315,5 +316,51 @@ describe('sprintService — sprint-folder ops', () => {
 
     const points = await sprintService.getPoints(s2.Id);
     expect(points.total.TotalPoints).toBe(0);
+  });
+});
+
+describe('sprint REST — folder surface', () => {
+  it('PUT settings, POST create-in-folder, GET points, POST roll-forward (owner perms) + non-member 403', async () => {
+    await truncateAll();
+    // Workspace creator becomes workspace-owner -> has sprint.create/start (0019)
+    // + sprint.manage (0047). No super-admin needed; this exercises the real RBAC.
+    const owner = await createTestUser({ email: `rest-${Date.now()}@projectflow.test` });
+    const token = owner.accessToken;
+    const ws = await createTestWorkspace(token);
+    const space = await createTestProject(ws.Id, token, { name: 'Rest Space', key: `RE${Date.now() % 100000}` });
+    const pool = await getPool();
+    const folderId = (await pool.request().query(`
+      DECLARE @id UNIQUEIDENTIFIER = NEWID();
+      INSERT INTO dbo.Folders (Id, WorkspaceId, SpaceId, Name, Position, Path)
+      VALUES (@id, '${ws.Id}', '${space.Id}', 'F', 0, '/${space.Id}/x/');
+      SELECT @id AS Id;`)).recordset[0].Id;
+
+    const setRes = await request(`/sprints/folders/${folderId}/settings`, {
+      method: 'PUT', token,
+      json: { durationDays: 7, startDayOfWeek: 1, autoStart: true, autoComplete: true, autoRollForward: true, pointsFieldId: null },
+    });
+    expect(setRes.status).toBe(200);
+
+    const create = (await json<{ data: any }>(await request(`/sprints/folders/${folderId}/sprints`, {
+      method: 'POST', token, json: { name: 'Sprint 1' },
+    }), 201)).data;
+    expect(create.ListId ?? create.listId).toBeTruthy();
+    const sprintId = create.Id ?? create.id;
+
+    const points = (await json<{ data: any }>(await request(`/sprints/${sprintId}/points`, { token }), 200)).data;
+    expect(points.total.TotalPoints).toBe(0);
+
+    const create2 = (await json<{ data: any }>(await request(`/sprints/folders/${folderId}/sprints`, {
+      method: 'POST', token, json: { name: 'Sprint 2' },
+    }), 201)).data;
+    const rf = await request(`/sprints/${sprintId}/roll-forward`, {
+      method: 'POST', token, json: { toSprintId: create2.Id ?? create2.id },
+    });
+    expect(rf.status).toBe(200);
+
+    // Negative authz: a non-member of the workspace is 403 on the settings surface.
+    const outsider = await createTestUser({ email: `out-${Date.now()}@projectflow.test` });
+    const denied = await request(`/sprints/folders/${folderId}/settings`, { token: outsider.accessToken });
+    expect(denied.status).toBe(403);
   });
 });

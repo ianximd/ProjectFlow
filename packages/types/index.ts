@@ -358,6 +358,44 @@ export interface SprintSummaryReport {
   statusBreakdown: SprintStatusBreakdown[];
 }
 
+// ── Phase 8c: sprint-folder hierarchy ───────────────────────────────────────
+export interface Sprint {
+  id: string;
+  projectId: string;
+  listId: string | null;
+  folderId: string | null;
+  name: string;
+  goal: string | null;
+  status: 'PLANNED' | 'ACTIVE' | 'COMPLETED';
+  startDate: string | null;
+  endDate: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SprintSettings {
+  folderId: string;
+  durationDays: number;
+  startDayOfWeek: number | null;   // 0=Sun..6=Sat; null = anchor to prior EndDate
+  autoStart: boolean;
+  autoComplete: boolean;
+  autoRollForward: boolean;
+  pointsFieldId: string | null;
+  isSprintFolder?: boolean;        // surfaced by usp_Folder_GetSprintSettings
+}
+
+export interface SprintAssigneePoints {
+  userId: string;
+  userName: string | null;
+  points: number;
+}
+
+export interface SprintPointsRollup {
+  total: { totalPoints: number; completedPoints: number };
+  perAssignee: SprintAssigneePoints[];
+}
+
 export interface WorkloadEntry {
   assigneeId: string;
   assigneeName: string;

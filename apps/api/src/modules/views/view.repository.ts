@@ -223,4 +223,43 @@ export class ViewRepository {
     );
     return res.recordset.map((r: any) => ({ key: String(r.GroupKey ?? ''), label: String(r.GroupKey ?? '∅'), count: r.Cnt }));
   }
+
+  /**
+   * Phase 8d — per-assignee capacity aggregation over the SAME compiled WHERE the
+   * view's task page uses (tenant + scope + filter), so it can never leak across
+   * workspaces/scopes. Sums TimeEstimateSeconds (8a) and StoryPoints (8c) for each
+   * assignee on the in-scope, in-range, non-deleted tasks. `range` bounds on DueDate
+   * (NULL bound = unbounded on that side). `groupExpr`/`_fid` join params from the
+   * compiler are intentionally NOT applied — capacity has no sort joins.
+   */
+  async capacityByAssignee(
+    compiled: CompiledQuery,
+    range: { from: string | null; to: string | null },
+  ): Promise<Array<{
+    UserId: string; Name: string | null; Email: string | null; AvatarUrl: string | null;
+    AssignedSeconds: number; AssignedPoints: number; TaskCount: number;
+  }>> {
+    const pool = await getPool();
+    const req = pool.request();
+    for (const [k, v] of Object.entries(compiled.params)) req.input(k, v as any);
+
+    const rangeParts: string[] = [];
+    if (range.from) { req.input('__capFrom', sql.Date, range.from); rangeParts.push('t.DueDate >= @__capFrom'); }
+    if (range.to)   { req.input('__capTo',   sql.Date, range.to);   rangeParts.push('t.DueDate <= @__capTo'); }
+    const rangeSql = rangeParts.length ? ` AND ${rangeParts.join(' AND ')}` : '';
+
+    const res = await req.query(
+      `SELECT u.Id AS UserId, u.Name, u.Email, u.AvatarUrl,
+              SUM(ISNULL(t.TimeEstimateSeconds, 0)) AS AssignedSeconds,
+              SUM(ISNULL(t.StoryPoints, 0))         AS AssignedPoints,
+              COUNT(t.Id)                           AS TaskCount
+         FROM Tasks t
+         JOIN TaskAssignees ta ON ta.TaskId = t.Id
+         JOIN dbo.Users u ON u.Id = ta.UserId AND u.DeletedAt IS NULL
+        WHERE ${compiled.whereSql}${rangeSql}
+        GROUP BY u.Id, u.Name, u.Email, u.AvatarUrl
+        ORDER BY u.Name`,
+    );
+    return res.recordset as any[];
+  }
 }

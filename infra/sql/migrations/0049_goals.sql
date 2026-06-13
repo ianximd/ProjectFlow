@@ -81,3 +81,21 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_Target_Goal' AND object_id = OBJECT_ID('dbo.Targets'))
     CREATE NONCLUSTERED INDEX IX_Target_Goal ON dbo.Targets (GoalId);
 GO
+
+-- Enum CHECK constraints (idempotent ALTER so this applies whether the table was
+-- just created above or already exists from a prior 0049 apply). Mirrors the
+-- repo-wide convention (CK_SavedViews_Type, CK_Timesheets_Status, CK_*_ScopeType,
+-- etc.); the SP layer validates too, but the CHECK is the DB-level backstop — the
+-- 8d lesson was a missing enum CHECK escaped unit+integration and only the live
+-- e2e caught it.
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Goals_Status')
+    ALTER TABLE dbo.Goals WITH CHECK ADD CONSTRAINT CK_Goals_Status CHECK (Status IN ('active','achieved','archived'));
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Goals_ScopeType')
+    ALTER TABLE dbo.Goals WITH CHECK ADD CONSTRAINT CK_Goals_ScopeType CHECK (ScopeType IN ('WORKSPACE','SPACE','FOLDER','LIST'));
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_Targets_Kind')
+    ALTER TABLE dbo.Targets WITH CHECK ADD CONSTRAINT CK_Targets_Kind CHECK (Kind IN ('number','boolean','currency','task'));
+GO

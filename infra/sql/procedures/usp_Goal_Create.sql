@@ -12,6 +12,8 @@ AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
+        IF @ScopeType NOT IN ('WORKSPACE','SPACE','FOLDER','LIST')
+            THROW 52803, 'Invalid goal scope type', 1;
         DECLARE @Id UNIQUEIDENTIFIER = NEWID();
         INSERT INTO dbo.Goals (Id, WorkspaceId, ScopeType, ScopeId, FolderId, Name, Description, OwnerId, DueDate, Status)
         VALUES (@Id, @WorkspaceId, @ScopeType, @ScopeId, @FolderId, @Name, @Description, @OwnerId, @DueDate, 'active');

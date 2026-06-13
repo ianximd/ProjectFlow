@@ -16,6 +16,8 @@ import type {
   ReorderCardEntry,
 } from '@projectflow/types';
 
+// Next.js 'use server' requires every export to be an async function declaration
+// (arrow-const exports are rejected: "Server Actions must be async functions").
 async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   await requireSession();
   let result: T;
@@ -28,63 +30,72 @@ async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
   return { ok: true, data: result } as ActionResult<T>;
 }
 
-export const createDashboard = (input: CreateDashboardInput) =>
-  run<Dashboard>(() =>
+export async function createDashboard(input: CreateDashboardInput): Promise<ActionResult<Dashboard>> {
+  return run<Dashboard>(() =>
     serverFetch<Dashboard>('/dashboards', { method: 'POST', body: JSON.stringify(input) }),
   );
+}
 
-export const updateDashboard = (id: string, patch: UpdateDashboardInput) =>
-  run<Dashboard>(() =>
+export async function updateDashboard(id: string, patch: UpdateDashboardInput): Promise<ActionResult<Dashboard>> {
+  return run<Dashboard>(() =>
     serverFetch<Dashboard>(`/dashboards/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
   );
+}
 
-export const deleteDashboard = (id: string) =>
-  run<Dashboard>(() =>
+export async function deleteDashboard(id: string): Promise<ActionResult<Dashboard>> {
+  return run<Dashboard>(() =>
     serverFetch<Dashboard>(`/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   );
+}
 
-export const setDefaultDashboard = (id: string) =>
-  run<Dashboard>(() =>
+export async function setDefaultDashboard(id: string): Promise<ActionResult<Dashboard>> {
+  return run<Dashboard>(() =>
     serverFetch<Dashboard>(`/dashboards/${encodeURIComponent(id)}/set-default`, {
       method: 'POST',
     }),
   );
+}
 
-export const addCard = (dashboardId: string, input: CreateDashboardCardInput) =>
-  run<DashboardCard>(() =>
+export async function addCard(dashboardId: string, input: CreateDashboardCardInput): Promise<ActionResult<DashboardCard>> {
+  return run<DashboardCard>(() =>
     serverFetch<DashboardCard>(`/dashboards/${encodeURIComponent(dashboardId)}/cards`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),
   );
+}
 
-export const updateCard = (cardId: string, patch: UpdateDashboardCardInput) =>
-  run<DashboardCard>(() =>
+export async function updateCard(cardId: string, patch: UpdateDashboardCardInput): Promise<ActionResult<DashboardCard>> {
+  return run<DashboardCard>(() =>
     serverFetch<DashboardCard>(`/dashboards/cards/${encodeURIComponent(cardId)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
   );
+}
 
-export const deleteCard = (cardId: string) =>
-  run<DashboardCard>(() =>
+export async function deleteCard(cardId: string): Promise<ActionResult<DashboardCard>> {
+  return run<DashboardCard>(() =>
     serverFetch<DashboardCard>(`/dashboards/cards/${encodeURIComponent(cardId)}`, {
       method: 'DELETE',
     }),
   );
+}
 
-export const reorderCards = (dashboardId: string, cards: ReorderCardEntry[]) =>
-  run<DashboardCard[]>(() =>
+export async function reorderCards(dashboardId: string, cards: ReorderCardEntry[]): Promise<ActionResult<DashboardCard[]>> {
+  return run<DashboardCard[]>(() =>
     serverFetch<DashboardCard[]>(
       `/dashboards/${encodeURIComponent(dashboardId)}/reorder-cards`,
       { method: 'PUT', body: JSON.stringify({ cards }) },
     ),
   );
+}
 
-export const loadCardData = (cardId: string) =>
-  run<CardData>(() =>
+export async function loadCardData(cardId: string): Promise<ActionResult<CardData>> {
+  return run<CardData>(() =>
     serverFetch<CardData>(`/dashboards/cards/${encodeURIComponent(cardId)}/data`),
   );
+}

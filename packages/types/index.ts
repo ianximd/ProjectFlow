@@ -1723,3 +1723,101 @@ export interface CreateTargetInput {
   currentValue?: number | null;
   taskFilter?: string | null;
 }
+
+// ───────────────────────────── Dashboards (Phase 9a) ─────────────────────────
+// A dashboard is a scoped, savable object; each card is a typed config resolved
+// by card.service (one resolver, three data sources). 9b adds more CardTypes to
+// the same registry; 9c snapshots cards by iterating it.
+
+export type DashboardScopeType = 'workspace' | 'space' | 'folder' | 'list';
+export type DashboardVisibility = 'private' | 'shared' | 'protected';
+
+// Wave-1 catalog (9a). 9b extends: 'burndown'|'velocity'|'burnup'|'cumulative_flow'
+// |'lead_cycle_time'|'sprint_summary'|'portfolio'|'timesheet'|'battery'.
+export type CardType =
+  | 'task_list' | 'calculation' | 'bar' | 'line' | 'pie' | 'time_tracked' | 'goal';
+
+export type AggregateOp = 'count' | 'sum' | 'avg' | 'min' | 'max';
+
+/** Per-card config. Generic cards carry a view-like query (filter/groupBy/sort)
+ *  + a chart/aggregate shape; entity cards carry their own params. */
+export interface CardConfig {
+  filter?: FilterGroup;            // per-card filter (composed with the dashboard scope)
+  groupBy?: FieldRef;              // bar/line/pie category axis
+  sort?: SortKey[];
+  columns?: FieldRef[];           // task_list columns
+  pageSize?: number;              // task_list cap
+  aggregate?: { op: AggregateOp; field?: FieldRef }; // calculation / bar value
+  chart?: { xLabel?: string; yLabel?: string; seriesLabel?: string };
+  // entity-card params (forward-compatible with 9b):
+  goalId?: string;                // goal card (Phase 8)
+  reportParams?: Record<string, unknown>; // report cards (9b)
+}
+
+export interface DashboardCardLayout { x: number; y: number; w: number; h: number }
+
+export interface DashboardCard {
+  id: string;
+  dashboardId: string;
+  type: CardType;
+  title: string | null;
+  config: CardConfig;
+  layout: DashboardCardLayout;
+  position: number;
+}
+
+export interface Dashboard {
+  id: string;
+  workspaceId: string;
+  ownerId: string;
+  scopeType: DashboardScopeType;
+  scopeId: string | null;
+  name: string;
+  description: string | null;
+  visibility: DashboardVisibility;
+  isDefault: boolean;
+  position: number;
+  cards?: DashboardCard[];
+}
+
+/** A resolved card payload. `shape` tells the renderer how to read `data`. */
+export interface CardData {
+  cardId: string;
+  type: CardType;
+  shape: 'rows' | 'scalar' | 'series' | 'totals';
+  data: unknown;          // rows: Task[]; scalar: { value:number }; series: {key,label,value}[]; totals: {userId,userName,totalSeconds}[]
+  total?: number;
+}
+
+export interface CreateDashboardInput {
+  scopeType: DashboardScopeType;
+  scopeId: string | null;
+  name: string;
+  description?: string | null;
+  visibility?: DashboardVisibility;
+  workspaceId?: string;
+}
+
+export interface UpdateDashboardInput {
+  name?: string;
+  description?: string | null;
+  visibility?: DashboardVisibility;
+  position?: number;
+}
+
+export interface CreateDashboardCardInput {
+  type: CardType;
+  title?: string | null;
+  config: CardConfig;
+  layout: DashboardCardLayout;
+  position?: number;
+}
+
+export interface UpdateDashboardCardInput {
+  title?: string | null;
+  config?: CardConfig;
+  layout?: DashboardCardLayout;
+  position?: number;
+}
+
+export interface ReorderCardEntry { id: string; layout: DashboardCardLayout; position: number }

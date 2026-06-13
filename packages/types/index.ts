@@ -358,25 +358,6 @@ export interface SprintSummaryReport {
   statusBreakdown: SprintStatusBreakdown[];
 }
 
-// Named shapes for the two reports whose service mappers were previously inline
-// (so the Phase 9b GraphQL mirror can reference them as object refs).
-export interface WorkloadEntry {
-  assigneeId: string;
-  assigneeName: string;
-  totalIssues: number;
-  openIssues: number;
-  doneIssues: number;
-  totalPoints: number;
-  openPoints: number;
-}
-
-export interface CreatedVsResolvedEntry {
-  weekStart: string | null;
-  weekEnd: string | null;
-  created: number;
-  resolved: number;
-}
-
 // ── Reports: advanced analytics (Phase 9b) ─────────────────────────────────────
 
 export interface BurnupPoint {

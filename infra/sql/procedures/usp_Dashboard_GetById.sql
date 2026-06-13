@@ -1,0 +1,8 @@
+CREATE OR ALTER PROCEDURE dbo.usp_Dashboard_GetById
+  @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  SELECT * FROM dbo.Dashboards WHERE Id = @Id AND DeletedAt IS NULL;
+END;
+GO

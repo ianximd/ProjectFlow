@@ -40,6 +40,7 @@ import { whiteboardRoutes } from './modules/whiteboards/whiteboard.routes.js';
 import { capacityRoutes } from './modules/views/capacity.routes.js';
 import { formRoutes } from './modules/forms/form.routes.js';
 import { goalRoutes } from './modules/goals/goal.routes.js';
+import { dashboardRoutes } from './modules/dashboards/dashboard.routes.js';
 import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
@@ -172,6 +173,7 @@ app.use('/docs/*',          authMiddleware);
 app.use('/whiteboards/*',   authMiddleware);
 app.use('/views/*',         authMiddleware);
 app.use('/goals/*',         authMiddleware);
+app.use('/dashboards/*',    authMiddleware);
 
 // Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
 // can ever be invoked. registerAuditSnapshots() is idempotent.
@@ -245,6 +247,7 @@ app.route('/docs',              docRoutes);
 app.route('/whiteboards',       whiteboardRoutes);
 app.route('/views',             capacityRoutes);
 app.route('/goals',             goalRoutes);
+app.route('/dashboards',        dashboardRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
 // Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).

@@ -23,6 +23,7 @@ import { registerDocsGraphql } from './docs.schema.js';
 import { registerWhiteboardGraphql } from './whiteboard.schema.js';
 import { registerFormsGraphql } from './form.schema.js';
 import { registerGoalsGraphql } from './goals.schema.js';
+import { registerDashboardsGraphql } from './dashboards.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -885,6 +886,14 @@ registerFormsGraphql();
 // createGoal/updateGoal/deleteGoal/createTarget mutations.
 // ─────────────────────────────────────────
 registerGoalsGraphql();
+
+// ─────────────────────────────────────────
+// Dashboards (Phase 9a) — Dashboard/DashboardCard/CardData types +
+// dashboards/dashboard/dashboardCardData queries +
+// createDashboard/updateDashboard/deleteDashboard/createDashboardCard/
+// setDefaultDashboard mutations.
+// ─────────────────────────────────────────
+registerDashboardsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

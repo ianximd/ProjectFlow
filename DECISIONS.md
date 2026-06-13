@@ -1329,3 +1329,39 @@ API **512 unit / 260 integration** (60 files, +4 dashboards, 0 regressions), web
 
 ### DB-execution policy
 All DB work (0051+0052 apply + rollback proof, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env` (shell-exported `DB_*` override `--env-file-if-exists`; cold-booted e2e servers inherit the local env; prod cutover of 0051/0052 deferred to ops). **Stop for review/merge before Slice 9b.**
+
+## 2026-06-13 — Phase 9b (Analytics & Sprint/Portfolio Cards)
+
+Lifts reporting from REST-only to a full GraphQL mirror, adds 4 advanced analytics report SPs, and extends the 9a `card.service` dispatcher + renderer registry with the analytics/entity card catalog. Acceptance (§5.5): **sprint burndown + velocity compute correctly against real sprint data** — verified by `reports.integration.test.ts` (velocity committed=14/completed=12; GraphQL burndown == REST) and the `dashboard-analytics` e2e (burndown/velocity/portfolio cards render real seeded data). Built subagent-driven (reconciliation Explore FIRST, then per-batch implementer/review; opus on the GraphQL-mirror + card.service-guard batches) against local Docker `ProjectFlow_Test`.
+
+### Report SPs (4 new, no schema change for the reports themselves)
+- `usp_Report_Burnup` — complement of `usp_Report_Burndown`: cumulative COMPLETED vs flat committed SCOPE per day (2 resultsets: meta + per-day). Reads `Sprints`/`Tasks` columns the existing reports use.
+- `usp_Report_CumulativeFlow` — per-day status-band counts over a hierarchy scope. **v1 band**: a task resolved on/before a day → `DONE`, else its current `Status`. True per-status history from `AuditLog` is a documented follow-up (§11.6); the long-form `(Date,Status,IssueCount)` shape is stable either way.
+- `usp_Report_LeadCycleTime` — per-task lead (created→resolved) + cycle (first in-progress→resolved). The "started" timestamp is the earliest `dbo.AuditLog` `UPDATE` row whose `NewValues` JSON mentions an in-progress token; falls back to no-cycle when none. (`AuditLog.ResourceId` is NVARCHAR → `TRY_CONVERT(UNIQUEIDENTIFIER, …) = Tasks.Id`.)
+- `usp_Report_Portfolio` — rollup across a SET of folders/lists via comma-delimited `@ScopeIds` (`STRING_SPLIT`+`TRY_CONVERT`, same transport as `usp_WorkLogTag_Set`). `progressPct` + `onTrack` are derived in the pure `analytics.ts` helper (v1 on-track heuristic: completed ≥ 50% of issues, or empty scope = on-track).
+
+### DEVIATION — a migration WAS required (the plan said "no migration")
+The plan gates the new GraphQL mirror on `report.read`, but that slug was **never seeded** (the reports module was REST-only and **completely ungated** — any authenticated user could read any workspace's reports, a pre-existing cross-tenant read / IDOR). Without seeding, `requireWorkspacePermission`/`requirePermission` fail closed and even a workspace owner gets 403 (the exact trap that bit 8b/8c/8e/9a). So: added **`0053_report_perms`** (idempotent, mirrors `0052`) seeding `report.read` for owner/admin/member/viewer (read is broad), and **gated ALL 9 reports REST routes (5 existing + 4 new) + the GraphQL mirror on `report.read`**, closing the IDOR. Local DB now **0053**, SP count **358** (+4). REST workspace resolution: sprint→`sprintService.getSprintWorkspaceId`, project→`projectService.getById().WorkspaceId` (raw SP row is **PascalCase**), scope→`CustomFieldRepository.getScopeNode(scopeType.toUpperCase(), id).workspaceId`; the portfolio resolver requires the whole scope-id set to resolve to ONE workspace (cross-workspace set → fail-closed 404).
+
+### GraphQL reports mirror (first GraphQL surface for reports)
+`graphql/reports.schema.ts registerReportsGraphql()` mirrors all NINE queries (`burndown`/`velocity`/`sprintSummary`/`workload`/`createdVsResolved` + `burnup`/`cumulativeFlow`/`leadCycleTime`/`portfolio`) over the ONE shared `ReportsService`, each `report.read`-gated on the resolved workspace; portfolio asserts a single workspace across the scope set (fail-closed). Used the REAL seams (the plan guessed `sprintService.getById`/`HierarchyRepository.getNode`, neither exists). Added named `WorkloadEntry`/`CreatedVsResolvedEntry` types for the object refs — but these **already existed** ~L475 of `packages/types` (the reconciliation Explore agent missed them; TS declaration-merging hid the dup from tsc) → removed the duplicate. **Lesson reaffirmed: verify types by grep, not an agent summary.**
+
+### card.service — 9 branches + a per-card CROSS-TENANT GUARD the plan omitted
+The 9a dispatcher is a `Map<CardType, CardResolver>` with `resolve(card, dashboard, userId)`. 9b registers 9 resolvers reading params from the existing `card.config.reportParams` slot. **The plan added NO authz to the card path** — but report-card params (`sprintId`/`scopeId`/`scopeIds`/`taskId`) are attacker-controllable by anyone who can EDIT the dashboard, so a card could surface another workspace's report. Mirrored 9a's `resolveGoal` guard: each report resolver resolves the param's OWNING workspace and returns a pending (`data:null`) payload unless it equals `dashboard.workspaceId` (sprint via `getSprintWorkspaceId`, project via `projectService.getById().WorkspaceId`, scope via `getScopeNode`, task via `TaskRepository.getWorkspaceId`); portfolio requires every scope in the set to match. `battery` runs the 9a generic compiler path under the dashboard's OWN scope (no external id → inherently tenant-safe). Proven by a dispatch test (8 routing + 1 cross-tenant guard).
+
+### Enabling changes (otherwise 9b cards were uncreatable)
+The 9a `cardCreateSchema` zod enum (REST `POST /dashboards/:id/cards`) and the `DashboardGrid` `ADDABLE` toolbar list were wave-1-only, so the 9b card types could not be created (API 400) nor added from the UI. Both extended with the 9 new tokens. (The GraphQL `createDashboardCard` takes `type` as a permissive string — no enum there.) Renderers null-guard the pending payload via an `EmptyCard` ("No data") since the cross-tenant guard returns `data:null`. `CardData.shape` gained `'report'`; the registry passes the whole `CardData` and extracts `.data`.
+
+### Verification (local Docker `ProjectFlow_Test`)
+API **528 unit / 264 integration** (66+61 files; +16 unit = 7 analytics + 9 card.analytics; +4 reports integration), web **158 unit** + en/id parity, `apps/api` tsc + `apps/next-web` next build clean, **dashboard-analytics e2e 1/1** (burndown/velocity/portfolio render real seeded data). Migration 0053 idempotent.
+
+### Follow-ups (none blocking)
+1. Cumulative-flow true per-status history from `AuditLog` (v1 derives the band from `ResolvedAt`/current `Status`).
+2. Lead/cycle "started" relies on `AuditLog` `NewValues` LIKE-matching in-progress tokens — brittle if status names diverge; a typed status-transition audit would be cleaner.
+3. Config editors are minimal text/select inputs writing `reportParams` (no live sprint/scope pickers); a picker UI is a polish follow-up.
+4. Portfolio over a `space` scope-type returns empty (SP supports folder/list only, per plan); the type narrows to folder/list.
+5. Battery card's sum/avg aggregates inherit the 9a 200-row page cap (count is exact) — move to SQL before relying on field-aggregates over large scopes.
+6. Two hardcoded empty-state strings (`EmptyCard` "No data", FallbackCard) — minor i18n gaps.
+
+### DB-execution policy
+All DB work (0053 apply, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env` (shell-exported `DB_*` override `--env-file-if-exists`). Prod cutover of 0053 deferred to ops. **Stop for review/merge before Slice 9c.**

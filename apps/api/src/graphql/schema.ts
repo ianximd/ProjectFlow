@@ -22,6 +22,7 @@ import { registerAutomationGraphql } from './automation.schema.js';
 import { registerDocsGraphql } from './docs.schema.js';
 import { registerWhiteboardGraphql } from './whiteboard.schema.js';
 import { registerFormsGraphql } from './form.schema.js';
+import { registerGoalsGraphql } from './goals.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -878,6 +879,12 @@ registerWhiteboardGraphql();
 // queries + createForm/updateForm/deleteForm mutations.
 // ─────────────────────────────────────────
 registerFormsGraphql();
+
+// ─────────────────────────────────────────
+// Goals & Targets (Phase 8e) — Goal/Target types + goals/goal queries +
+// createGoal/updateGoal/deleteGoal/createTarget mutations.
+// ─────────────────────────────────────────
+registerGoalsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

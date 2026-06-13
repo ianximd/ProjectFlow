@@ -114,6 +114,13 @@ export class GoalRepository {
     ]);
     return rows[0]?.WorkspaceId ?? null;
   }
+  /** Resolve a folder's workspace (for RBAC on folder delete — never trust a param). */
+  async getFolderWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_GoalFolder_GetWorkspaceId', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
+  }
 
   // ── Targets ──
   async createTarget(p: {
@@ -174,6 +181,14 @@ export class GoalRepository {
       { name: 'TaskId', type: sql.UniqueIdentifier, value: taskId },
     ]);
     return (rows as any[]).map((r) => ({ id: r.Id, goalId: r.GoalId }));
+  }
+  /** Resolve a target's workspace via its goal (for RBAC on target update/delete —
+   * the SP acts on targetId, so authorize the target's REAL workspace, not the URL goalId). */
+  async getTargetWorkspaceId(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ WorkspaceId: string }>('usp_Target_GetWorkspaceId', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.WorkspaceId ?? null;
   }
 }
 

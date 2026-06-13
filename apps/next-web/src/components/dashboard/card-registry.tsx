@@ -1,9 +1,23 @@
 'use client';
 
 import type { JSX } from 'react';
-import type { CardData, CardType } from '@projectflow/types';
+import type {
+  CardData, CardType,
+  BurndownReport, VelocityEntry, SprintSummaryReport,
+  BurnupReport, CumulativeFlowEntry, LeadCycleTimeReport,
+  PortfolioEntry,
+} from '@projectflow/types';
 import { TaskListCard } from './TaskListCard';
 import { CalculationCard } from './CalculationCard';
+import { BurndownChart } from '@/components/charts/BurndownChart';
+import { VelocityChart } from '@/components/charts/VelocityChart';
+import { SprintSummaryWidget } from '@/components/charts/SprintSummaryWidget';
+import { BurnupChart } from '@/components/charts/BurnupChart';
+import { CumulativeFlowChart } from '@/components/charts/CumulativeFlowChart';
+import { LeadCycleTimeChart } from '@/components/charts/LeadCycleTimeChart';
+import { PortfolioCard } from '@/components/charts/PortfolioCard';
+import { BatteryCard } from '@/components/charts/BatteryCard';
+import { TimesheetCard } from '@/components/charts/TimesheetCard';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -87,6 +101,10 @@ function FallbackCard() {
   return <div className="text-xs text-muted-foreground">Unsupported card type</div>;
 }
 
+function EmptyCard() {
+  return <div className="text-xs text-muted-foreground">No data</div>;
+}
+
 const REGISTRY: Record<string, CardRenderer> = {
   task_list:    TaskListCard,
   calculation:  CalculationCard,
@@ -95,6 +113,16 @@ const REGISTRY: Record<string, CardRenderer> = {
   pie:          SeriesPie,
   time_tracked: TimeTrackedCard,
   goal:         GoalCard,
+  // 9b report cards — null-guarded (API returns data:null when cross-tenant guard trips)
+  burndown:       ({ data }) => data.data ? <BurndownChart data={data.data as BurndownReport} /> : <EmptyCard />,
+  velocity:       ({ data }) => data.data ? <VelocityChart data={data.data as VelocityEntry[]} /> : <EmptyCard />,
+  sprint_summary: ({ data }) => data.data ? <SprintSummaryWidget data={data.data as SprintSummaryReport} /> : <EmptyCard />,
+  burnup:         ({ data }) => data.data ? <BurnupChart data={data.data as BurnupReport} /> : <EmptyCard />,
+  cumulative_flow:  ({ data }) => data.data ? <CumulativeFlowChart data={data.data as CumulativeFlowEntry[]} /> : <EmptyCard />,
+  lead_cycle_time:  ({ data }) => data.data ? <LeadCycleTimeChart data={data.data as LeadCycleTimeReport} /> : <EmptyCard />,
+  portfolio:  ({ data }) => data.data ? <PortfolioCard data={data.data as PortfolioEntry[]} /> : <EmptyCard />,
+  battery:    ({ data }) => data.data ? <BatteryCard data={data.data as { value: number; target: number }} /> : <EmptyCard />,
+  timesheet:  ({ data }) => data.data ? <TimesheetCard data={data.data as { ownLoggedSeconds?: number; rollupLoggedSeconds: number; rollupEstimateSeconds?: number }} /> : <EmptyCard />,
 };
 
 export function resolveCardRenderer(type: CardType): CardRenderer {

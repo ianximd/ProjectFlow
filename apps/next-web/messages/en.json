@@ -1511,7 +1511,30 @@
     "incomplete": "Incomplete",
     "totalPoints": "Total Points",
     "completedPoints": "Completed Points",
-    "completionPct": "Completion %"
+    "completionPct": "Completion %",
+    "scope": "Scope",
+    "leadTime": "Lead time (h)",
+    "cycleTime": "Cycle time (h)"
+  },
+  "Cards": {
+    "burndown": "Burndown",
+    "velocity": "Velocity",
+    "burnup": "Burnup",
+    "cumulativeFlow": "Cumulative flow",
+    "leadCycleTime": "Lead / cycle time",
+    "sprintSummary": "Sprint summary",
+    "portfolio": "Portfolio",
+    "timesheet": "Timesheet",
+    "battery": "Progress battery",
+    "onTrack": "On track",
+    "behind": "Behind",
+    "ofTarget": "{value} of {target}",
+    "logged": "Logged",
+    "estimate": "Estimate",
+    "configSprint": "Sprint",
+    "configScope": "Scope",
+    "configWeeks": "Weeks",
+    "configTarget": "Target"
   },
   "Dashboard": {
     "breadcrumb": "Dashboard",

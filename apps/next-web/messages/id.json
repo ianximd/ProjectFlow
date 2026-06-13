@@ -1511,7 +1511,30 @@
     "incomplete": "Belum Selesai",
     "totalPoints": "Total Poin",
     "completedPoints": "Poin Selesai",
-    "completionPct": "% Penyelesaian"
+    "completionPct": "% Penyelesaian",
+    "scope": "Cakupan",
+    "leadTime": "Waktu tunggu (j)",
+    "cycleTime": "Waktu siklus (j)"
+  },
+  "Cards": {
+    "burndown": "Burndown",
+    "velocity": "Kecepatan",
+    "burnup": "Burnup",
+    "cumulativeFlow": "Aliran kumulatif",
+    "leadCycleTime": "Waktu tunggu / siklus",
+    "sprintSummary": "Ringkasan sprint",
+    "portfolio": "Portofolio",
+    "timesheet": "Lembar waktu",
+    "battery": "Baterai progres",
+    "onTrack": "Sesuai rencana",
+    "behind": "Tertinggal",
+    "ofTarget": "{value} dari {target}",
+    "logged": "Tercatat",
+    "estimate": "Estimasi",
+    "configSprint": "Sprint",
+    "configScope": "Cakupan",
+    "configWeeks": "Minggu",
+    "configTarget": "Target"
   },
   "Dashboard": {
     "breadcrumb": "Dasbor",

@@ -16,7 +16,7 @@ import {
 import { TargetEditor } from './target-editor';
 import { goalProgress, targetRatio } from './goal-progress';
 import { Button } from '@/components/ui/button';
-import type { Goal, GoalFolder, GoalWithProgress, GoalStatus, TargetWithRatio } from '@projectflow/types';
+import type { GoalFolder, GoalWithProgress, GoalStatus, TargetWithRatio } from '@projectflow/types';
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ function GoalCard({
   const [addingTarget, setAddingTarget] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const progress = goal.progress ?? goalProgress(goal.targets ?? []);
+  const progress = typeof goal.progress === 'number' ? goal.progress : goalProgress(goal.targets ?? []);
 
   function handleDelete() {
     startTransition(async () => {
@@ -187,7 +187,7 @@ function GoalCard({
         <button
           onClick={() => setExpanded((v) => !v)}
           className="mt-0.5 text-muted-foreground"
-          aria-label={expanded ? 'Collapse' : 'Expand'}
+          aria-label={expanded ? t('collapse') : t('expand')}
         >
           {expanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         </button>

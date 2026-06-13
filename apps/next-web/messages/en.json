@@ -1798,8 +1798,11 @@
       "targetValue": "Target",
       "currentValue": "Current"
     },
+    "expand": "Expand",
+    "collapse": "Collapse",
     "taskPicker": {
       "label": "Task IDs (comma-separated)",
+      "placeholder": "task-id-1, task-id-2",
       "hint": "Enter task IDs to track completion. Value is recomputed server-side."
     }
   }

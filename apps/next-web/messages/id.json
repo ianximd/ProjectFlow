@@ -1798,8 +1798,11 @@
       "targetValue": "Target",
       "currentValue": "Saat ini"
     },
+    "expand": "Perluas",
+    "collapse": "Tutup",
     "taskPicker": {
       "label": "ID tugas (pisahkan dengan koma)",
+      "placeholder": "id-tugas-1, id-tugas-2",
       "hint": "Masukkan ID tugas untuk melacak penyelesaian. Nilai dihitung ulang di server."
     }
   }

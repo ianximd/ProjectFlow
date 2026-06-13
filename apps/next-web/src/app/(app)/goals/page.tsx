@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { requireSession } from '@/server/session';
 import { getWorkspaceProjectContext } from '@/server/context';
-import { getGoalFolders, getGoals } from '@/server/queries/goals';
+import { getGoalFolders, getGoals, getGoalWithProgress } from '@/server/queries/goals';
 import { GoalsView } from '@/features/goals/goals-view';
 import type { GoalWithProgress } from '@projectflow/types';
 
@@ -25,14 +25,12 @@ export default async function GoalsPage() {
     getGoals(activeWorkspaceId),
   ]);
 
-  // Goals from the list endpoint don't carry targets — cast to GoalWithProgress
-  // with empty targets so the view renders; progress will be 0 until the user
-  // expands a goal and the individual GET /goals/:id data is fetched client-side.
-  const goalsWithProgress: GoalWithProgress[] = goals.map((g) => ({
-    ...g,
-    targets: [],
-    progress: 0,
-  }));
+  // Fetch full per-goal data (targets[] + computed progress) for every goal in
+  // parallel. Filter out nulls from any goal deleted between the list and detail
+  // fetch (TOCTOU window is tiny but possible).
+  const goalsWithProgress = (
+    await Promise.all(goals.map((g) => getGoalWithProgress(g.id)))
+  ).filter(Boolean) as GoalWithProgress[];
 
   return (
     <GoalsView

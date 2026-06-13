@@ -128,7 +128,7 @@ export function TargetEditor({ goalId, existing, onDone, onCancel }: TargetEdito
             className="rounded border bg-background px-2 py-1 text-sm font-mono"
             value={taskIds}
             onChange={(e) => setTaskIds(e.target.value)}
-            placeholder="task-id-1, task-id-2"
+            placeholder={t('taskPicker.placeholder')}
           />
           <p className="text-xs text-muted-foreground">{t('taskPicker.hint')}</p>
         </div>

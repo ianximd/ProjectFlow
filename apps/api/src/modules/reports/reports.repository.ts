@@ -57,6 +57,44 @@ export interface CreatedVsResolvedRow {
   Resolved:   number;
 }
 
+export interface BurnupMeta {
+  SprintId:         string;
+  SprintName:       string;
+  StartDate:        Date;
+  EndDate:          Date;
+  TotalScopePoints: number;
+  CompletedPoints:  number;
+}
+export interface BurnupPointRow {
+  Date:            Date;
+  CompletedPoints: number;
+  ScopePoints:     number;
+}
+export interface CumulativeFlowRowDb {
+  Date:       Date;
+  Status:     string;
+  IssueCount: number;
+}
+export interface LeadCycleTimeRowDb {
+  TaskId:           string;
+  IssueKey:         string;
+  Title:            string;
+  CreatedAt:        Date;
+  StartedAt:        Date | null;
+  ResolvedAt:       Date | null;
+  LeadTimeSeconds:  number | null;
+  CycleTimeSeconds: number | null;
+}
+export interface PortfolioRowDb {
+  ScopeType:       string;
+  ScopeId:         string;
+  ScopeName:       string;
+  TotalIssues:     number;
+  CompletedIssues: number;
+  TotalPoints:     number;
+  CompletedPoints: number;
+}
+
 export class ReportsRepository {
   async burndown(sprintId: string) {
     const sets = await execSp('usp_Report_Burndown', [
@@ -99,5 +137,41 @@ export class ReportsRepository {
       { name: 'Weeks',     type: sql.Int,              value: weeks },
     ]);
     return rows as CreatedVsResolvedRow[];
+  }
+
+  async burnup(sprintId: string) {
+    const sets = await execSp('usp_Report_Burnup', [
+      { name: 'SprintId', type: sql.UniqueIdentifier, value: sprintId },
+    ]);
+    return {
+      meta:   (sets[0]?.[0] ?? null) as BurnupMeta | null,
+      points: (sets[1] ?? []) as BurnupPointRow[],
+    };
+  }
+
+  async cumulativeFlow(scopeType: string, scopeId: string, weeks = 8) {
+    const rows = await execSpOne<CumulativeFlowRowDb>('usp_Report_CumulativeFlow', [
+      { name: 'ScopeType', type: sql.NVarChar(8),       value: scopeType },
+      { name: 'ScopeId',   type: sql.UniqueIdentifier,  value: scopeId },
+      { name: 'Weeks',     type: sql.Int,               value: weeks },
+    ]);
+    return rows as CumulativeFlowRowDb[];
+  }
+
+  async leadCycleTime(scopeType: string, scopeId: string, weeks = 12) {
+    const rows = await execSpOne<LeadCycleTimeRowDb>('usp_Report_LeadCycleTime', [
+      { name: 'ScopeType', type: sql.NVarChar(8),       value: scopeType },
+      { name: 'ScopeId',   type: sql.UniqueIdentifier,  value: scopeId },
+      { name: 'Weeks',     type: sql.Int,               value: weeks },
+    ]);
+    return rows as LeadCycleTimeRowDb[];
+  }
+
+  async portfolio(scopeType: string, scopeIds: string[]) {
+    const rows = await execSpOne<PortfolioRowDb>('usp_Report_Portfolio', [
+      { name: 'ScopeType', type: sql.NVarChar(8),       value: scopeType },
+      { name: 'ScopeIds',  type: sql.NVarChar(sql.MAX), value: scopeIds.length ? scopeIds.join(',') : '' },
+    ]);
+    return rows as PortfolioRowDb[];
   }
 }

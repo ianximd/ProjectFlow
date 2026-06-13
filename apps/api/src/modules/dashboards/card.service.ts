@@ -46,6 +46,12 @@ async function resolveTaskList(card: DashboardCard, d: Dashboard, userId: string
 
 async function resolveCalculation(card: DashboardCard, d: Dashboard, userId: string): Promise<CardData> {
   const op = card.config.aggregate?.op ?? 'count';
+  // `count` is exact (DB-side page.total). KNOWN LIMITATION: sum/avg/min/max fold a
+  // single bounded page (viewService clamps pageSize to MAX_PAGE_SIZE=200), so an
+  // aggregate over a scope with >200 matching tasks is computed over the first 200
+  // only. 9a's UI exposes no field picker, so field-aggregates aren't yet reachable;
+  // 9b (which adds field selection) must move sum/avg/min/max into SQL before relying
+  // on them. See DECISIONS.md §'2026-06-13 — Phase 9a'.
   const page = await runGeneric(card, d, userId, op === 'count' ? 1 : 200);
   const value = op === 'count' ? page.total : computeAggregate(op, page.tasks as any[], fieldAccessor(card.config.aggregate?.field));
   return { cardId: card.id, type: 'calculation', shape: 'scalar', data: { value } };

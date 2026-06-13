@@ -10,14 +10,9 @@
  *   3. Object-level scoping: a non-member stranger gets 403/404, never rows.
  *   4. reorder-cards persists layout/position + set-default enforces one-per-scope.
  *
- * NOTE: Dashboards/DashboardCards are NOT yet in truncateAll's TRUNCATION_ORDER
- * (Phase 9a tables). truncateAll silently skips missing tables (SQL error 208),
- * so dashboard rows from a prior test will survive into subsequent tests within
- * the same test file run. All seeding uses distinct workspaces + spaces per test
- * (via seedScope) so cross-test isolation is maintained by unique IDs, not table
- * wipes. When this phase is deployed, DashboardCards + Dashboards should be
- * prepended to truncate.ts TRUNCATION_ORDER (child-first: DashboardCards →
- * Dashboards).
+ * truncateAll wipes Dashboards/DashboardCards between tests — they were added to
+ * TRUNCATION_ORDER (child→parent: DashboardCards → Dashboards) before Workspaces/
+ * Users, which they FK, so leftover rows can't FK-547 the suite's beforeEach.
  *
  * DB SAFETY: must target the local Docker ProjectFlow_Test DB (see e2e/README).
  */

@@ -118,8 +118,16 @@ dashboardRoutes.post('/', zValidator('json', createSchema),
 dashboardRoutes.get('/:id',
   requirePermission('dashboard.read', { resolveWorkspace: resolveDashboardWorkspace }),
   async (c) => {
-    try { return c.json({ data: await dashboardService.getWithCards(c.req.param('id')!) }); }
-    catch (e) { return fail(c, e); }
+    const userId = getUserId(c);
+    try {
+      const dash = await dashboardService.getWithCards(c.req.param('id')!);
+      // Object-level VIEW gate on the dashboard's scope node (parity with the
+      // GraphQL `dashboard(id)` resolver) so a workspace member lacking VIEW on a
+      // scoped Space/Folder/List can't read its dashboards' metadata/card config.
+      if (!(await assertScopeView(c, userId, dash.scopeType, dash.scopeId)))
+        return c.json({ error: 'Forbidden' }, 403);
+      return c.json({ data: dash });
+    } catch (e) { return fail(c, e); }
   });
 
 // PATCH /dashboards/:id

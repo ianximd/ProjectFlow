@@ -16,7 +16,7 @@ export function mapGoalRow(r: any): Goal {
     id: r.Id, workspaceId: r.WorkspaceId,
     scopeType: r.ScopeType as GoalScopeType, scopeId: r.ScopeId ?? null,
     folderId: r.FolderId ?? null, name: r.Name, description: r.Description ?? null,
-    ownerId: r.OwnerId, dueDate: r.DueDate ? String(r.DueDate) : null,
+    ownerId: r.OwnerId, dueDate: r.DueDate ? new Date(r.DueDate).toISOString().split('T')[0] : null,
     status: r.Status as GoalStatus,
     createdAt: String(r.CreatedAt), updatedAt: String(r.UpdatedAt),
   };

@@ -24,6 +24,7 @@ import { registerWhiteboardGraphql } from './whiteboard.schema.js';
 import { registerFormsGraphql } from './form.schema.js';
 import { registerGoalsGraphql } from './goals.schema.js';
 import { registerDashboardsGraphql } from './dashboards.schema.js';
+import { registerReportsGraphql } from './reports.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -894,6 +895,14 @@ registerGoalsGraphql();
 // setDefaultDashboard mutations.
 // ─────────────────────────────────────────
 registerDashboardsGraphql();
+
+// ─────────────────────────────────────────
+// Reports (Phase 9b) — first GraphQL surface for the reports module. All nine
+// report queries (burndown/velocity/sprintSummary/workload/createdVsResolved/
+// burnup/cumulativeFlow/leadCycleTime/portfolio) over the shared ReportsService,
+// each gated on report.read in the report's owning workspace.
+// ─────────────────────────────────────────
+registerReportsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

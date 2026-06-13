@@ -1646,3 +1646,80 @@ export interface SubmitFormResult {
   submissionId:  string;
   createdTaskId: string | null;
 }
+
+// ─────────────────────────── Goals & Targets (Phase 8e) ────────────────────
+export type GoalScopeType = 'WORKSPACE' | 'SPACE' | 'FOLDER' | 'LIST';
+export type GoalStatus = 'active' | 'achieved' | 'archived';
+export type TargetKind = 'number' | 'boolean' | 'currency' | 'task';
+
+export interface GoalFolder {
+  id: string;
+  workspaceId: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Goal {
+  id: string;
+  workspaceId: string;
+  scopeType: GoalScopeType;
+  scopeId: string | null;
+  folderId: string | null;
+  name: string;
+  description: string | null;
+  ownerId: string;
+  dueDate: string | null;     // ISO date (DATE)
+  status: GoalStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Target {
+  id: string;
+  goalId: string;
+  kind: TargetKind;
+  name: string;
+  unit: string | null;
+  currencyCode: string | null;
+  startValue: number | null;
+  targetValue: number | null;
+  currentValue: number | null;
+  taskFilter: string | null;  // JSON: { taskIds: string[] } for kind='task'
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A target joined with its computed completion ratio (0..1). */
+export interface TargetWithRatio extends Target {
+  ratio: number;
+}
+
+/** A goal joined with its targets and equal-weighted progress (0..1, computed on read). */
+export interface GoalWithProgress extends Goal {
+  targets: TargetWithRatio[];
+  progress: number;
+}
+
+export interface CreateGoalInput {
+  workspaceId: string;
+  scopeType?: GoalScopeType;
+  scopeId?: string | null;
+  folderId?: string | null;
+  name: string;
+  description?: string | null;
+  dueDate?: string | null;
+}
+
+export interface CreateTargetInput {
+  kind: TargetKind;
+  name: string;
+  unit?: string | null;
+  currencyCode?: string | null;
+  startValue?: number | null;
+  targetValue?: number | null;
+  currentValue?: number | null;
+  taskFilter?: string | null;
+}

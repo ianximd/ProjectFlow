@@ -1285,3 +1285,47 @@ Pure progress math (`goal-progress.ts`, API + an **identical** client mirror, bo
 
 ### DB-execution policy
 All DB work (0049+0050 apply + rollback proof, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env` (shell-exported `DB_*` override `--env-file-if-exists`; cold-booted e2e servers inherit the local env; prod cutover of 0049/0050 deferred to ops). Local DB **0050**, **342 SP files**. Verified: API **503 unit / 256 integration** (incl. goals 4/4 + cross-tenant negative authz), web **156 unit** (incl. en/id parity), API+web builds clean, **goals e2e 1/1** (task-linked target → 100% via REST poll + UI render). 18 commits on `feat/phase8e-goals-targets` off 8d tip `27b848b`.
+
+---
+
+## 2026-06-13 — Phase 9a (Dashboards core)
+
+The hardcoded dashboard becomes a first-class, scoped, config-driven object: `Dashboards` + `DashboardCards` tables (scope/visibility mirroring `SavedViews`), a movable/resizable dnd-kit card grid, wave-1 card types (`task_list`/`calculation`/`bar`/`line`/`pie`/`time_tracked`/`goal`) resolved through one shared `card.service` dispatcher, per-card filters, and `?print=1` browser print-to-PDF. REST primary + GraphQL mirror over one service. Built subagent-driven (per-batch implementers + spec/quality review; **final opus whole-slice review = READY TO MERGE, zero cross-tenant holes**). Branch `feat/phase9a-dashboards-core` off `main` tip `f4e53df`; 13 commits.
+
+### The decisive mechanism — one resolver, three data sources (`card.service`)
+A `CardType`-keyed `CardResolver` registry (`card.service.ts`) with a public `register()` seam (9b adds card types; 9c snapshots by iterating `resolve()`):
+- **generic cards** (`task_list`/`calculation`/`bar`/`line`/`pie`) → the Phase 3 view compiler via `viewService.runConfig(scopeType, scopeId, cardConfigToViewConfig(config), opts, dashboard.workspaceId, userId)`. A card is "a saved query + a chart shape", run under the **dashboard's own** workspace+scope; the route/GraphQL layer asserts object-level VIEW on the scope first, so a card never returns rows the requester couldn't read directly.
+- **`time_tracked`** → a new scope-aggregating SP `usp_Dashboard_TimeTracked` (SUM `WorkLogs.TimeSpentSeconds` over `Tasks` filtered by `@WorkspaceId` + `ListPath LIKE @ScopePrefix`, grouped by user). The prefix is derived from the dashboard's own resolved scope, never attacker-controlled.
+- **`goal`** → the **real** Phase-8 `goalService.getGoalWithProgress` with a cross-tenant guard (`goal.workspaceId !== dashboard.workspaceId` → empty/pending). **DEVIATION from the plan**, which shipped `goal` as a stub "until Phase 8 lands" — Phase 8e has landed, so the real service is wired (the stub was unnecessary).
+
+### Deviations from the plan (it predated Phases 6/7/8)
+- **Migration renumber `0047` → `0051_dashboards`** (0038–0050 taken by Phases 6/7/8) + **NEW `0052_dashboard_perms`** seeding `dashboard.read/create/update/delete` (read→all incl. viewer; create/update→owner/admin/member; delete→owner/admin). Without the slugs, `requirePermission`/`requireWorkspacePermission` fail-close 403 even the owner (the recurring 8b/8c/8e trap). Local DB now **0052**, **354 SP files** (+12 dashboard/card SPs).
+- **`WorkLogs.TimeSpentSeconds` exists** (original 0010, kept by 8a) — the reconciliation pass flagged it as a "CRITICAL drift" (claimed it moved to Tasks); verified directly against the migration that it does NOT — the plan's TimeTracked SP is correct. (Lesson: verify schema claims against the migration, not an agent summary.)
+- **`card.service` uses a synchronous `makeSeriesResolver(type)` factory** registered in the constructor, NOT the plan's trailing top-level-await registration (cleaner; sidesteps the plan's async-return-type bug even though tsconfig supports TLA).
+- **Web: `serverFetch<T>` already unwraps the `{data}` envelope and does NOT auto-stringify the body** (`api.ts`) — the plan's literal `.then(r => r.data)` + raw-object bodies were wrong; actions/queries mirror the real `worklogs.ts`/`reports.ts`.
+- **`GET /dashboards` (list-by-scope) was ungated in the plan** (a cross-tenant read hole, same class as 8e C1) → now `requirePermission('dashboard.read')` + object-level VIEW on the scope node. The final review also added the same VIEW gate to **`GET /dashboards/:id`** for REST↔GraphQL parity (metadata/card-config, not task rows, otherwise leaked to a workspace member lacking node VIEW).
+
+### Real bugs caught (the green owner-suite missed them; the process caught them)
+1. **`reorderCards` 500 (integration-caught):** the repo double-stringified `layout`, so the SP's `OPENJSON '$.layout' AS JSON` got a JSON *string* → NULL → `Layout NOT NULL` violation. Fix: pass `layout` as a nested object.
+2. **`'use server'` async-function requirement (next build-caught):** the plan's `export const x = () => …` arrow-const actions are rejected by Next ("Server Actions must be async functions") — but only once the module enters the client-import graph (Task 9 built green while unimported, then Task 11 broke). Fix: `export async function` declarations.
+3. **`revalidatePath` during render:** seeding the default dashboard by calling the `createDashboard` action from the page (server component) would throw (revalidatePath during render). Fix: `ensureWorkspaceDashboards` seeds via a direct `serverFetch` POST (no revalidate).
+4. **`truncate.ts` FK-547 landmine (the 8c lesson):** `Dashboards` FKs `Workspaces`+`Users`; leftover rows block the whole integration suite's `beforeEach`. Added `DashboardCards`→`Dashboards` child→parent before `Workspaces`/`Users`.
+5. **Integration task-in-list seeding:** the implementer's `createTestTask` set no `listId` → the SPACE-scope view returned 0 rows. Fixed to create the task in the list (the plan's original idiom).
+
+### Tests
+- Unit: `card-aggregate` (config→ViewConfig mapping, count/sum/avg/min/max, empty/non-numeric) + `visibility` (canReadDashboard, one-default-per-scope preview) + web `card-registry` (every wave-1 type → renderer + fallback).
+- Integration (`dashboards.integration.test.ts`, 4/4): CRUD + live `task_list`/`calculation` card data, **object-level scoping** (non-member stranger → 403/404, never rows), reorder persistence + one-default-per-scope.
+- e2e (`e2e/dashboards.spec.ts`, 1/1): build a dashboard, add 6 card types with live data, apply a per-card filter, Export PDF → `?print=1` layout. (`window.print` stubbed; addInitScript persists across the App-Router client nav.)
+
+### Verified (local Docker `ProjectFlow_Test`)
+API **512 unit / 260 integration** (60 files, +4 dashboards, 0 regressions), web **158 unit** (incl. en/id parity), API+web builds clean, **dashboards e2e 1/1**. Migrations 0051/0052 reversible + idempotent (apply→down→re-apply→re-apply clean). DB **0052**, **354 SP files**.
+
+### Follow-ups (none blocking; logged for 9b)
+1. **`resolveCalculation` sum/avg/min/max cap at 200 rows** (`viewService` MAX_PAGE_SIZE) — `count` (DB total) and bar/line/pie (SQL groupCounts) are exact; field-aggregates over >200 tasks are computed over the first 200. Not reachable in 9a (no field picker UI); **9b must move sum/avg/min/max into SQL before adding a field picker.**
+2. **`fieldAccessor` builtin-casing** — only `story_points→StoryPoints` is mapped; other builtin numeric fields would read a PascalCase row with a camelCase key → NaN → dropped. Latent until 9b's field picker.
+3. **`DashboardView` ignores its `dashboards` prop** — no dashboard-switcher UI in 9a; the page shows the workspace default or `?id=`.
+4. **Print layout renders inside the app-shell chrome** — the `?print=1` page is under `(app)/layout`; a chrome-free print route / `@media print` CSS is a polish follow-up.
+5. **Two hardcoded empty-state strings** in `card-registry.tsx` ("No time logged", "Unsupported card type") + the print-card raw `card.type` title — minor i18n gaps.
+
+### DB-execution policy
+All DB work (0051+0052 apply + rollback proof, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env` (shell-exported `DB_*` override `--env-file-if-exists`; cold-booted e2e servers inherit the local env; prod cutover of 0051/0052 deferred to ops). **Stop for review/merge before Slice 9b.**

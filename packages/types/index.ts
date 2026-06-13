@@ -358,6 +358,82 @@ export interface SprintSummaryReport {
   statusBreakdown: SprintStatusBreakdown[];
 }
 
+// Named shapes for the two reports whose service mappers were previously inline
+// (so the Phase 9b GraphQL mirror can reference them as object refs).
+export interface WorkloadEntry {
+  assigneeId: string;
+  assigneeName: string;
+  totalIssues: number;
+  openIssues: number;
+  doneIssues: number;
+  totalPoints: number;
+  openPoints: number;
+}
+
+export interface CreatedVsResolvedEntry {
+  weekStart: string | null;
+  weekEnd: string | null;
+  created: number;
+  resolved: number;
+}
+
+// ── Reports: advanced analytics (Phase 9b) ─────────────────────────────────────
+
+export interface BurnupPoint {
+  date: string | null;
+  completedPoints: number;   // cumulative completed story points by this day
+  scopePoints: number;       // total scope (committed) story points as of this day
+}
+
+export interface BurnupReport {
+  sprintId: string;
+  sprintName: string;
+  startDate: string | null;
+  endDate: string | null;
+  totalScopePoints: number;
+  completedPoints: number;
+  points: BurnupPoint[];
+}
+
+export interface CumulativeFlowEntry {
+  date: string | null;
+  status: string;            // workflow status name (the band)
+  issueCount: number;        // open issues sitting in this status on this day
+}
+
+export interface LeadCycleTimeEntry {
+  taskId: string;
+  issueKey: string;
+  title: string;
+  createdAt: string | null;
+  startedAt: string | null;  // first IN_PROGRESS transition (from AuditLog), null if never started
+  resolvedAt: string | null;
+  leadTimeSeconds: number | null;   // created → resolved; null when unresolved
+  cycleTimeSeconds: number | null;  // startedAt → resolved; null when never started/unresolved
+}
+
+export interface LeadCycleTimeReport {
+  scopeType: string;         // 'space' | 'folder' | 'list'
+  scopeId: string;
+  rangeStart: string | null;
+  rangeEnd: string | null;
+  avgLeadTimeSeconds: number | null;
+  avgCycleTimeSeconds: number | null;
+  tasks: LeadCycleTimeEntry[];
+}
+
+export interface PortfolioEntry {
+  scopeType: string;         // 'folder' | 'list'
+  scopeId: string;
+  scopeName: string;
+  totalIssues: number;
+  completedIssues: number;
+  totalPoints: number;
+  completedPoints: number;
+  progressPct: number;       // 0–100 (completed / total issues)
+  onTrack: boolean;          // progressPct >= expected progress for the time window
+}
+
 // ── Phase 8c: sprint-folder hierarchy ───────────────────────────────────────
 export interface Sprint {
   id: string;
@@ -1732,10 +1808,11 @@ export interface CreateTargetInput {
 export type DashboardScopeType = 'workspace' | 'space' | 'folder' | 'list';
 export type DashboardVisibility = 'private' | 'shared' | 'protected';
 
-// Wave-1 catalog (9a). 9b extends: 'burndown'|'velocity'|'burnup'|'cumulative_flow'
-// |'lead_cycle_time'|'sprint_summary'|'portfolio'|'timesheet'|'battery'.
+// Wave-1 catalog (9a). 9b adds the analytics/entity cards below.
 export type CardType =
-  | 'task_list' | 'calculation' | 'bar' | 'line' | 'pie' | 'time_tracked' | 'goal';
+  | 'task_list' | 'calculation' | 'bar' | 'line' | 'pie' | 'time_tracked' | 'goal'  // wave-1 (9a)
+  | 'burndown' | 'velocity' | 'burnup' | 'cumulative_flow' | 'lead_cycle_time'
+  | 'sprint_summary' | 'portfolio' | 'timesheet' | 'battery';                        // 9b
 
 export type AggregateOp = 'count' | 'sum' | 'avg' | 'min' | 'max';
 
@@ -1784,8 +1861,8 @@ export interface Dashboard {
 export interface CardData {
   cardId: string;
   type: CardType;
-  shape: 'rows' | 'scalar' | 'series' | 'totals';
-  data: unknown;          // rows: Task[]; scalar: { value:number }; series: {key,label,value}[]; totals: {userId,userName,totalSeconds}[]
+  shape: 'rows' | 'scalar' | 'series' | 'totals' | 'report';
+  data: unknown;          // rows: Task[]; scalar: { value:number }; series: {key,label,value}[]; totals: {userId,userName,totalSeconds}[]; report: the typed 9b report object/array (BurnupReport, CumulativeFlowEntry[], LeadCycleTimeReport, PortfolioEntry[], rollup, { value,target }, …)
   total?: number;
 }
 

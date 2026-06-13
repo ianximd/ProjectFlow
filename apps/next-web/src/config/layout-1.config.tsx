@@ -15,6 +15,7 @@ import {
   List,
   ShieldCheck,
   Tag,
+  Trophy,
   UserCog,
   Workflow,
   Zap,
@@ -29,6 +30,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Dashboard',     labelKey: 'dashboard',     icon: BarChart2,       path: '/dashboard' },
   { title: 'Notifications', labelKey: 'notifications', icon: Bell,            path: '/notifications' },
   { title: 'Timesheets',    labelKey: 'timesheets',    icon: Clock,           path: '/timesheets' },
+  { title: 'Goals',         labelKey: 'goals',         icon: Trophy,          path: '/goals' },
 
   { heading: 'Plan',          headingKey: 'headingPlan' },
   { title: 'Epics',     labelKey: 'epics',     icon: Layers,          path: '/epics' },

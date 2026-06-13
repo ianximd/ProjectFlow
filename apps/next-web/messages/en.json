@@ -85,6 +85,7 @@
     "dashboard": "Dashboard",
     "notifications": "Notifications",
     "timesheets": "Timesheets",
+    "goals": "Goals",
     "epics": "Epics",
     "versions": "Versions",
     "templates": "Templates",
@@ -1762,6 +1763,44 @@
       "submitted": "Submitted",
       "approved": "Approved",
       "rejected": "Rejected"
+    }
+  },
+  "Goals": {
+    "title": "Goals",
+    "heading": "Goals & Targets",
+    "noWorkspace": "Create a workspace to start tracking goals.",
+    "newFolder": "New folder",
+    "newGoal": "New goal",
+    "newTarget": "New target",
+    "noFolder": "No folder",
+    "empty": "No goals yet",
+    "progress": "Progress",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "status": {
+      "active": "Active",
+      "achieved": "Achieved",
+      "archived": "Archived"
+    },
+    "kind": {
+      "number": "Number",
+      "boolean": "Done / Not done",
+      "currency": "Currency",
+      "task": "Task-based"
+    },
+    "field": {
+      "name": "Name",
+      "kind": "Type",
+      "unit": "Unit",
+      "currencyCode": "Currency code",
+      "startValue": "Start",
+      "targetValue": "Target",
+      "currentValue": "Current"
+    },
+    "taskPicker": {
+      "label": "Task IDs (comma-separated)",
+      "hint": "Enter task IDs to track completion. Value is recomputed server-side."
     }
   }
 }

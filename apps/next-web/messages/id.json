@@ -85,6 +85,7 @@
     "dashboard": "Dasbor",
     "notifications": "Notifikasi",
     "timesheets": "Lembar Waktu",
+    "goals": "Sasaran",
     "epics": "Epik",
     "versions": "Versi",
     "templates": "Templat",
@@ -1762,6 +1763,44 @@
       "submitted": "Terkirim",
       "approved": "Disetujui",
       "rejected": "Ditolak"
+    }
+  },
+  "Goals": {
+    "title": "Sasaran",
+    "heading": "Sasaran & Target",
+    "noWorkspace": "Buat ruang kerja untuk mulai melacak sasaran.",
+    "newFolder": "Folder baru",
+    "newGoal": "Sasaran baru",
+    "newTarget": "Target baru",
+    "noFolder": "Tanpa folder",
+    "empty": "Belum ada sasaran",
+    "progress": "Kemajuan",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "delete": "Hapus",
+    "status": {
+      "active": "Aktif",
+      "achieved": "Tercapai",
+      "archived": "Diarsipkan"
+    },
+    "kind": {
+      "number": "Angka",
+      "boolean": "Selesai / Belum selesai",
+      "currency": "Mata uang",
+      "task": "Berbasis tugas"
+    },
+    "field": {
+      "name": "Nama",
+      "kind": "Tipe",
+      "unit": "Satuan",
+      "currencyCode": "Kode mata uang",
+      "startValue": "Mulai",
+      "targetValue": "Target",
+      "currentValue": "Saat ini"
+    },
+    "taskPicker": {
+      "label": "ID tugas (pisahkan dengan koma)",
+      "hint": "Masukkan ID tugas untuk melacak penyelesaian. Nilai dihitung ulang di server."
     }
   }
 }

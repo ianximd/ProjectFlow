@@ -6,6 +6,7 @@ import { webhookOutgoingService } from '../webhooks/webhook-outgoing.service.js'
 import { customFieldService } from '../customfields/customfield.service.js';
 import { dependencyService, computeDateDelta } from '../dependencies/dependency.service.js';
 import { recurrenceService } from '../recurrence/recurrence.service.js';
+import { goalService } from '../goals/goal.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
 import { emitAutomationEvent } from '../automation/automation.bus.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
@@ -187,6 +188,13 @@ export class TaskService {
         }
       })();
     }
+
+    // Goals (Phase 8e): a task transition can change a task-linked target's
+    // completed/total — recompute any target that counts this task. BEST-EFFORT,
+    // fire-and-forget AFTER the transition committed; recomputeForTask swallows
+    // its own errors, but guard the dispatch too so nothing faults the transition.
+    void goalService.recomputeForTask(taskId).catch((err: any) =>
+      log.error({ err: err?.message, taskId }, 'goal recompute-on-transition failed'));
 
     void emitAutomationEvent({
       type: 'STATUS_CHANGED',

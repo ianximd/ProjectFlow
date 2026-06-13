@@ -1,0 +1,12 @@
+CREATE OR ALTER PROCEDURE dbo.usp_DashboardCard_Delete
+  @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+  SET NOCOUNT ON;
+  DECLARE @Row TABLE (Id UNIQUEIDENTIFIER, DashboardId UNIQUEIDENTIFIER, Type NVARCHAR(24),
+                      Title NVARCHAR(200), Config NVARCHAR(MAX), Layout NVARCHAR(MAX),
+                      Position FLOAT, CreatedAt DATETIME2, UpdatedAt DATETIME2);
+  DELETE FROM dbo.DashboardCards OUTPUT DELETED.* INTO @Row WHERE Id = @Id;
+  SELECT * FROM @Row;
+END;
+GO

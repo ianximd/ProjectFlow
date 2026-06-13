@@ -27,6 +27,11 @@ const TRUNCATION_ORDER = [
   'TaskRecurrences',
   // Phase 3 (0032): SavedViews — FK Workspaces/Users, delete before them.
   'SavedViews',
+  // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
+  // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
+  'Targets',
+  'Goals',
+  'GoalFolders',
   // Phase 2 (0030) — value/watcher leaves, FK Tasks/CustomFields/Users.
   'TaskCustomFieldValues',
   'TaskWatchers',

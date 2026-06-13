@@ -3,9 +3,19 @@ import { DashboardRepository } from './dashboard.repository.js';
 import { cardConfigToViewConfig, computeAggregate } from './card.aggregate.js';
 import { viewService } from '../views/view.service.js';
 import { goalService } from '../goals/goal.service.js';
+import { ReportsService } from '../reports/reports.service.js';
+import { WorkLogService } from '../worklogs/worklog.service.js';
+import { sprintService } from '../sprints/sprint.service.js';
+import { projectService } from '../projects/project.service.js';
+import { CustomFieldRepository } from '../customfields/customfield.repository.js';
+import { TaskRepository } from '../tasks/task.repository.js';
 import type { CardData, CardType, Dashboard, DashboardCard, FieldRef } from '@projectflow/types';
 
 const repo = new DashboardRepository();
+const reportsSvc = new ReportsService();
+const worklogSvc = new WorkLogService();
+const cfRepo = new CustomFieldRepository();
+const taskRepo = new TaskRepository();
 
 /** A resolver turns a card + its dashboard scope into a CardData payload. The
  *  registry is the extension seam: 9b registers more types here; 9c snapshots a
@@ -85,6 +95,91 @@ async function resolveGoal(card: DashboardCard, d: Dashboard): Promise<CardData>
   return { cardId: card.id, type: 'goal', shape: 'scalar', data: { value: goal.progress, goalId, name: goal.name } };
 }
 
+// 9b report/entity card params live in card.config.reportParams.
+interface ReportParams {
+  sprintId?: string; projectId?: string; numSprints?: number;
+  scopeType?: string; scopeId?: string; scopeIds?: string[]; weeks?: number;
+  taskId?: string; target?: number;
+}
+function rp(card: DashboardCard): ReportParams { return (card.config.reportParams ?? {}) as ReportParams; }
+
+// A report card's params are attacker-controllable by anyone who can EDIT the
+// dashboard, so a card could point at a sprint/scope/task in ANOTHER workspace.
+// Mirror resolveGoal: resolve the param's OWNING workspace and refuse to surface
+// data unless it matches the dashboard's workspace. Fail closed on null/error.
+function pendingReport(card: DashboardCard): CardData {
+  return { cardId: card.id, type: card.type, shape: 'report', data: null };
+}
+async function wsForSprint(id?: string): Promise<string | null> {
+  if (!id) return null;
+  try { return await sprintService.getSprintWorkspaceId(id); } catch { return null; }
+}
+async function wsForProject(id?: string): Promise<string | null> {
+  if (!id) return null;
+  try { const p = await projectService.getById(id); return (p as any)?.WorkspaceId ?? null; } catch { return null; }
+}
+async function wsForScope(scopeType?: string, scopeId?: string): Promise<string | null> {
+  if (!scopeType || !scopeId) return null;
+  try { const n = await cfRepo.getScopeNode(scopeType.toUpperCase() as any, scopeId); return n?.workspaceId ?? null; } catch { return null; }
+}
+async function wsForTask(taskId?: string): Promise<string | null> {
+  if (!taskId) return null;
+  // Dedicated SP seam: TaskRepository.getWorkspaceId → Promise<string|null>.
+  try { return await taskRepo.getWorkspaceId(taskId); } catch { return null; }
+}
+
+async function resolveBurndown(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { sprintId } = rp(card);
+  if (!sprintId || (await wsForSprint(sprintId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.burndown(sprintId) };
+}
+async function resolveVelocity(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { projectId, numSprints } = rp(card);
+  if (!projectId || (await wsForProject(projectId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.velocity(projectId, numSprints ?? 5) };
+}
+async function resolveBurnup(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { sprintId } = rp(card);
+  if (!sprintId || (await wsForSprint(sprintId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.burnup(sprintId) };
+}
+async function resolveCumulativeFlow(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { scopeType, scopeId, weeks } = rp(card);
+  if (!scopeType || !scopeId || (await wsForScope(scopeType, scopeId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.cumulativeFlow(scopeType, scopeId, weeks ?? 8) };
+}
+async function resolveLeadCycleTime(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { scopeType, scopeId, weeks } = rp(card);
+  if (!scopeType || !scopeId || (await wsForScope(scopeType, scopeId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.leadCycleTime(scopeType, scopeId, weeks ?? 12) };
+}
+async function resolveSprintSummary(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { sprintId } = rp(card);
+  if (!sprintId || (await wsForSprint(sprintId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.sprintSummary(sprintId) };
+}
+async function resolvePortfolio(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { scopeType, scopeIds } = rp(card);
+  const ids = scopeIds ?? [];
+  if (!scopeType || ids.length === 0) return pendingReport(card);
+  for (const id of ids) { if ((await wsForScope(scopeType, id)) !== d.workspaceId) return pendingReport(card); }
+  return { cardId: card.id, type: card.type, shape: 'report', data: await reportsSvc.portfolio(scopeType, ids) };
+}
+async function resolveTimesheet(card: DashboardCard, d: Dashboard): Promise<CardData> {
+  const { taskId } = rp(card);
+  if (!taskId || (await wsForTask(taskId)) !== d.workspaceId) return pendingReport(card);
+  return { cardId: card.id, type: card.type, shape: 'report', data: await worklogSvc.getRollup(taskId) };
+}
+// battery uses the 9a generic compiler path under the dashboard's OWN scope
+// (no external id → inherently tenant-safe); aggregate value vs target.
+async function resolveBattery(card: DashboardCard, d: Dashboard, userId: string): Promise<CardData> {
+  const op = card.config.aggregate?.op ?? 'count';
+  const page = await runGeneric(card, d, userId, op === 'count' ? 1 : 200);
+  const value = op === 'count' ? page.total : (computeAggregate(op, page.tasks as any[], fieldAccessor(card.config.aggregate?.field)) ?? 0);
+  const target = rp(card).target ?? 100;
+  return { cardId: card.id, type: card.type, shape: 'scalar', data: { value: Math.round(value), target } };
+}
+
 export class CardService {
   private registry = new Map<CardType, CardResolver>();
 
@@ -96,6 +191,15 @@ export class CardService {
     this.registry.set('pie', makeSeriesResolver('pie'));
     this.registry.set('time_tracked', (c, d) => resolveTimeTracked(c, d));
     this.registry.set('goal', (c, d) => resolveGoal(c, d));
+    this.registry.set('burndown',        (c, d) => resolveBurndown(c, d));
+    this.registry.set('velocity',        (c, d) => resolveVelocity(c, d));
+    this.registry.set('burnup',          (c, d) => resolveBurnup(c, d));
+    this.registry.set('cumulative_flow', (c, d) => resolveCumulativeFlow(c, d));
+    this.registry.set('lead_cycle_time', (c, d) => resolveLeadCycleTime(c, d));
+    this.registry.set('sprint_summary',  (c, d) => resolveSprintSummary(c, d));
+    this.registry.set('portfolio',       (c, d) => resolvePortfolio(c, d));
+    this.registry.set('timesheet',       (c, d) => resolveTimesheet(c, d));
+    this.registry.set('battery',         (c, d, userId) => resolveBattery(c, d, userId));
   }
 
   /** Extension seam for 9b/9c — register or override a type's resolver. */

@@ -60,7 +60,11 @@ const updateSchema = z.object({
   position: z.number().optional(),
 });
 const cardCreateSchema = z.object({
-  type:   z.enum(['task_list', 'calculation', 'bar', 'line', 'pie', 'time_tracked', 'goal']),
+  type:   z.enum([
+    'task_list', 'calculation', 'bar', 'line', 'pie', 'time_tracked', 'goal',          // wave-1 (9a)
+    'burndown', 'velocity', 'burnup', 'cumulative_flow', 'lead_cycle_time',
+    'sprint_summary', 'portfolio', 'timesheet', 'battery',                              // 9b
+  ]),
   title:  z.string().max(200).nullable().optional(),
   config: z.record(z.string(), z.any()),
   layout: layoutSchema,

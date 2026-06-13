@@ -27,6 +27,11 @@ const TRUNCATION_ORDER = [
   'TaskRecurrences',
   // Phase 3 (0032): SavedViews — FK Workspaces/Users, delete before them.
   'SavedViews',
+  // Phase 9a (0051): Dashboards — DashboardCards FK Dashboards (CASCADE);
+  // Dashboards FK Workspaces + Users. Child→parent, both before Workspaces/Users
+  // or the Workspaces/Users DELETE fails FK_Dashboards_* once a dashboard exists.
+  'DashboardCards',
+  'Dashboards',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

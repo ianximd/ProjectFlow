@@ -134,7 +134,9 @@ export class DashboardRepository {
   }
 
   async reorderCards(dashboardId: string, cards: Array<{ id: string; layout: DashboardCardLayout; position: number }>): Promise<DashboardCard[]> {
-    const payload = JSON.stringify(cards.map((c) => ({ id: c.id, layout: JSON.stringify(c.layout), position: c.position })));
+    // Pass layout as a nested object so the SP's OPENJSON `'$.layout' AS JSON`
+    // extracts it (stringifying here would make $.layout a string → AS JSON NULL → NOT NULL violation).
+    const payload = JSON.stringify(cards.map((c) => ({ id: c.id, layout: c.layout, position: c.position })));
     const rows = await execSpOne('usp_DashboardCard_Reorder', [
       { name: 'DashboardId', type: sql.UniqueIdentifier,  value: dashboardId },
       { name: 'Cards',       type: sql.NVarChar(sql.MAX), value: payload },

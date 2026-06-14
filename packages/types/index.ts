@@ -1879,3 +1879,60 @@ export interface UpdateDashboardCardInput {
 }
 
 export interface ReorderCardEntry { id: string; layout: DashboardCardLayout; position: number }
+
+// ── Scheduled Reports (Phase 9c) ──────────────────────────────────────────────
+
+export type DeliveryChannel = 'inbox' | 'email';
+export type ScheduledReportStatus = 'delivered' | 'failed' | 'skipped';
+
+export interface ScheduledReport {
+  id:              string;
+  workspaceId:     string;
+  dashboardId:     string | null;   // null when scheduling a single report
+  reportKind:      string | null;
+  reportParams:    Record<string, unknown> | null;
+  cadence:         RecurrenceRule;  // reuses the Phase 5 recurrence rule shape
+  deliveryChannel: DeliveryChannel;
+  recipients:      string[];        // user ids (+ external emails once email lands)
+  enabled:         boolean;
+  nextRunAt:       string | null;
+  ownerId:         string;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
+export interface ScheduledReportRun {
+  id:                string;
+  scheduledReportId: string;
+  periodKey:         string;
+  ranAt:             string;
+  status:            ScheduledReportStatus;
+  snapshotRef:       string | null;  // frozen render payload (JSON) or external ref
+  error:             string | null;
+}
+
+/** Frozen snapshot payload produced by scheduled-report.service.snapshot(). */
+export interface ReportSnapshot {
+  scheduleId:  string;
+  dashboardId: string | null;
+  periodKey:   string;
+  generatedAt: string;
+  cards: Array<{ cardId: string; type: string; title: string | null; data: unknown }>;
+}
+
+export interface CreateScheduledReportInput {
+  workspaceId:      string;
+  dashboardId?:     string | null;
+  reportKind?:      string | null;
+  reportParams?:    Record<string, unknown> | null;
+  cadence:          RecurrenceRule;
+  deliveryChannel?: DeliveryChannel;
+  recipients:       string[];
+}
+
+export interface UpdateScheduledReportInput {
+  cadence?:         RecurrenceRule;
+  deliveryChannel?: DeliveryChannel;
+  recipients?:      string[];
+  enabled?:         boolean;
+}

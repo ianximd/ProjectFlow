@@ -90,10 +90,14 @@ describe('Phase 9c — scheduled reports (integration)', () => {
       workspaceId: ctx.ws.Id, dashboardId: ctx.dashboardId,
       cadence: { freq: 'daily', interval: 1 }, deliveryChannel: 'inbox', recipients: [ctx.recipientId],
     }, ctx.owner.user.Id);
-    await forceNextRunAt(schedule.id, new Date(Date.now() - 60_000));
+    // A real worker restart re-reads the SAME NextRunAt → the SAME PeriodKey.
+    // Reuse ONE instant for both sweeps (two `new Date()` calls would be two
+    // different periods → two legitimate deliveries, which is NOT what we test).
+    const occurrence = new Date(Date.now() - 60_000);
+    await forceNextRunAt(schedule.id, occurrence);
 
     await runScheduledReportSweep(new Date());
-    await forceNextRunAt(schedule.id, new Date(Date.now() - 60_000));
+    await forceNextRunAt(schedule.id, occurrence);
     await runScheduledReportSweep(new Date());
 
     const { runs } = await scheduledReportRepository.listRuns(schedule.id);

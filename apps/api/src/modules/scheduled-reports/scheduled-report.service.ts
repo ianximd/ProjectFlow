@@ -3,6 +3,8 @@ import { computeNextOccurrence, validateRule, type RecurrenceRuleShape } from '.
 import { deliverFor } from './delivery.js';
 import { dashboardService } from '../dashboards/dashboard.service.js';
 import { cardService } from '../dashboards/card.service.js';
+import { accessService } from '../access/access.service.js';
+import { isWorkspaceMember } from '../workspaces/membership.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type {
   ScheduledReport, ScheduledReportRun, ReportSnapshot, DeliveryChannel,
@@ -17,6 +19,20 @@ export class InvalidCadenceError extends Error {
   constructor(message: string) { super(message); this.name = 'InvalidCadenceError'; }
 }
 
+/** Thrown when a schedule's dashboard belongs to a different workspace, or the
+ *  owner cannot VIEW its scope — the cross-tenant binding that the snapshot would
+ *  otherwise resolve under the owner's id without re-checking object-level access. */
+export class ScheduleAccessError extends Error {
+  code = 'SCHEDULE_FORBIDDEN';
+  constructor(message: string) { super(message); this.name = 'ScheduleAccessError'; }
+}
+
+/** Thrown when a recipient is not a member of the schedule's workspace. */
+export class RecipientNotMemberError extends Error {
+  code = 'RECIPIENT_NOT_MEMBER';
+  constructor(message: string) { super(message); this.name = 'RecipientNotMemberError'; }
+}
+
 /** Next run STRICTLY after `from`, or null when the cadence has ended. Pure —
  *  reuses the Phase 5 recurrence evaluator. */
 export function computeNextRun(cadence: RecurrenceRuleShape, from: Date): Date | null {
@@ -28,11 +44,47 @@ export function periodKeyFor(occurrence: Date): string {
   return occurrence.toISOString();
 }
 
+/**
+ * Assert that `userId` may snapshot `dash` on behalf of a schedule in
+ * `scheduleWorkspaceId`. Mirrors the dashboard card-data route's gate exactly:
+ *   - the dashboard MUST belong to the schedule's workspace (binding — closes
+ *     the cross-workspace dashboardId hole), and
+ *   - for a node-scoped dashboard, the user must hold object-level VIEW on the
+ *     scope node (accessService.can); for a workspace-scoped dashboard, the user
+ *     must be a workspace member (the card-data route's dashboard.read RBAC).
+ * Throws ScheduleAccessError when denied so the snapshot path fails CLOSED — the
+ * snapshot resolver (viewService.runConfig) itself does NOT re-check membership,
+ * it trusts the caller, so this gate is what makes owner-scoped resolution safe.
+ */
+export async function assertDashboardSnapshotAccess(
+  dash: Dashboard,
+  scheduleWorkspaceId: string,
+  userId: string,
+): Promise<void> {
+  if (dash.workspaceId !== scheduleWorkspaceId) {
+    throw new ScheduleAccessError('dashboard does not belong to the schedule workspace');
+  }
+  if (dash.scopeType === 'workspace' || !dash.scopeId) {
+    if (!(await isWorkspaceMember(dash.workspaceId, userId))) {
+      throw new ScheduleAccessError('owner is not a member of the dashboard workspace');
+    }
+    return;
+  }
+  const node = dash.scopeType.toUpperCase() as 'SPACE' | 'FOLDER' | 'LIST';
+  if (!(await accessService.can(userId, node, dash.scopeId, 'VIEW'))) {
+    throw new ScheduleAccessError('owner lacks VIEW on the dashboard scope');
+  }
+}
+
 // ── Injectable cores (unit-tested without DB) ────────────────────────────────
 
 export interface SnapshotDeps {
   /** Returns the dashboard WITH its cards loaded (dashboardService.getWithCards). */
   getDashboard: (id: string) => Promise<Dashboard>;
+  /** Fail-closed object-level gate: throws if the schedule owner may not read the
+   *  dashboard (workspace mismatch or no VIEW). The snapshot resolver trusts the
+   *  caller, so this is the authoritative access check on the snapshot path. */
+  assertAccess: (dashboard: Dashboard, schedule: ScheduledReport) => Promise<void>;
   /** Resolves one card under a user's access (cardService.resolve). */
   resolveCard:  (card: DashboardCard, dashboard: Dashboard, userId: string) => Promise<CardData>;
 }
@@ -41,6 +93,8 @@ export interface SnapshotDeps {
  * Resolve every card on the bound dashboard through card.service under the
  * schedule OWNER's access, and FREEZE the result. JSON round-trip deep-clones the
  * resolved data so a later mutation of the live source can't change the snapshot.
+ * assertAccess runs BEFORE any card resolves so a mis-bound/forbidden dashboard
+ * fails closed (the caller records a 'failed' run, never a leaked snapshot).
  */
 export async function snapshotWith(
   schedule: ScheduledReport,
@@ -52,6 +106,7 @@ export async function snapshotWith(
 
   if (dashboardId) {
     const dash = await deps.getDashboard(dashboardId);
+    await deps.assertAccess(dash, schedule);
     const cards = dash.cards ?? [];
     for (const card of cards) {
       const data = await deps.resolveCard(card, dash, schedule.ownerId);
@@ -106,7 +161,10 @@ export async function runDueWith(schedule: ScheduledReport, now: Date, deps: Run
     }
   } catch (err: any) {
     log.error({ err: err?.message, scheduledReportId: schedule.id, periodKey }, 'runDue failed — recording a failed run');
-    await deps.recordRun({ scheduledReportId: schedule.id, periodKey, status: 'failed', snapshotRef: null, error: String(err?.message ?? err) }).catch(() => {});
+    // Record a 'failed' run for the audit trail; if THAT write also fails, log it
+    // (don't bare-swallow) so a transient DB blip on the failure path is visible.
+    await deps.recordRun({ scheduledReportId: schedule.id, periodKey, status: 'failed', snapshotRef: null, error: String(err?.message ?? err) })
+      .catch((e2: any) => log.error({ err: e2?.message, scheduledReportId: schedule.id, periodKey }, 'failed-run record also failed'));
   }
 
   const next = computeNextRun(schedule.cadence as RecurrenceRuleShape, occurrence);
@@ -126,6 +184,18 @@ export class ScheduledReportService {
 
   async create(input: CreateScheduledReportInput, ownerId: string): Promise<ScheduledReport> {
     const cadence = this.validateCadence(input.cadence);
+    // C1: bind the dashboard to the schedule's workspace + assert the owner can
+    // actually VIEW it. Without this a manage-holder in workspace A could point a
+    // schedule at workspace B's dashboard (or a space they can't see) and the
+    // owner-scoped snapshot would resolve it (runConfig trusts the caller).
+    if (input.dashboardId) {
+      const dash = await dashboardService.getWithCards(input.dashboardId);
+      await assertDashboardSnapshotAccess(dash, input.workspaceId, ownerId);
+    }
+    // I1: recipients must be members of the schedule's workspace — owner-resolved
+    // data is delivered (verbatim) into each recipient's inbox.
+    await this.assertRecipientsAreMembers(input.workspaceId, input.recipients ?? []);
+
     const firstRun = computeNextRun(cadence, new Date());
     return this.repo.create({
       workspaceId:     input.workspaceId,
@@ -148,6 +218,10 @@ export class ScheduledReportService {
       cadenceJson = JSON.stringify(cadence);
       nextRunAt = computeNextRun(cadence, new Date());   // re-seed on a cadence change
     }
+    if (input.recipients) {
+      const existing = await this.repo.getById(id);
+      if (existing) await this.assertRecipientsAreMembers(existing.workspaceId, input.recipients);
+    }
     return this.repo.update(id, {
       cadence:         cadenceJson,
       deliveryChannel: input.deliveryChannel ?? null,
@@ -159,10 +233,12 @@ export class ScheduledReportService {
 
   delete(id: string): Promise<number> { return this.repo.delete(id); }
 
-  /** Snapshot bound to the real 9a services (owner-scoped card resolve). */
+  /** Snapshot bound to the real 9a services (owner-scoped card resolve, fail-closed
+   *  object-level gate). */
   snapshot(schedule: ScheduledReport, periodKey: string): Promise<ReportSnapshot> {
     return snapshotWith(schedule, periodKey, {
       getDashboard: (dashId) => dashboardService.getWithCards(dashId),
+      assertAccess: (dash, s) => assertDashboardSnapshotAccess(dash, s.workspaceId, s.ownerId),
       resolveCard:  (card, dash, userId) => cardService.resolve(card, dash, userId),
     });
   }
@@ -175,6 +251,14 @@ export class ScheduledReportService {
       deliver:   (s, run) => deliverFor(s, run),
       advance:   (id, next) => this.repo.advance(id, next),
     });
+  }
+
+  private async assertRecipientsAreMembers(workspaceId: string, recipients: string[]): Promise<void> {
+    for (const userId of recipients) {
+      if (!(await isWorkspaceMember(workspaceId, userId))) {
+        throw new RecipientNotMemberError(`recipient ${userId} is not a member of the workspace`);
+      }
+    }
   }
 
   private validateCadence(raw: unknown): RecurrenceRuleShape {

@@ -76,6 +76,12 @@ test.describe('Phase 9c — scheduled reports', () => {
     const workspaceId = String(ws.Id ?? ws.id);
     expect(workspaceId, 'workspaceId').toBeTruthy();
 
+    // The recipient must be a workspace MEMBER (owner-resolved report data is
+    // delivered into their inbox; create() rejects non-member recipients).
+    expect((await api.post(`${API_BASE}/workspaces/${workspaceId}/members`, {
+      headers: ownerHeaders, data: { userId: recipientId, role: 'MEMBER' },
+    })).status(), 'add recipient as member').toBe(201);
+
     const project = (await (await api.post(`${API_BASE}/projects`, {
       headers: ownerHeaders, data: { workspaceId, name: `SR Project ${suffix}`, key: `SR${suffix.slice(-4).toUpperCase()}`, type: 'KANBAN' },
     })).json()).data;

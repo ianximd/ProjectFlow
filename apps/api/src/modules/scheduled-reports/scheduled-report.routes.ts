@@ -1,11 +1,21 @@
 import { Hono }       from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z }          from 'zod';
-import { scheduledReportService }    from './scheduled-report.service.js';
+import { scheduledReportService, InvalidCadenceError, ScheduleAccessError, RecipientNotMemberError } from './scheduled-report.service.js';
 import { scheduledReportRepository } from './scheduled-report.repository.js';
 import { requirePermission }         from '../../shared/middleware/permissions.middleware.js';
 
 export const scheduledReportRoutes = new Hono();
+
+// Map service errors to HTTP. A cross-tenant/forbidden binding → 403; a malformed
+// cadence or non-member recipient → 400. Anything else rethrows (→ 500 via the
+// global handler) so unexpected failures aren't masked.
+function mapScheduleError(c: any, e: unknown): Response {
+  if (e instanceof ScheduleAccessError)     return c.json({ error: { message: e.message, code: e.code } }, 403);
+  if (e instanceof RecipientNotMemberError) return c.json({ error: { message: e.message, code: e.code } }, 400);
+  if (e instanceof InvalidCadenceError)     return c.json({ error: { message: e.message, code: e.code } }, 400);
+  throw e;
+}
 
 const cadenceSchema = z.object({
   freq:       z.enum(['daily', 'weekly', 'monthly', 'yearly']),
@@ -64,8 +74,10 @@ scheduledReportRoutes.post(
   async (c) => {
     const userId = ((c as any).get('user') as any).userId as string;
     const input = c.req.valid('json');
-    const schedule = await scheduledReportService.create(input as any, userId);
-    return c.json({ data: schedule }, 201);
+    try {
+      const schedule = await scheduledReportService.create(input as any, userId);
+      return c.json({ data: schedule }, 201);
+    } catch (e) { return mapScheduleError(c, e); }
   },
 );
 
@@ -75,9 +87,11 @@ scheduledReportRoutes.patch(
   zValidator('json', updateSchema),
   requirePermission('scheduled_report.manage', { resolveWorkspace: resolveWorkspaceFromSchedule }),
   async (c) => {
-    const updated = await scheduledReportService.update(c.req.param('id')!, c.req.valid('json') as any);
-    if (!updated) return c.json({ error: { message: 'Schedule not found' } }, 404);
-    return c.json({ data: updated });
+    try {
+      const updated = await scheduledReportService.update(c.req.param('id')!, c.req.valid('json') as any);
+      if (!updated) return c.json({ error: { message: 'Schedule not found' } }, 404);
+      return c.json({ data: updated });
+    } catch (e) { return mapScheduleError(c, e); }
   },
 );
 

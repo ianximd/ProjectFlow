@@ -27,6 +27,11 @@ async function seedDashboard() {
   const recipient = await createTestUser({ email: `sr-rcpt-${Date.now()}-${seq}@projectflow.test` });
   const token = owner.accessToken;
   const ws = await createTestWorkspace(token);
+  // The recipient must be a MEMBER of the workspace — owner-resolved report data
+  // is delivered into their inbox, so create() rejects non-member recipients.
+  await request(`/workspaces/${ws.Id}/members`, {
+    method: 'POST', token, json: { userId: recipient.user.Id, role: 'MEMBER' },
+  });
   const space = await createTestProject(ws.Id, token, { name: 'SR Space', key: `SR${(Date.now() + seq) % 100000}` });
 
   // List + task so the SPACE-scope calculation card resolves real rows.
@@ -163,5 +168,32 @@ describe('Phase 9c — scheduled reports (integration)', () => {
 
     const listRes = await json<{ data: any[] }>(await request(`/scheduled-reports?workspaceId=${ctx.ws.Id}`, { token: ctx.token }), 200);
     expect(listRes.data.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('C1: create REJECTS (403) a dashboard belonging to another workspace (cross-tenant binding)', async () => {
+    const victim   = await seedDashboard();   // workspace B + its dashboard
+    const attacker = await seedDashboard();    // attacker owns workspace A (has manage in A)
+
+    // Attacker schedules the VICTIM's dashboard under THEIR OWN workspace A. The
+    // RBAC gate passes (manage in A) but the dashboard belongs to B → 403.
+    const res = await request('/scheduled-reports', {
+      method: 'POST', token: attacker.token,
+      json: { workspaceId: attacker.ws.Id, dashboardId: victim.dashboardId, cadence: { freq: 'daily', interval: 1 }, recipients: [attacker.recipientId] },
+    });
+    expect(res.status).toBe(403);
+
+    // And no schedule leaked into the attacker's workspace.
+    const list = await json<{ data: any[] }>(await request(`/scheduled-reports?workspaceId=${attacker.ws.Id}`, { token: attacker.token }), 200);
+    expect(list.data.length).toBe(0);
+  });
+
+  it('I1: create REJECTS (400) a recipient who is not a workspace member', async () => {
+    const ctx = await seedDashboard();
+    const stranger = await createTestUser({ email: `sr-stranger-${Date.now()}-${seq}@projectflow.test` });
+    const res = await request('/scheduled-reports', {
+      method: 'POST', token: ctx.token,
+      json: { workspaceId: ctx.ws.Id, dashboardId: ctx.dashboardId, cadence: { freq: 'daily', interval: 1 }, recipients: [String(stranger.user.Id)] },
+    });
+    expect(res.status).toBe(400);
   });
 });

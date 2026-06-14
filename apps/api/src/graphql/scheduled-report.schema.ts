@@ -1,9 +1,17 @@
 import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
-import { scheduledReportService, InvalidCadenceError } from '../modules/scheduled-reports/scheduled-report.service.js';
+import { scheduledReportService, InvalidCadenceError, ScheduleAccessError, RecipientNotMemberError } from '../modules/scheduled-reports/scheduled-report.service.js';
 import { scheduledReportRepository } from '../modules/scheduled-reports/scheduled-report.repository.js';
 import { notFound, requireWorkspacePermission } from './authz.js';
 import type { ScheduledReport, ScheduledReportRun } from '@projectflow/types';
+
+/** Re-throw known service errors as GraphQLErrors with stable codes; rethrow the rest. */
+function rethrowAsGraphql(err: any): never {
+  if (err instanceof ScheduleAccessError)     throw new GraphQLError(err.message, { extensions: { code: 'FORBIDDEN' } });
+  if (err instanceof RecipientNotMemberError) throw new GraphQLError(err.message, { extensions: { code: err.code } });
+  if (err instanceof InvalidCadenceError)     throw new GraphQLError(err.message, { extensions: { code: err.code } });
+  throw err;
+}
 
 export function registerScheduledReportGraphql(): void {
   // The cadence is transported as a JSON string (mirrors TaskRecurrence.rule and
@@ -81,8 +89,7 @@ export function registerScheduledReportGraphql(): void {
             recipients:      a.recipients,
           }, (ctx.user as any).userId);
         } catch (err: any) {
-          if (err instanceof InvalidCadenceError) throw new GraphQLError(err.message, { extensions: { code: err.code } });
-          throw err;
+          rethrowAsGraphql(err);
         }
       },
     }),
@@ -110,8 +117,7 @@ export function registerScheduledReportGraphql(): void {
             enabled:         a.enabled ?? undefined,
           });
         } catch (err: any) {
-          if (err instanceof InvalidCadenceError) throw new GraphQLError(err.message, { extensions: { code: err.code } });
-          throw err;
+          rethrowAsGraphql(err);
         }
       },
     }),

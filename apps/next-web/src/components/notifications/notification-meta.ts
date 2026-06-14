@@ -7,7 +7,7 @@
 // no rendering logic. The full per-row affordances live on the Inbox page.
 
 import {
-  Bell, MessageSquare, UserPlus, AtSign, FileText, AlertCircle,
+  Bell, MessageSquare, UserPlus, AtSign, FileText, AlertCircle, CalendarClock,
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { formatShortDate } from '@/lib/date';
@@ -30,6 +30,7 @@ export const TYPE_META: Record<string, {
   MENTION:          { icon: AtSign,        labelKey: 'labelMention',         summaryKey: 'summaryMention',         tone: 'amber'   },
   TASK_UPDATED:     { icon: FileText,      labelKey: 'labelTaskUpdated',     summaryKey: 'summaryTaskUpdated',     tone: 'violet'  },
   TASK_DUE_SOON:    { icon: AlertCircle,   labelKey: 'labelTaskDueSoon',     summaryKey: 'summaryTaskDueSoon',     tone: 'amber'   },
+  SCHEDULED_REPORT_READY: { icon: CalendarClock, labelKey: 'labelScheduledReport', summaryKey: 'summaryScheduledReport', tone: 'violet' },
 };
 
 export const TONE_BG: Record<NotificationTone, string> = {

@@ -32,6 +32,12 @@ const TRUNCATION_ORDER = [
   // or the Workspaces/Users DELETE fails FK_Dashboards_* once a dashboard exists.
   'DashboardCards',
   'Dashboards',
+  // Phase 9c (0054): ScheduledReports + ScheduledReportRuns — Runs FK Schedules
+  // (ON DELETE CASCADE); Schedules reference Workspaces/Users/Dashboards by id
+  // WITHOUT an FK (DashboardId is a plain column). Child→parent, both before
+  // Workspaces/Users so their DELETE doesn't strand a schedule row.
+  'ScheduledReportRuns',
+  'ScheduledReports',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

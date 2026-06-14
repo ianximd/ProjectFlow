@@ -25,6 +25,7 @@ import { registerFormsGraphql } from './form.schema.js';
 import { registerGoalsGraphql } from './goals.schema.js';
 import { registerDashboardsGraphql } from './dashboards.schema.js';
 import { registerReportsGraphql } from './reports.schema.js';
+import { registerScheduledReportGraphql } from './scheduled-report.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -903,6 +904,13 @@ registerDashboardsGraphql();
 // each gated on report.read in the report's owning workspace.
 // ─────────────────────────────────────────
 registerReportsGraphql();
+
+// ─────────────────────────────────────────
+// Scheduled Reports (Phase 9c) — ScheduledReport/ScheduledReportRun types +
+// scheduledReports/scheduledReportRuns queries + create/update/remove mutations
+// (cadence transported as a JSON string), each gated on scheduled_report.manage.
+// ─────────────────────────────────────────
+registerScheduledReportGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

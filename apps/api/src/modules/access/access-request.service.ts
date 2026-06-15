@@ -36,14 +36,20 @@ export const accessRequestService = {
 
     const request = await repo.create({ workspaceId, objectType, objectId, requestedBy: requesterId, note: note ?? null });
 
-    // Phase 3.5 notification to the workspace's owners/admins.
-    const recipientIds = await repo.listOwnerAdminIds(workspaceId);
-    await notificationService.notify({
-      recipientIds,
-      actorId: requesterId,
-      type: 'ACCESS_REQUESTED',
-      payload: { accessRequestId: request.id, objectType, objectId, note: note ?? null },
-    });
+    // Phase 3.5 notification to the workspace's owners/admins. Best-effort: a
+    // notification hiccup must NOT fail the (already-persisted) request or be
+    // mis-mapped to a 404 by the route's not-found handler.
+    try {
+      const recipientIds = await repo.listOwnerAdminIds(workspaceId);
+      await notificationService.notify({
+        recipientIds,
+        actorId: requesterId,
+        type: 'ACCESS_REQUESTED',
+        payload: { accessRequestId: request.id, objectType, objectId, note: note ?? null },
+      });
+    } catch {
+      /* notification is best-effort */
+    }
     return request;
   },
 
@@ -54,10 +60,14 @@ export const accessRequestService = {
     id: string, resolverId: string, decision: 'granted' | 'denied',
     level: ObjectPermissionLevel = 'EDIT', resolverEmail: string | null = null,
   ): Promise<AccessRequest | null> {
+    // The SP returns the row ONLY when this call actually transitioned a pending
+    // request, so `resolved` is the authoritative post-state. Branch on it (NOT
+    // the input `decision`) so a stale id for an already-resolved request can
+    // never re-enter the grant path.
     const resolved = await repo.resolve(id, decision, resolverId);
     if (!resolved) return null;
 
-    if (decision === 'granted') {
+    if (resolved.status === 'granted') {
       const target = await grantTarget(resolved.objectType, resolved.objectId);
       if (target) {
         await accessService.setObjectPermission({

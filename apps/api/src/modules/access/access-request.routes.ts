@@ -41,8 +41,12 @@ accessRequestRoutes.post('/request', zValidator('json', requestSchema), async (c
   try {
     const request = await accessRequestService.requestAccess(objectType, objectId, a.id, note);
     return c.json({ request }, 201);
-  } catch {
-    return c.json({ error: { code: 'NOT_FOUND', message: 'Object not found', statusCode: 404 } }, 404);
+  } catch (e: any) {
+    // Map only the genuine object-not-found sentinel to 404; surface anything
+    // else (real 500) instead of masking it as a misleading not-found.
+    if (e?.message === 'OBJECT_NOT_FOUND')
+      return c.json({ error: { code: 'NOT_FOUND', message: 'Object not found', statusCode: 404 } }, 404);
+    throw e;
   }
 });
 

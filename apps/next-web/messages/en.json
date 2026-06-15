@@ -1903,5 +1903,22 @@
     "thu": "Thu",
     "fri": "Fri",
     "sat": "Sat"
+  },
+  "Activity": {
+    "empty": "No activity yet.",
+    "filterActor": "Filter by actor",
+    "filterAction": "Filter by action",
+    "allActors": "All actors",
+    "allActions": "All actions"
+  },
+  "Embed": {
+    "title": "Embed",
+    "noUrl": "No URL configured for this embed view."
+  },
+  "Doc": {
+    "comingSoonTitle": "Doc view coming soon",
+    "comingSoonBody": "Flip DOCS_FEATURE_ENABLED to enable the inline document reader.",
+    "pinned": "Pinned doc",
+    "noDoc": "No document ID configured for this doc view."
   }
 }

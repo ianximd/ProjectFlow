@@ -1903,5 +1903,22 @@
     "thu": "Kam",
     "fri": "Jum",
     "sat": "Sab"
+  },
+  "Activity": {
+    "empty": "Belum ada aktivitas.",
+    "filterActor": "Filter berdasarkan aktor",
+    "filterAction": "Filter berdasarkan aksi",
+    "allActors": "Semua aktor",
+    "allActions": "Semua aksi"
+  },
+  "Embed": {
+    "title": "Tanam",
+    "noUrl": "Tidak ada URL yang dikonfigurasi untuk tampilan tanam ini."
+  },
+  "Doc": {
+    "comingSoonTitle": "Tampilan dokumen segera hadir",
+    "comingSoonBody": "Aktifkan DOCS_FEATURE_ENABLED untuk mengaktifkan pembaca dokumen sebaris.",
+    "pinned": "Dokumen yang disematkan",
+    "noDoc": "Tidak ada ID dokumen yang dikonfigurasi untuk tampilan dokumen ini."
   }
 }

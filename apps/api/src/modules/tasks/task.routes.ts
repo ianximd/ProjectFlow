@@ -18,6 +18,8 @@ import { taskTypeService } from '../tasktypes/tasktype.service.js';
 import { tagService } from '../tags/tag.service.js';
 import { watcherService } from '../watchers/watcher.service.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
+import { requireApp } from '../../shared/middleware/requireApp.middleware.js';
+import { appService } from '../apps/app.service.js';
 
 const log = subLogger('tasks-routes');
 
@@ -108,6 +110,25 @@ export const taskRoutes = new Hono();
 const taskListId = (t: any): string | null => t?.listId ?? t?.ListId ?? null;
 const taskProjectId = (t: any): string | null => t?.projectId ?? t?.ProjectId ?? null;
 
+// Phase 10a: scope node from the route's :id task (the leaf List/Space an app gate cares about).
+const scopeFromIdTask = (c: any) => appService.scopeNodeForTask(c.req.param('id')!);
+
+// Conditionally gate subtask creation on the nested_subtasks app (only when a parentTaskId is present).
+const requireNestedSubtasksIfParent = async (c: any, next: any) => {
+  let body: any; try { body = await c.req.json(); } catch { body = {}; }
+  if (!body?.parentTaskId) return next();   // top-level task — no nested gate
+  return requireApp('nested_subtasks', async () => appService.scopeNodeForTask(body.parentTaskId))(c, next);
+};
+
+// Inline notes — optional features NOT yet on-disk (do not fabricate routes):
+//  • sprint_points: story points ride the generic PATCH /:id task update (no dedicated route),
+//    so they are not separately app-gated; gate with requireApp('sprint_points', scopeFromIdTask)
+//    when a dedicated sprint-points write route lands.
+//  • custom_task_ids: gate the id-format config endpoints with requireApp('custom_task_ids', …)
+//    (workspace scope; default OFF) when they land.
+//  • email: gate the send call with appService.isEnabled('email', scope) (service-layer side-effect)
+//    when the SMTP path lands (Phase 12).
+
 // GET /api/v1/tasks/:id/fields — effective fields + current values. VIEW on the task's list.
 taskRoutes.get('/:id/fields',
   requireObjectAccess('VIEW', async (c) => {
@@ -152,6 +173,7 @@ taskRoutes.get('/:id', async (c) => {
 taskRoutes.post(
   '/',
   zValidator('json', createSchema),
+  requireNestedSubtasksIfParent,
   requirePermission('task.create', {
     resolveWorkspace: async (c) => (c.req.valid('json' as never) as { workspaceId?: string })?.workspaceId ?? null,
   }),
@@ -226,6 +248,7 @@ taskRoutes.get('/', async (c) => {
 // Empty array clears all assignees. SP filters out non-workspace members.
 taskRoutes.put(
   '/:id/assignees',
+  requireApp('multiple_assignees', scopeFromIdTask),
   requirePermission('task.assign', { resolveWorkspace: resolveTaskWorkspace }),
   zValidator('json', assigneesSchema),
   async (c) => {
@@ -296,6 +319,7 @@ taskRoutes.delete(
 
 // GET /api/v1/tasks/:id/dependencies — VIEW on the task's list (IDOR guard).
 taskRoutes.get('/:id/dependencies',
+  requireApp('dependency_warning', scopeFromIdTask),
   requireObjectAccess('VIEW', async (c) => {
     const lid = taskListId(await taskRepo.getById(c.req.param('id')!));
     return lid ? { type: 'LIST', id: lid } : null;
@@ -305,6 +329,7 @@ taskRoutes.get('/:id/dependencies',
 // POST /api/v1/tasks/:id/dependencies  { dependsOnId, relation? } — add an edge.
 taskRoutes.post(
   '/:id/dependencies',
+  requireApp('dependency_warning', scopeFromIdTask),
   requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
   async (c) => {
     const taskId = c.req.param('id')!;
@@ -335,6 +360,7 @@ taskRoutes.post(
 // DELETE /api/v1/tasks/:id/dependencies/:otherId?relation= — remove an edge.
 taskRoutes.delete(
   '/:id/dependencies/:otherId',
+  requireApp('dependency_warning', scopeFromIdTask),
   requirePermission('task.update', { resolveWorkspace: resolveTaskWorkspace }),
   async (c) => {
     const relation = c.req.query('relation') === 'blocking' ? 'blocking' : 'waiting_on';
@@ -529,7 +555,17 @@ taskRoutes.patch(
       return c.json({ error: { code: 'CUSTOM_FIELD_REQUIRED', message: err.message, missing: err.missing } }, 422);
     }
     if (err instanceof DependencyWarningError) {
-      return c.json({ error: { code: err.code, message: err.message, details: { blockers: err.blockers } } }, 409);
+      const scope = await appService.scopeNodeForTask(id);
+      const warn = scope ? await appService.isEnabled('dependency_warning', scope) : true;
+      if (warn) {
+        return c.json({ error: { code: err.code, message: err.message, details: { blockers: err.blockers } } }, 409);
+      }
+      // dependency_warning OFF here → ignore the warning and complete the transition.
+      const task = await taskService.transitionTask(id, status, actorId, { ignoreDependencyWarning: true });
+      if (!task) return c.json({ error: { code: 'NOT_FOUND', message: 'Task not found' } }, 404);
+      await invalidateTaskCaches(taskProjectId(task));
+      await publishTaskEvent('updated', { projectId: taskProjectId(task) as string, task });
+      return c.json({ data: task });
     }
     if (err.number === 50003 || err.number === 50004) {
       return c.json({ error: { code: 'NOT_FOUND', message: err.message } }, 404);

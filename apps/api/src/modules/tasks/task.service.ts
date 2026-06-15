@@ -7,6 +7,7 @@ import { customFieldService } from '../customfields/customfield.service.js';
 import { dependencyService, computeDateDelta } from '../dependencies/dependency.service.js';
 import { recurrenceService } from '../recurrence/recurrence.service.js';
 import { goalService } from '../goals/goal.service.js';
+import { appService } from '../apps/app.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
 import { emitAutomationEvent } from '../automation/automation.bus.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
@@ -137,13 +138,15 @@ export class TaskService {
     return task;
   }
 
-  async transitionTask(taskId: string, newStatus: string, actorId: string): Promise<Task> {
+  async transitionTask(taskId: string, newStatus: string, actorId: string, opts?: { ignoreDependencyWarning?: boolean }): Promise<Task> {
     // Block DONE-category transitions while required custom fields are unfilled.
     await customFieldService.assertRequiredMetForStatus(taskId, newStatus); // throws RequiredFieldsUnmetError
     // Dependency Warning: refuse to close a task that still has open blockers.
     // The SP only returns rows when blockers are open, so the guard is safe
     // even if the done-group gate is slightly too broad.
-    if (isDoneGroupStatus(newStatus)) {
+    // Dependency Warning (Phase 10a): the route suppresses this when the
+    // dependency_warning app is OFF for the task's scope (passes ignoreDependencyWarning).
+    if (isDoneGroupStatus(newStatus) && !opts?.ignoreDependencyWarning) {
       await dependencyService.assertNoOpenBlockers(taskId); // throws DependencyWarningError
     }
     // Capture the status BEFORE the transition so recurrence only fires on a true
@@ -229,16 +232,22 @@ export class TaskService {
     if (task) {
       const delta = computeDateDelta(before, task as any); // whole days; 0 if no date change
       if (delta !== 0) {
-        try {
-          const shifted = await dependencyService.rescheduleDependents(taskId, delta);
-          const projectId = projectIdOf(task);
-          if (projectId) {
-            for (const id of shifted) {
-              await publishTaskEvent('updated', { projectId, taskId: id });
+        // Reschedule Dependencies (Phase 10a): only cascade when the app is ON for
+        // the task's scope. The base date update always proceeds; only the cascade
+        // is gated. (Default-on, so unchanged behavior unless an override turns it off.)
+        const scope = await appService.scopeNodeForTask(taskId);
+        if (scope && await appService.isEnabled('reschedule_dependencies', scope)) {
+          try {
+            const shifted = await dependencyService.rescheduleDependents(taskId, delta);
+            const projectId = projectIdOf(task);
+            if (projectId) {
+              for (const id of shifted) {
+                await publishTaskEvent('updated', { projectId, taskId: id });
+              }
             }
+          } catch (err: any) {
+            log.error({ err: err?.message }, 'reschedule dependents failed');
           }
-        } catch (err: any) {
-          log.error({ err: err?.message }, 'reschedule dependents failed');
         }
       }
 

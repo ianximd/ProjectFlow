@@ -75,6 +75,31 @@ describe('apps / feature toggles — time_tracking gating', () => {
     await json(await request('/worklogs', { method: 'POST', token, json: newWorklog(a.taskId) }), 201);
   });
 
+  it('task-route gate: disabling multiple_assignees at a Space → assignees write is feature-absent (404 APP_DISABLED)', async () => {
+    const owner = await createTestUser({ email: `apps-ma-owner-${Date.now()}@projectflow.test` });
+    const token = owner.accessToken;
+    const ws = await createTestWorkspace(token);
+    const s = await seedSpaceWithTask(ws.Id, token, `MA${Date.now() % 100000}`);
+
+    // Baseline: assignees write succeeds (multiple_assignees default-on).
+    await json(await request(`/tasks/${s.taskId}/assignees`, {
+      method: 'PUT', token, json: { userIds: [owner.user.Id] },
+    }), 200);
+
+    // Disable multiple_assignees at the Space.
+    await json(await request(`/apps/space/${s.spaceId}/multiple_assignees`, {
+      method: 'PATCH', token, json: { enabled: false },
+    }), 200);
+
+    // Now the task-route gate short-circuits → 404 APP_DISABLED.
+    const res = await request(`/tasks/${s.taskId}/assignees`, {
+      method: 'PUT', token, json: { userIds: [owner.user.Id] },
+    });
+    expect(res.status).toBe(404);
+    const body = await json<{ error: { code: string } }>(res);
+    expect(body.error.code).toBe('APP_DISABLED');
+  });
+
   it('fail-closed: a non-member cannot toggle a Space they have no app.manage on', async () => {
     const owner = await createTestUser({ email: `apps-owner2-${Date.now()}@projectflow.test` });
     const token = owner.accessToken;

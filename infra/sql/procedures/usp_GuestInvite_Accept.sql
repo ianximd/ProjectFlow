@@ -26,17 +26,26 @@ BEGIN
   BEGIN TRY
     BEGIN TRANSACTION;
 
-    -- Guest WorkspaceMembers row (IsGuest=1). Idempotent on re-accept.
-    IF NOT EXISTS (SELECT 1 FROM dbo.WorkspaceMembers WHERE WorkspaceId = @WorkspaceId AND UserId = @AccepterUserId)
-      INSERT INTO dbo.WorkspaceMembers (Id, WorkspaceId, UserId, IsGuest)
-      VALUES (NEWID(), @WorkspaceId, @AccepterUserId, 1);
-    ELSE
-      UPDATE dbo.WorkspaceMembers SET IsGuest = 1
-      WHERE WorkspaceId = @WorkspaceId AND UserId = @AccepterUserId;
+    -- Do NOT downgrade an existing real (non-guest) member who accepts an invite
+    -- to their own email — only create the guest membership + role when the
+    -- accepter is not already a non-guest member. A re-accepting guest has
+    -- IsGuest=1, so it still takes this path (idempotent). Fail-safe: a real
+    -- member keeps their full membership + floor; we still write the grant below.
+    IF NOT EXISTS (SELECT 1 FROM dbo.WorkspaceMembers
+                   WHERE WorkspaceId = @WorkspaceId AND UserId = @AccepterUserId AND IsGuest = 0)
+    BEGIN
+      -- Guest WorkspaceMembers row (IsGuest=1). Idempotent on re-accept.
+      IF NOT EXISTS (SELECT 1 FROM dbo.WorkspaceMembers WHERE WorkspaceId = @WorkspaceId AND UserId = @AccepterUserId)
+        INSERT INTO dbo.WorkspaceMembers (Id, WorkspaceId, UserId, IsGuest)
+        VALUES (NEWID(), @WorkspaceId, @AccepterUserId, 1);
+      ELSE
+        UPDATE dbo.WorkspaceMembers SET IsGuest = 1
+        WHERE WorkspaceId = @WorkspaceId AND UserId = @AccepterUserId;
 
-    -- Role assignment.
-    IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE UserId = @AccepterUserId AND RoleId = @RoleId AND WorkspaceId = @WorkspaceId)
-      INSERT INTO dbo.UserRoles (UserId, RoleId, WorkspaceId) VALUES (@AccepterUserId, @RoleId, @WorkspaceId);
+      -- Role assignment.
+      IF NOT EXISTS (SELECT 1 FROM dbo.UserRoles WHERE UserId = @AccepterUserId AND RoleId = @RoleId AND WorkspaceId = @WorkspaceId)
+        INSERT INTO dbo.UserRoles (UserId, RoleId, WorkspaceId) VALUES (@AccepterUserId, @RoleId, @WorkspaceId);
+    END
 
     -- Object grant (same write usp_ObjectPermission_Set performs; upsert on the
     -- UQ_ObjPerm unique key so re-accept doesn't duplicate).

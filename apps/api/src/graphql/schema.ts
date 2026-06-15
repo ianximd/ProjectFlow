@@ -29,6 +29,7 @@ import { registerScheduledReportGraphql } from './scheduled-report.schema.js';
 import { registerActivityGraphql } from './activity.schema.js';
 import { registerChatGraphql } from './chat.schema.js';
 import { registerAppsGraphql } from './apps.schema.js';
+import { registerPermissionsGraphql } from './permissions.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -939,6 +940,15 @@ registerChatGraphql();
 // workspace.read; write gated on app.manage + FULL on sub-workspace scopes.
 // ─────────────────────────────────────────
 registerAppsGraphql();
+
+// ─────────────────────────────────────────
+// Permissions / Roles (Phase 10b) — WorkspaceRole type + workspaceRoles/
+// objectPermissions queries + createWorkspaceRole/updateWorkspaceRole/
+// deleteWorkspaceRole/assignWorkspaceRole/setObjectPermission/
+// removeObjectPermission mutations, mirroring the permissions REST surface.
+// All operations gated on role.manage (RBAC) or FULL object-level ACL.
+// ─────────────────────────────────────────
+registerPermissionsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

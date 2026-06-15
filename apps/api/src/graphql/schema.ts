@@ -31,6 +31,7 @@ import { registerChatGraphql } from './chat.schema.js';
 import { registerAppsGraphql } from './apps.schema.js';
 import { registerPermissionsGraphql } from './permissions.schema.js';
 import { registerShareGraphql } from './share.schema.js';
+import { registerGuestGraphql } from './guests.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -951,6 +952,12 @@ registerAppsGraphql();
 // ─────────────────────────────────────────
 registerPermissionsGraphql();
 registerShareGraphql();
+
+// ─────────────────────────────────────────
+// Guests (Phase 10d) — workspaceGuests query + inviteGuest(FULL)/
+// acceptGuestInvite(email-match)/revokeGuest(guest.manage).
+// ─────────────────────────────────────────
+registerGuestGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

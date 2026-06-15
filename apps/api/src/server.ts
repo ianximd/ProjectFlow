@@ -44,6 +44,7 @@ import { goalRoutes } from './modules/goals/goal.routes.js';
 import { dashboardRoutes } from './modules/dashboards/dashboard.routes.js';
 import { scheduledReportRoutes } from './modules/scheduled-reports/scheduled-report.routes.js';
 import { appRoutes } from './modules/apps/app.routes.js';
+import { accessRoutes } from './modules/access/access.routes.js';
 import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
@@ -257,6 +258,7 @@ app.route('/goals',             goalRoutes);
 app.route('/dashboards',        dashboardRoutes);
 app.route('/scheduled-reports', scheduledReportRoutes);
 app.route('/apps',              appRoutes);
+app.route('/access',            accessRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
 // Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).

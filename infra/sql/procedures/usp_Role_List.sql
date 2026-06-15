@@ -5,7 +5,7 @@ BEGIN
   SET NOCOUNT ON;
 
   SELECT
-    r.Id, r.Name, r.Slug, r.Description, r.Scope, r.IsSystem,
+    r.Id, r.Name, r.Slug, r.Description, r.Scope, r.IsSystem, r.WorkspaceId,
     r.CreatedAt, r.UpdatedAt,
     (SELECT COUNT(*) FROM dbo.RolePermissions rp WHERE rp.RoleId = r.Id) AS PermissionCount,
     (SELECT COUNT(*) FROM dbo.UserRoles      ur WHERE ur.RoleId = r.Id) AS MemberCount

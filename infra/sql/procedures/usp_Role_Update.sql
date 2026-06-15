@@ -22,7 +22,7 @@ BEGIN
     UpdatedAt   = SYSUTCDATETIME()
   WHERE Id = @RoleId;
 
-  SELECT Id, Name, Slug, Description, Scope, IsSystem, CreatedAt, UpdatedAt
+  SELECT Id, Name, Slug, Description, Scope, IsSystem, WorkspaceId, CreatedAt, UpdatedAt
   FROM dbo.Roles
   WHERE Id = @RoleId;
 END;

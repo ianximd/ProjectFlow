@@ -6,7 +6,7 @@ BEGIN
 
   -- Recordset 1: the role row
   SELECT
-    Id, Name, Slug, Description, Scope, IsSystem, CreatedAt, UpdatedAt
+    Id, Name, Slug, Description, Scope, IsSystem, WorkspaceId, CreatedAt, UpdatedAt
   FROM dbo.Roles
   WHERE Id = @RoleId;
 

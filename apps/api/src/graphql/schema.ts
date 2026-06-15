@@ -28,6 +28,7 @@ import { registerReportsGraphql } from './reports.schema.js';
 import { registerScheduledReportGraphql } from './scheduled-report.schema.js';
 import { registerActivityGraphql } from './activity.schema.js';
 import { registerChatGraphql } from './chat.schema.js';
+import { registerAppsGraphql } from './apps.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -931,6 +932,13 @@ registerActivityGraphql();
 // VIEW ACL; write gated on comment.create in the task's workspace.
 // ─────────────────────────────────────────
 registerChatGraphql();
+
+// ─────────────────────────────────────────
+// Apps / Feature Toggles (Phase 10a) — AppToggle type + appToggles query +
+// setAppToggle mutation, mirroring the /apps REST surface. Read gated on
+// workspace.read; write gated on app.manage + FULL on sub-workspace scopes.
+// ─────────────────────────────────────────
+registerAppsGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

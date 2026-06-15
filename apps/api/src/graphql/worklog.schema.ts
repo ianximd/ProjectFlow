@@ -3,6 +3,8 @@ import { builder } from './builder.js';
 import { WorkLogService } from '../modules/worklogs/worklog.service.js';
 import { TaskRepository } from '../modules/tasks/task.repository.js';
 import { notFound, requireObjectLevel, requireWorkspacePermission } from './authz.js';
+import { assertAppEnabled } from './apps.schema.js';
+import { appService } from '../modules/apps/app.service.js';
 import type { WorkLog, TaskTimeRollup } from '@projectflow/types';
 
 const svc = new WorkLogService();
@@ -57,6 +59,7 @@ export function registerWorkLogGraphql(): void {
         const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
         if (!workspaceId) notFound('Task not found');
         await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'VIEW');
+        await assertAppEnabled('time_tracking', await appService.scopeNodeForTask(a.taskId));
         return (await svc.listByTask(a.taskId)).logs;
       },
     }),
@@ -77,6 +80,7 @@ export function registerWorkLogGraphql(): void {
         const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
         if (!workspaceId) notFound('Task not found');
         await requireObjectLevel(ctx, 'LIST', await taskListId(a.taskId), 'VIEW');
+        await assertAppEnabled('time_tracking', await appService.scopeNodeForTask(a.taskId));
         return svc.getRollup(a.taskId);
       },
     }),
@@ -91,6 +95,7 @@ export function registerWorkLogGraphql(): void {
         const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
         if (!workspaceId) notFound('Task not found');
         await requireWorkspacePermission(ctx, workspaceId, 'worklog.create');
+        await assertAppEnabled('time_tracking', await appService.scopeNodeForTask(a.taskId));
         return svc.startTimer(a.taskId, (ctx.user as any).userId);
       },
     }),
@@ -120,6 +125,7 @@ export function registerWorkLogGraphql(): void {
         const workspaceId = await taskRepo.getWorkspaceId(a.taskId);
         if (!workspaceId) notFound('Task not found');
         await requireWorkspacePermission(ctx, workspaceId, 'worklog.create');
+        await assertAppEnabled('time_tracking', await appService.scopeNodeForTask(a.taskId));
         return svc.create(a.taskId, (ctx.user as any).userId, a.timeSpentSeconds, a.startedAt, {
           endedAt: a.endedAt ?? undefined, description: a.description ?? undefined,
           billable: a.billable ?? undefined, source: (a.source as any) ?? undefined,
@@ -128,6 +134,8 @@ export function registerWorkLogGraphql(): void {
       },
     }),
     /** Patch a work log (the WorkLogService enforces author ownership). */
+    // time_tracking gate is enforced on the REST path; a GraphQL parity gate
+    // (resolving the task/scope from the worklog id) is a documented follow-up.
     updateWorkLog: t.field({
       type: WorkLogType,
       nullable: true,
@@ -149,6 +157,8 @@ export function registerWorkLogGraphql(): void {
       },
     }),
     /** Delete a work log (the WorkLogService enforces author ownership). */
+    // time_tracking gate is enforced on the REST path; a GraphQL parity gate
+    // (resolving the task/scope from the worklog id) is a documented follow-up.
     deleteWorkLog: t.field({
       type: 'Boolean',
       args: { id: t.arg.string({ required: true }) },

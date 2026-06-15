@@ -130,6 +130,14 @@ export async function truncateAll(): Promise<void> {
     "UPDATE dbo.Projects SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
     "IF OBJECT_ID('dbo.Folders') IS NOT NULL UPDATE dbo.Folders SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
     "IF OBJECT_ID('dbo.Lists') IS NOT NULL UPDATE dbo.Lists SET WorkflowId = NULL WHERE WorkflowId IS NOT NULL",
+    // Phase 10b (0060): workspace custom roles (Roles.WorkspaceId IS NOT NULL) FK
+    // Workspaces. The Roles catalog is otherwise preserved (see header), but a
+    // test-created custom role would block the loop's `DELETE FROM Workspaces`
+    // with FK_Roles_Workspace. Wipe assignments + custom roles here, before the
+    // loop. RolePermissions cascade on the custom-role delete; ObjectPermissions
+    // (no FK to Roles) is wiped in the loop. Guarded so it's a no-op pre-0060.
+    "DELETE FROM dbo.UserRoles",
+    "IF COL_LENGTH('dbo.Roles','WorkspaceId') IS NOT NULL DELETE FROM dbo.Roles WHERE WorkspaceId IS NOT NULL",
   ]) {
     try { await pool.request().query(stmt); } catch { /* column/table not present yet */ }
   }

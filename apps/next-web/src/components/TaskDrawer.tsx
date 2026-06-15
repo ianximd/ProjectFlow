@@ -8,6 +8,8 @@ import { usePresence } from '@/components/presence/usePresence';
 import { PresenceBar } from '@/components/presence/PresenceBar';
 import { AttachmentSection } from './AttachmentSection';
 import { WorkLogSection }  from './WorkLogSection';
+import { loadAppToggles } from '@/server/actions/apps';
+import { isAppOn } from '@/lib/appGate';
 import { TaskEstimateBar } from './TaskEstimateBar';
 import { PullRequestsSection } from './PullRequestsSection';
 import type { AssigneeRow } from './TaskCard';
@@ -404,6 +406,23 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   // only renders on a real task, so the id is always populated when visible.
   const presenceTaskId = task?.Id ?? task?.id ?? '';
   const { viewers, setTyping } = usePresence(presenceTaskId);
+
+  // Phase 10a: hide the time-tracking section when the time_tracking app is OFF
+  // for this task's scope (resolved at the list scope, falling back to the space).
+  // Default-on so the section shows immediately; resolves on mount and hides if off.
+  const [timeTrackingOn, setTimeTrackingOn] = useState(true);
+  useEffect(() => {
+    if (!task || !workspaceId) return;
+    const lid = ((task as any).ListId ?? (task as any).listId ?? null) as string | null;
+    const sid = ((task as any).ProjectId ?? (task as any).projectId ?? null) as string | null;
+    const scope = lid ? { t: 'list' as const, id: lid } : (sid ? { t: 'space' as const, id: sid } : null);
+    if (!scope) return;
+    let cancelled = false;
+    void loadAppToggles(workspaceId, scope.t, scope.id).then((r) => {
+      if (!cancelled && r.ok) setTimeTrackingOn(isAppOn(r.data.apps, 'time_tracking'));
+    });
+    return () => { cancelled = true; };
+  }, [task, workspaceId]);
 
   if (!task) return null;
 
@@ -1112,11 +1131,13 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             <AttachmentSection taskId={taskId} />
           </div>
 
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
-            <TaskEstimateBar taskId={taskId} />
-            <WorkLogSection taskId={taskId} currentUserId={currentUserId} spaceId={spaceId} />
-          </div>
+          {timeTrackingOn && (
+            <div className={styles.section}>
+              <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
+              <TaskEstimateBar taskId={taskId} />
+              <WorkLogSection taskId={taskId} currentUserId={currentUserId} spaceId={spaceId} />
+            </div>
+          )}
 
           <div className={styles.section}>
             <p className={styles.sectionTitle}>{t('pullRequestsSection')}</p>

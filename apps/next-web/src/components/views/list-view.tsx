@@ -196,7 +196,7 @@ function TaskRow({
       <Badge variant="outline" size="xs" appearance="outline" className="shrink-0">
         {task.status}
       </Badge>
-      {due && <span className="shrink-0 text-muted-foreground">{due}</span>}
+      {due && <span data-testid="task-due-date" className="shrink-0 text-muted-foreground">{due}</span>}
       {task.storyPoints != null && (
         <Badge variant="outline" size="xs" appearance="outline" className="shrink-0 font-mono">
           {task.storyPoints}

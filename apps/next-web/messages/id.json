@@ -896,6 +896,17 @@
       "unassigned": "Belum ditugaskan"
     }
   },
+  "Gantt": {
+    "title": "Gantt",
+    "baseline": "Garis dasar",
+    "captureBaseline": "Ambil garis dasar",
+    "baselineName": "Garis dasar {date}",
+    "criticalPath": "Jalur kritis"
+  },
+  "Timeline": {
+    "empty": "Tidak ada tugas terjadwal",
+    "groupBy": "Kelompokkan menurut"
+  },
   "Hierarchy": {
     "space": "Ruang",
     "folder": "Folder",

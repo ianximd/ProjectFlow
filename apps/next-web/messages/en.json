@@ -896,6 +896,17 @@
       "unassigned": "Unassigned"
     }
   },
+  "Gantt": {
+    "title": "Gantt",
+    "baseline": "Baseline",
+    "captureBaseline": "Capture baseline",
+    "baselineName": "Baseline {date}",
+    "criticalPath": "Critical path"
+  },
+  "Timeline": {
+    "empty": "No scheduled tasks",
+    "groupBy": "Group by"
+  },
   "Hierarchy": {
     "space": "Space",
     "folder": "Folder",

@@ -1295,6 +1295,35 @@ export interface ViewConfig {
   capacityPerSprintPoints?: number;       // per-assignee capacity for metric='points'
 }
 
+/** Phase 9e — Embed view: stores the iframe/embed URL alongside base ViewConfig. */
+export interface EmbedViewConfig extends ViewConfig {
+  /** The https/http URL to embed in the iframe. Must pass the embed-url allow-list. */
+  url: string;
+}
+
+/** Phase 9e — Doc view: references a Docs document to render inline. */
+export interface DocViewConfig extends ViewConfig {
+  /** The Doc Id (UUID) to render inside this view surface. */
+  docId: string;
+}
+
+/**
+ * Phase 9e — Activity view filter bag.
+ * All fields optional; callers send only the filters they want active.
+ */
+export interface ActivityFilters {
+  /** Filter to a specific actor (userId). */
+  actor?: string;
+  /** Filter to a specific action verb (e.g. CREATE, UPDATE, DELETE). */
+  action?: string;
+  /** Filter to a specific resource kind (e.g. Task, Project). */
+  resource?: string;
+  /** 1-based page number (default 1). */
+  page?: number;
+  /** Page size, 1–100 (default 25). */
+  pageSize?: number;
+}
+
 export interface SavedView {
   id: string;
   workspaceId: string;

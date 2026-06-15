@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { TaskType, type TaskShape } from './schema.js';
-import { viewService } from '../modules/views/view.service.js';
+import { viewService, EmbedUrlError } from '../modules/views/view.service.js';
 import { ViewNotFoundError, ViewValidationError } from '../modules/views/view.errors.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import { pubsub } from './pubsub.js';
@@ -444,6 +444,7 @@ function toGraphqlError(e: unknown): GraphQLError {
   if (e instanceof GraphQLError) return e;
   if (e instanceof ViewValidationError) return new GraphQLError(e.message, { extensions: { code: 'VIEW_VALIDATION' } });
   if (e instanceof ViewNotFoundError) return new GraphQLError(e.message, { extensions: { code: 'NOT_FOUND' } });
+  if (e instanceof EmbedUrlError) return new GraphQLError(e.message, { extensions: { code: 'BAD_USER_INPUT' } });
   return new GraphQLError('Internal server error', { extensions: { code: 'INTERNAL_SERVER_ERROR' } });
 }
 

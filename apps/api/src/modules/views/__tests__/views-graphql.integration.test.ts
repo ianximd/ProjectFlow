@@ -116,6 +116,46 @@ describe('Views GraphQL', () => {
     expect(create.data?.createSavedView ?? null).toBeNull();
   });
 
+  it('rejects an embed view with a javascript: URL (EmbedUrlError → BAD_USER_INPUT, no row created)', async () => {
+    const u = await createTestUser();
+    const ws = await createTestWorkspace(u.accessToken);
+    const p = await createTestProject(ws.Id, u.accessToken);
+
+    const badConfig = JSON.stringify({ filter: { conjunction: 'AND', rules: [] }, sort: [], url: 'javascript:alert(1)' });
+    const create = await gql(u.accessToken,
+      `mutation($input: CreateSavedViewInput!){ createSavedView(input: $input){ id config } }`,
+      { input: { scopeType: 'SPACE', scopeId: p.Id, type: 'embed', name: 'Bad', isShared: false, isDefault: false, config: badConfig } });
+    expect(create.errors, JSON.stringify(create)).toBeDefined();
+    expect(create.errors![0]?.extensions?.code).toBe('BAD_USER_INPUT');
+    expect(create.data?.createSavedView ?? null).toBeNull();
+  });
+
+  it('creates an embed view with a valid https URL and stores the normalized URL', async () => {
+    const u = await createTestUser();
+    const ws = await createTestWorkspace(u.accessToken);
+    const p = await createTestProject(ws.Id, u.accessToken);
+
+    // Include a fragment to verify it is stripped by normalizeEmbedUrl.
+    const goodConfig = JSON.stringify({ filter: { conjunction: 'AND', rules: [] }, sort: [], url: 'https://example.com/x#fragment' });
+    const create = await gql(u.accessToken,
+      `mutation($input: CreateSavedViewInput!){ createSavedView(input: $input){ id config } }`,
+      { input: { scopeType: 'SPACE', scopeId: p.Id, type: 'embed', name: 'Embed', isShared: false, isDefault: false, config: goodConfig } });
+    expect(create.errors, JSON.stringify(create)).toBeUndefined();
+    const viewId = create.data!.createSavedView.id;
+    // The stored config.url must be the normalized form (fragment stripped).
+    const stored = JSON.parse(create.data!.createSavedView.config) as { url: string };
+    expect(stored.url).toBe('https://example.com/x');
+
+    // Reading back via savedViews confirms the persisted value.
+    const listed = await gql(u.accessToken,
+      `query($st:String!,$si:String!){ savedViews(scopeType:$st, scopeId:$si){ id config } }`,
+      { st: 'SPACE', si: p.Id });
+    expect(listed.errors, JSON.stringify(listed)).toBeUndefined();
+    const found = (listed.data!.savedViews as any[]).find((v: any) => v.id === viewId);
+    expect(found).toBeDefined();
+    expect(JSON.parse(found.config).url).toBe('https://example.com/x');
+  });
+
   it('updates, reorders and deletes a saved view', async () => {
     const u = await createTestUser();
     const ws = await createTestWorkspace(u.accessToken);

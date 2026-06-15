@@ -4,6 +4,7 @@ import { CustomFieldRepository } from '../customfields/customfield.repository.js
 import { buildCatalog } from './query/field-catalog.js';
 import { compile, builtinGroupExpr } from './query/compiler.js';
 import { ViewNotFoundError, ViewValidationError } from './view.errors.js';
+import { normalizeEmbedUrl, EmbedUrlError } from '../activity/embed-url.js';
 import { TaskService } from '../tasks/task.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { customFieldService } from '../customfields/customfield.service.js';
@@ -11,8 +12,10 @@ import { WorkflowService } from '../workflows/workflow.service.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
 import { accessService } from '../access/access.service.js';
 import { roleService } from '../roles/role.service.js';
-import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult, CapacityResult } from '@projectflow/types';
+import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult, CapacityResult, EmbedViewConfig } from '@projectflow/types';
 import { aggregateCapacity } from './capacity/capacity-aggregate.js';
+
+export { EmbedUrlError };
 
 // Bulk action → the workspace permission slug its single-task REST route enforces.
 // set_custom_field / move_to_list are intentionally absent: their single-task
@@ -134,6 +137,12 @@ export class ViewService {
   ): Promise<SavedView> {
     const scope = await this.resolveScope(input.scopeType, input.scopeId, input.workspaceId);
     await this.validateConfig(input.scopeType, input.scopeId, scope, input.config);
+    // Embed views: validate + normalize the URL before persisting so the stored
+    // value is always a canonical http/https URL (no javascript:, data:, etc.).
+    const configToStore: ViewConfig =
+      input.type === 'embed'
+        ? ({ ...input.config, url: normalizeEmbedUrl((input.config as EmbedViewConfig).url ?? '') } as EmbedViewConfig)
+        : input.config;
     return this.repo.create({
       id: randomUUID(),
       workspaceId: scope.workspaceId,
@@ -145,7 +154,7 @@ export class ViewService {
       name: input.name,
       isShared: input.isShared,
       isDefault: input.isDefault,
-      config: JSON.stringify(input.config),
+      config: JSON.stringify(configToStore),
       position: Date.now(),
     });
   }
@@ -155,15 +164,23 @@ export class ViewService {
     patch: { name?: string; isShared?: boolean; isDefault?: boolean; config?: ViewConfig },
   ): Promise<SavedView> {
     const existing = await this.getOrThrow(id);
+    let configToStore: ViewConfig | undefined = patch.config;
     if (patch.config) {
       const scope = await this.resolveScope(existing.scopeType, existing.scopeId, existing.workspaceId);
       await this.validateConfig(existing.scopeType, existing.scopeId, scope, patch.config);
+      // Embed views: validate + normalize the URL before persisting.
+      if (existing.type === 'embed') {
+        configToStore = ({
+          ...patch.config,
+          url: normalizeEmbedUrl((patch.config as EmbedViewConfig).url ?? ''),
+        } as EmbedViewConfig);
+      }
     }
     const updated = await this.repo.update(id, {
       name: patch.name,
       isShared: patch.isShared,
       isDefault: patch.isDefault,
-      config: patch.config ? JSON.stringify(patch.config) : undefined,
+      config: configToStore ? JSON.stringify(configToStore) : undefined,
     });
     if (!updated) throw new ViewNotFoundError();
     return updated;

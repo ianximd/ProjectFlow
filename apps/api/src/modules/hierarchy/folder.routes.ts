@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { folderService } from './folder.service.js';
 import { requireObjectAccess } from '../access/access.middleware.js';
+import { accessService } from '../access/access.service.js';
 import { pubsub } from '../../graphql/pubsub.js';
 
 export const folderRoutes = new Hono();
@@ -38,7 +39,12 @@ folderRoutes.post('/', zValidator('json', createSchema),
 
 folderRoutes.get('/', zValidator('query', z.object({ spaceId: z.string().uuid() })),
   requireObjectAccess('VIEW', (c) => ({ type: 'SPACE', id: c.req.query('spaceId')! })),
-  async (c) => c.json({ data: await folderService.list(c.req.query('spaceId')!) }),
+  async (c) => {
+    const userId = ((c as any).get('user') as any).userId as string;
+    const folders = await folderService.list(c.req.query('spaceId')!);
+    const visible = await accessService.filterVisibleNodes(userId, 'FOLDER', folders as any[]);
+    return c.json({ data: visible });
+  },
 );
 
 const updateSchema = z.object({ name: z.string().min(1).max(255).optional(), workflowId: z.string().uuid().nullable().optional() });

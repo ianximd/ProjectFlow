@@ -2,7 +2,9 @@ import { Hono } from 'hono';
 import { projectService } from './project.service.js';
 import { ProjectRepository } from './project.repository.js';
 import { requirePermission } from '../../shared/middleware/permissions.middleware.js';
+import { requireObjectAccess } from '../access/access.middleware.js';
 import { cacheDelPattern } from '../../shared/lib/cache.js';
+import { accessService } from '../access/access.service.js';
 
 // /projects/* is server-cached for 30s (TTL.SHORT). Wildcard-bust on any
 // project write so the projects list under a workspace updates immediately
@@ -52,16 +54,22 @@ projectRoutes.post(
 projectRoutes.get('/', async (c) => {
   const workspaceId = c.req.query('workspaceId');
   if (!workspaceId) return c.json({ error: { message: 'workspaceId is required' } }, 400);
+  const userId = ((c as any).get('user') as any).userId as string;
   const projects = await projectService.list(workspaceId);
-  return c.json({ data: projects });
+  const visible = await accessService.filterVisibleNodes(userId, 'SPACE', projects as any[]);
+  return c.json({ data: visible });
 });
 
-// GET /api/v1/projects/:id
-projectRoutes.get('/:id', async (c) => {
-  const project = await projectService.getById(c.req.param('id'));
-  if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
-  return c.json({ data: project });
-});
+// GET /api/v1/projects/:id — object VIEW on the Space (a guest must not fetch a
+// Space they weren't granted; closes the direct-fetch sibling of the tree filter).
+projectRoutes.get('/:id',
+  requireObjectAccess('VIEW', (c) => ({ type: 'SPACE', id: c.req.param('id')! })),
+  async (c) => {
+    const project = await projectService.getById(c.req.param('id')!);
+    if (!project) return c.json({ error: { message: 'Project not found' } }, 404);
+    return c.json({ data: project });
+  },
+);
 
 // PATCH /api/v1/projects/:id
 projectRoutes.patch(

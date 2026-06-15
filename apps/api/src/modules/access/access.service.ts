@@ -48,8 +48,12 @@ export class AccessService {
     const checks: Array<T | null> = await Promise.all(
       nodes.map(async (n) => {
         const id = (n.id ?? n.Id) as string;
-        const { level } = await this.resolveOrNull(userId, objectType, id);
-        return level ? n : null;
+        try {
+          const { level } = await this.resolveOrNull(userId, objectType, id);
+          return level ? n : null;
+        } catch {
+          return null; // fail closed: a resolver error drops the node, never leaks it
+        }
       }),
     );
     return checks.filter((n): n is T => n !== null);

@@ -47,6 +47,9 @@ const TRUNCATION_ORDER = [
   // FK_ShareLinks_* / FK_AccessRequests_* once a row exists.
   'ShareLinks',
   'AccessRequests',
+  // Phase 10d (0062): guest invites — FK Workspaces(Id) + Users(InvitedBy).
+  // No children; delete before Workspaces/Users or their DELETE fails FK_GuestInvites_*.
+  'GuestInvites',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

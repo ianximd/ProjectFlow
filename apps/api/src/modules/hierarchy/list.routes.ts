@@ -3,6 +3,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { listService } from './list.service.js';
 import { requireObjectAccess } from '../access/access.middleware.js';
+import { accessService } from '../access/access.service.js';
 import { pubsub } from '../../graphql/pubsub.js';
 
 export const listRoutes = new Hono();
@@ -34,9 +35,12 @@ const listQuery = z.object({ spaceId: z.string().uuid(), folderId: z.string().uu
 listRoutes.get('/', zValidator('query', listQuery),
   requireObjectAccess('VIEW', (c) => ({ type: 'SPACE', id: c.req.query('spaceId')! })),
   async (c) => {
+    const userId = ((c as any).get('user') as any).userId as string;
     const folderId = c.req.query('folderId') ?? null;
     const allInSpace = folderId === null;
-    return c.json({ data: await listService.list(c.req.query('spaceId')!, folderId, allInSpace) });
+    const lists = await listService.list(c.req.query('spaceId')!, folderId, allInSpace);
+    const visible = await accessService.filterVisibleNodes(userId, 'LIST', lists as any[]);
+    return c.json({ data: visible });
   },
 );
 

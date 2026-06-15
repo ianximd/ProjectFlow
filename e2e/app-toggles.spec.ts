@@ -64,6 +64,9 @@ async function setTimeTrackingSwitch(page: Page, workspaceId: string, target: 't
   // The row only renders after the App Center's client fetch resolves, so its
   // presence means the component has hydrated and the switch is interactive.
   await expect(row).toBeVisible({ timeout: 20_000 });
+  // The translated label must render (guards against a missing AppCenter i18n
+  // namespace — a raw key path "...time_tracking.label" would not match).
+  await expect(row).toContainText(/time tracking/i, { timeout: 10_000 });
   const sw = row.getByRole('switch');
   if ((await sw.getAttribute('aria-checked')) !== target) await sw.click();
   await expect(sw).toHaveAttribute('aria-checked', target, { timeout: 10_000 });

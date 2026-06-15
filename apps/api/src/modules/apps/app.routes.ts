@@ -15,7 +15,6 @@ const folderRepo  = new FolderRepository();
 const projectRepo = new ProjectRepository();
 
 const SCOPE_TYPES = ['workspace', 'space', 'folder', 'list'] as const;
-const APP_KEYS = APP_REGISTRY.map((e) => e.key) as [AppKey, ...AppKey[]];
 
 const scopeParam = z.enum(SCOPE_TYPES);
 const setSchema = z.object({ enabled: z.boolean().nullable() }); // null clears the override
@@ -106,7 +105,13 @@ appRoutes.patch(
     const parsed = scopeParam.safeParse(c.req.param('scopeType'));
     if (!parsed.success) return c.json({ error: { code: 'BAD_REQUEST', message: 'invalid scopeType' } }, 400);
     const appKey = c.req.param('key');
-    if (!APP_KEYS.includes(appKey as AppKey)) return c.json({ error: { code: 'BAD_REQUEST', message: 'unknown app key' } }, 400);
+    const entry = APP_REGISTRY.find((e) => e.key === appKey);
+    if (!entry) return c.json({ error: { code: 'BAD_REQUEST', message: 'unknown app key' } }, 400);
+    // The registry is the authority for WHERE an app may be overridden — reject a
+    // write at a scope the app does not declare (the UI already hides the switch).
+    if (!entry.overridableScopes.includes(parsed.data)) {
+      return c.json({ error: { code: 'BAD_REQUEST', message: `App '${appKey}' is not overridable at the ${parsed.data} scope` } }, 400);
+    }
     const scope = await scopeNodeFromParams(parsed.data, c.req.param('scopeId') ?? '');
     if (!scope) return c.json({ error: { code: 'NOT_FOUND', message: 'Scope not found' } }, 404);
 

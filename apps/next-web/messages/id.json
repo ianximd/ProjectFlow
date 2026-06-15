@@ -1,4 +1,43 @@
 {
+  "AppCenter": {
+    "title": "Pusat Aplikasi",
+    "toggle": "Alihkan {app}",
+    "inheritedFrom": "Diwarisi dari {scope}",
+    "apps": {
+      "time_tracking": {
+        "label": "Pelacakan Waktu",
+        "desc": "Pengatur waktu, estimasi, dan waktu tercatat pada tugas."
+      },
+      "multiple_assignees": {
+        "label": "Beberapa Penerima Tugas",
+        "desc": "Tetapkan lebih dari satu orang ke sebuah tugas."
+      },
+      "sprint_points": {
+        "label": "Poin Sprint",
+        "desc": "Poin cerita dan kecepatan sprint."
+      },
+      "nested_subtasks": {
+        "label": "Subtugas Bersarang",
+        "desc": "Subtugas yang bersarang di bawah tugas induk."
+      },
+      "dependency_warning": {
+        "label": "Peringatan Ketergantungan",
+        "desc": "Peringatkan sebelum menyelesaikan tugas dengan penghambat terbuka."
+      },
+      "reschedule_dependencies": {
+        "label": "Jadwal Ulang Ketergantungan",
+        "desc": "Geser tugas dependen saat tanggal berubah."
+      },
+      "custom_task_ids": {
+        "label": "ID Tugas Khusus",
+        "desc": "Pengenal tugas yang mudah dibaca."
+      },
+      "email": {
+        "label": "Email",
+        "desc": "Notifikasi email keluar."
+      }
+    }
+  },
   "DashboardCards": {
     "addCard": "Tambah kartu",
     "configureCard": "Konfigurasikan kartu",

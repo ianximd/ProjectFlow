@@ -1,4 +1,43 @@
 {
+  "AppCenter": {
+    "title": "App Center",
+    "toggle": "Toggle {app}",
+    "inheritedFrom": "Inherited from {scope}",
+    "apps": {
+      "time_tracking": {
+        "label": "Time Tracking",
+        "desc": "Timers, time estimates and logged time on tasks."
+      },
+      "multiple_assignees": {
+        "label": "Multiple Assignees",
+        "desc": "Assign more than one person to a task."
+      },
+      "sprint_points": {
+        "label": "Sprint Points",
+        "desc": "Story points and sprint velocity."
+      },
+      "nested_subtasks": {
+        "label": "Nested Subtasks",
+        "desc": "Subtasks nested under a parent task."
+      },
+      "dependency_warning": {
+        "label": "Dependency Warning",
+        "desc": "Warn before completing a task with open blockers."
+      },
+      "reschedule_dependencies": {
+        "label": "Reschedule Dependencies",
+        "desc": "Shift dependent tasks when a date changes."
+      },
+      "custom_task_ids": {
+        "label": "Custom Task IDs",
+        "desc": "Human-friendly task identifiers."
+      },
+      "email": {
+        "label": "Email",
+        "desc": "Outbound email notifications."
+      }
+    }
+  },
   "DashboardCards": {
     "addCard": "Add card",
     "configureCard": "Configure card",

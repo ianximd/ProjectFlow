@@ -1,7 +1,7 @@
 import { GraphQLError } from 'graphql';
 import { builder } from './builder.js';
 import { appService, type ScopeNode } from '../modules/apps/app.service.js';
-import { resolveAppEnabled } from '../modules/apps/app-registry.js';
+import { APP_REGISTRY, resolveAppEnabled } from '../modules/apps/app-registry.js';
 import { ProjectRepository } from '../modules/projects/project.repository.js';
 import { FolderRepository } from '../modules/hierarchy/folder.repository.js';
 import { ListRepository } from '../modules/hierarchy/list.repository.js';
@@ -92,8 +92,15 @@ export function registerAppsGraphql(): void {
         enabled:   t.arg.boolean({ required: false }), // null/omitted clears the override
       },
       resolve: async (_, a, ctx) => {
+        // The registry is the authority for the key space + which scopes may
+        // override each app (parity with the REST PATCH validation).
+        const entry = APP_REGISTRY.find((e) => e.key === a.appKey);
+        if (!entry) throw new GraphQLError(`Unknown app key '${a.appKey}'`, { extensions: { code: 'BAD_USER_INPUT' } });
         const scope = await scopeNode(a.scopeType as AppScopeType, a.scopeId ?? null);
         if (!scope) notFound('Scope not found');
+        if (!entry.overridableScopes.includes(scope.scopeType)) {
+          throw new GraphQLError(`App '${a.appKey}' is not overridable at the ${scope.scopeType} scope`, { extensions: { code: 'BAD_USER_INPUT' } });
+        }
         await requireWorkspacePermission(ctx, scope.workspaceId, 'app.manage');
         if (scope.scopeType !== 'workspace') {
           await requireObjectLevel(ctx, OBJECT_TYPE[scope.scopeType], scope.scopeId, 'FULL');

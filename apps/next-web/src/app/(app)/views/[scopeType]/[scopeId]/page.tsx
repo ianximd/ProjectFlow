@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation';
 import { requireSession } from '@/server/session';
-import { getSavedViews, getViewTasks, getViewWorkflowStatuses, getViewCapacity, type ViewTaskPageResult } from '@/server/queries/views';
+import { getSavedViews, getViewTasks, getViewWorkflowStatuses, getViewCapacity, loadGanttData, type ViewTaskPageResult } from '@/server/queries/views';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface, type LiveScopeProp } from '@/components/views/view-surface';
@@ -104,6 +104,11 @@ export default async function ViewsPage({
   // created tasks; FOLDER accepts NONE of them (see view-surface's `none` note).
   const live = resolveLiveScope(scopeType, scopeId, workspaceId, taskPage);
 
+  // Gantt view: resolve the gantt payload SSR (in-scope tasks + dependency edges +
+  // critical path + baselines). Null for any other view type (mirrors board/workload).
+  const gantt =
+    activeView?.type === 'gantt' ? await loadGanttData(activeView.id) : null;
+
   return (
     <ViewSurface
       views={views}
@@ -117,6 +122,7 @@ export default async function ViewsPage({
       boardWorkflowStatuses={boardWorkflowStatuses}
       live={live}
       capacity={capacity}
+      gantt={gantt}
     />
   );
 }

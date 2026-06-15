@@ -23,13 +23,30 @@ BEGIN
         RETURN;
     END
 
-    DECLARE @IsMember BIT = 0, @IsOwner BIT = 0, @Visibility NVARCHAR(10);
+    DECLARE @IsMember BIT = 0, @IsOwner BIT = 0, @IsGuest BIT = 0, @Visibility NVARCHAR(10);
     SELECT @Visibility = Visibility FROM dbo.Projects WHERE Id = @SpaceId;
     IF EXISTS (SELECT 1 FROM dbo.WorkspaceMembers WHERE WorkspaceId = @WorkspaceId AND UserId = @UserId) SET @IsMember = 1;
     IF EXISTS (SELECT 1 FROM dbo.Workspaces WHERE Id = @WorkspaceId AND OwnerId = @UserId) SET @IsOwner = 1;
 
+    -- A guest / limited member holds workspace-guest or workspace-limited-member
+    -- in THIS workspace. They are WorkspaceMembers rows, so @IsMember is 1 — but
+    -- they must contribute NO floor, so the Space tree is invisible by
+    -- construction and access comes ONLY from an explicit ObjectPermissions grant.
+    -- The authoritative signal is the role assignment (UserRoles); the
+    -- WorkspaceMembers.IsGuest flag is a denormalized fast-path corroborant.
+    IF EXISTS (
+        SELECT 1 FROM dbo.UserRoles ur
+        JOIN dbo.Roles r ON r.Id = ur.RoleId
+        WHERE ur.UserId = @UserId
+          AND (ur.WorkspaceId = @WorkspaceId OR ur.WorkspaceId IS NULL)
+          AND r.Slug IN ('workspace-guest', 'workspace-limited-member')
+    ) SET @IsGuest = 1;
+
+    -- Floor: owner=FULL, member=EDIT, guest/limited-member=NONE.
+    -- Guest wins over member so the EDIT floor never leaks to a guest.
     DECLARE @Floor NVARCHAR(8) =
         CASE WHEN @IsOwner = 1 THEN 'FULL'
+             WHEN @IsGuest = 1 THEN NULL
              WHEN @IsMember = 1 THEN 'EDIT'
              ELSE NULL END;
 
@@ -57,6 +74,9 @@ BEGIN
     ORDER BY a.Depth DESC,
              CASE op.SubjectType WHEN 'USER' THEN 0 ELSE 1 END;
 
+    -- PRIVATE space, no explicit grant, not a real member/owner → no access.
+    -- A guest has @Floor = NULL, so the COALESCE below already yields NULL
+    -- without an explicit grant; the original predicate stays intact.
     IF @Visibility = 'PRIVATE' AND @IsMember = 0 AND @IsOwner = 0 AND @Explicit IS NULL
     BEGIN
         SELECT CAST(NULL AS NVARCHAR(8)) AS Level, CAST(1 AS BIT) AS Found;
@@ -65,3 +85,4 @@ BEGIN
 
     SELECT COALESCE(@Explicit, @Floor) AS Level, CAST(1 AS BIT) AS Found;
 END;
+GO

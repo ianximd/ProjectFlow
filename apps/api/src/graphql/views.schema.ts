@@ -5,8 +5,12 @@ import { viewService } from '../modules/views/view.service.js';
 import { ViewNotFoundError, ViewValidationError } from '../modules/views/view.errors.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 import { pubsub } from './pubsub.js';
+import { ganttService } from '../modules/views/gantt.service.js';
 import type { GQLContext } from './context.js';
-import type { SavedView, ViewTaskPage, ViewConfig, HierarchyNodeType, CapacityResult, CapacityRow } from '@projectflow/types';
+import type {
+  SavedView, ViewTaskPage, ViewConfig, HierarchyNodeType, CapacityResult, CapacityRow,
+  GanttTask, GanttEdge, GanttBaseline, ViewGanttData,
+} from '@projectflow/types';
 
 /**
  * The view scope types (LIST/FOLDER/SPACE/EVERYTHING) map 1:1 onto hierarchy
@@ -18,9 +22,17 @@ function authzNode(scopeType: string): HierarchyNodeType | null {
 }
 
 type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
-type ViewType = 'list' | 'board' | 'table' | 'calendar' | 'workload' | 'box';
+type ViewType =
+  | 'list' | 'board' | 'table' | 'calendar'
+  | 'workload' | 'box'
+  | 'gantt' | 'timeline'
+  | 'activity' | 'map' | 'mindmap' | 'embed' | 'chat' | 'doc';
 const SCOPE_TYPES: readonly ViewScopeType[] = ['LIST', 'FOLDER', 'SPACE', 'EVERYTHING'];
-const VIEW_TYPES: readonly ViewType[] = ['list', 'board', 'table', 'calendar', 'workload', 'box'];
+// Keep byte-identical with @projectflow/types ViewType + the DB CK_SavedViews_Type.
+const VIEW_TYPES: readonly ViewType[] = [
+  'list', 'board', 'table', 'calendar', 'workload', 'box',
+  'gantt', 'timeline', 'activity', 'map', 'mindmap', 'embed', 'chat', 'doc',
+];
 
 /** Validate a scopeType arg at the resolver boundary so a bad value throws a
  * clean BAD_REQUEST instead of surfacing as a raw mssql 500 from the SP CHECK. */
@@ -73,6 +85,7 @@ function mapTaskRow(r: any): TaskShape {
     storyPoints: r.StoryPoints ?? null,
     sprintId:    r.SprintId ?? null,
     reporterId:  r.ReporterId,
+    startDate:   r.StartDate ?? null,
     dueDate:     r.DueDate ?? null,
     createdAt:   r.CreatedAt,
     updatedAt:   r.UpdatedAt,
@@ -180,6 +193,48 @@ export function registerViewsGraphql(): void {
     config:    t.string({ required: false }),
   }) });
 
+  // ── Gantt (Phase 9d) ────────────────────────────────────────────────────────
+  const GanttTaskType = builder.objectRef<GanttTask>('GanttTask');
+  GanttTaskType.implement({ fields: (t) => ({
+    id:          t.exposeString('id'),
+    title:       t.exposeString('title'),
+    status:      t.exposeString('status'),
+    startDate:   t.string({ nullable: true, resolve: (g) => g.startDate }),
+    dueDate:     t.string({ nullable: true, resolve: (g) => g.dueDate }),
+    assigneeIds: t.exposeStringList('assigneeIds'),
+  }) });
+
+  const GanttEdgeType = builder.objectRef<GanttEdge>('GanttEdge');
+  GanttEdgeType.implement({ fields: (t) => ({
+    taskId:    t.exposeString('taskId'),
+    dependsOn: t.exposeString('dependsOn'),
+  }) });
+
+  const BaselineTaskType = builder.objectRef<{ taskId: string; startDate: string | null; dueDate: string | null }>('BaselineTask');
+  BaselineTaskType.implement({ fields: (t) => ({
+    taskId:    t.exposeString('taskId'),
+    startDate: t.string({ nullable: true, resolve: (b) => b.startDate }),
+    dueDate:   t.string({ nullable: true, resolve: (b) => b.dueDate }),
+  }) });
+
+  const GanttBaselineType = builder.objectRef<GanttBaseline>('GanttBaseline');
+  GanttBaselineType.implement({ fields: (t) => ({
+    id:         t.exposeString('id'),
+    viewId:     t.exposeString('viewId'),
+    name:       t.exposeString('name'),
+    capturedAt: t.exposeString('capturedAt'),
+    createdBy:  t.exposeString('createdBy'),
+    tasks:      t.field({ type: [BaselineTaskType], resolve: (b) => b.tasks }),
+  }) });
+
+  const GanttDataType = builder.objectRef<ViewGanttData>('ViewGanttData');
+  GanttDataType.implement({ fields: (t) => ({
+    tasks:           t.field({ type: [GanttTaskType], resolve: (d) => d.tasks }),
+    edges:           t.field({ type: [GanttEdgeType], resolve: (d) => d.edges }),
+    criticalPathIds: t.exposeStringList('criticalPathIds'),
+    baselines:       t.field({ type: [GanttBaselineType], resolve: (d) => d.baselines }),
+  }) });
+
   builder.queryFields((t) => ({
     savedViews: t.field({
       type: [SavedViewType],
@@ -267,6 +322,18 @@ export function registerViewsGraphql(): void {
         } catch (e) { throw toGraphqlError(e); }
       },
     }),
+    viewGanttData: t.field({
+      type: GanttDataType,
+      args: { viewId: t.arg.string({ required: true }) },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        const view = await viewService.getOrThrow(a.viewId);
+        const node = authzNode(view.scopeType);
+        if (node) await requireObjectLevel(ctx, node, view.scopeId, 'VIEW');
+        else await requireEverythingWorkspace(ctx, view.workspaceId);
+        return ganttService.resolve(userId, view.scopeType, view.scopeId, view.config, view.workspaceId, view.id);
+      },
+    }),
   }));
 
   builder.mutationFields((t) => ({
@@ -349,6 +416,20 @@ export function registerViewsGraphql(): void {
           throw new GraphQLError('Invalid action JSON', { extensions: { code: 'BAD_REQUEST' } });
         }
         return viewService.bulkUpdate(userId, { taskIds: a.taskIds, action: parsedAction as any });
+      },
+    }),
+    captureBaseline: t.field({
+      type: GanttBaselineType,
+      args: { viewId: t.arg.string({ required: true }), name: t.arg.string({ required: true }) },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        const view = await viewService.getOrThrow(a.viewId);
+        const node = authzNode(view.scopeType);
+        if (node) await requireObjectLevel(ctx, node, view.scopeId, 'VIEW');
+        else await requireEverythingWorkspace(ctx, view.workspaceId);
+        // Freeze exactly the tasks the Gantt shows (the compiled scope page).
+        const data = await ganttService.resolve(userId, view.scopeType, view.scopeId, view.config, view.workspaceId, view.id);
+        return ganttService.capture(view.id, a.name, userId, data.tasks.map((x) => x.id));
       },
     }),
   }));

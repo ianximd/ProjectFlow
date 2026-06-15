@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { AppCenter } from '@/components/AppCenter';
+import { CustomRoleManager } from '@/components/permissions/CustomRoleManager';
 
 export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetail }) {
   const t = useTranslations('Workspaces');
@@ -141,6 +142,11 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
       <Card className="p-5">
         <h3 className="text-sm font-semibold text-foreground mb-4">{t('settingsApps')}</h3>
         <AppCenter workspaceId={workspace.id} scopeType="workspace" scopeId={null} />
+      </Card>
+
+      {/* ── Roles & permissions ──────────────────────────────────────────── */}
+      <Card className="p-5">
+        <CustomRoleManager workspaceId={workspace.id} />
       </Card>
 
       {/* ── Danger zone ──────────────────────────────────────────────────── */}

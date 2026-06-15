@@ -1685,6 +1685,30 @@
     "empty_saved_title": "Tidak ada yang disimpan",
     "empty_saved_body": "Simpan notifikasi untuk nanti dan temukan di sini."
   },
+  "Permissions": {
+    "objectAccessTitle": "Siapa yang memiliki akses",
+    "rolesTitle": "Peran & izin",
+    "noGrants": "Tidak ada izin eksplisit. Akses mengikuti peran ruang kerja.",
+    "inheritedFrom": "Diwarisi dari {name}",
+    "remove": "Hapus",
+    "role": "Peran",
+    "user": "Pengguna",
+    "system": "Sistem",
+    "custom": "Khusus",
+    "delete": "Hapus",
+    "newRole": "Peran khusus baru",
+    "roleNamePlaceholder": "mis. Peninjau QA",
+    "createRole": "Buat peran",
+    "addUserPlaceholder": "ID pengguna untuk diberi akses",
+    "addGrant": "Tambah",
+    "counts": "{perms} izin · {members} anggota",
+    "level": {
+      "VIEW": "Dapat melihat",
+      "COMMENT": "Dapat mengomentari",
+      "EDIT": "Dapat mengedit",
+      "FULL": "Akses penuh"
+    }
+  },
   "Presence": {
     "viewing": "{count, plural, other {# orang melihat}}",
     "typing": "{count, plural, other {# orang sedang mengetik…}}"

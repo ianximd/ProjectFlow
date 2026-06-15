@@ -1685,6 +1685,30 @@
     "empty_saved_title": "Nothing saved",
     "empty_saved_body": "Save notifications for later and find them here."
   },
+  "Permissions": {
+    "objectAccessTitle": "Who has access",
+    "rolesTitle": "Roles & permissions",
+    "noGrants": "No explicit grants. Access follows workspace roles.",
+    "inheritedFrom": "Inherited from {name}",
+    "remove": "Remove",
+    "role": "Role",
+    "user": "User",
+    "system": "System",
+    "custom": "Custom",
+    "delete": "Delete",
+    "newRole": "New custom role",
+    "roleNamePlaceholder": "e.g. QA Reviewer",
+    "createRole": "Create role",
+    "addUserPlaceholder": "User ID to grant",
+    "addGrant": "Add",
+    "counts": "{perms} permissions · {members} members",
+    "level": {
+      "VIEW": "Can view",
+      "COMMENT": "Can comment",
+      "EDIT": "Can edit",
+      "FULL": "Full access"
+    }
+  },
   "Presence": {
     "viewing": "{count, plural, one {# person viewing} other {# people viewing}}",
     "typing": "{count, plural, one {# person typing…} other {# people typing…}}"

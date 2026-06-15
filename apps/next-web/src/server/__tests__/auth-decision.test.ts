@@ -42,4 +42,10 @@ describe('decideAuth', () => {
     // Prefix-colliding path is NOT public.
     expect(decideAuth('/forms/publicx', false)).toBe('redirect-login');
   });
+  it('treats the Phase 10c public share-token route as public', () => {
+    expect(decideAuth('/share', false)).toBe('allow');
+    expect(decideAuth('/share/abc123token', false)).toBe('allow');
+    // Prefix-colliding path is NOT public.
+    expect(decideAuth('/sharex', false)).toBe('redirect-login');
+  });
 });

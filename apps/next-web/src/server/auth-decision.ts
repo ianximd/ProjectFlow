@@ -3,8 +3,10 @@ export type AuthDecision = 'allow' | 'redirect-login' | 'redirect-app';
 // Routes reachable without a session. Everything else is protected.
 // `/forms/public/*` is the Phase 7c public form-render/submit surface (the authed
 // `/forms` list and `/forms/[id]` builder stay protected — they don't match this).
+// `/share/*` is the Phase 10c public share-token render route (`/share/[token]`),
+// which fetches the object cookielessly — it must NOT be bounced to /login.
 const PUBLIC_EXACT = new Set(['/']);
-const PUBLIC_PREFIXES = ['/login', '/register', '/oauth', '/forms/public'];
+const PUBLIC_PREFIXES = ['/login', '/register', '/oauth', '/forms/public', '/share'];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_EXACT.has(pathname)) return true;

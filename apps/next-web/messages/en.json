@@ -1641,7 +1641,11 @@
     "expiresAt": "Expires {date}",
     "publicBadge": "Shared link",
     "readOnlyBadge": "Read-only",
-    "typeUnavailable": "This item type can't be displayed yet."
+    "typeUnavailable": "This item type can't be displayed yet.",
+    "copied": "Copied!",
+    "fieldStatus": "Status",
+    "fieldPriority": "Priority",
+    "fieldDue": "Due"
   },
   "AccessRequest": {
     "title": "Request access",

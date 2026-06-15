@@ -16,7 +16,12 @@ export async function PublicObjectRenderer({ projection }: { projection: SharePr
         <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>{t('readOnlyBadge')}</p>
       </header>
 
-      {projection.objectType === 'task' && <TaskView data={projection.data} />}
+      {projection.objectType === 'task' && (
+        <TaskView
+          data={projection.data}
+          labels={{ status: t('fieldStatus'), priority: t('fieldPriority'), due: t('fieldDue') }}
+        />
+      )}
       {projection.objectType === 'view' && <ViewView title={projection.title} data={projection.data} />}
       {['doc', 'dashboard', 'whiteboard'].includes(projection.objectType) && (
         <p>{t('typeUnavailable')}</p>
@@ -25,12 +30,14 @@ export async function PublicObjectRenderer({ projection }: { projection: SharePr
   );
 }
 
-function TaskView({ data }: { data: Record<string, unknown> }) {
+function TaskView({
+  data, labels,
+}: { data: Record<string, unknown>; labels: { status: string; priority: string; due: string } }) {
   return (
     <section>
-      {data.status != null && <p><strong>Status:</strong> {String(data.status)}</p>}
-      {data.priority != null && <p><strong>Priority:</strong> {String(data.priority)}</p>}
-      {data.dueDate != null && <p><strong>Due:</strong> {String(data.dueDate)}</p>}
+      {data.status != null && <p><strong>{labels.status}:</strong> {String(data.status)}</p>}
+      {data.priority != null && <p><strong>{labels.priority}:</strong> {String(data.priority)}</p>}
+      {data.dueDate != null && <p><strong>{labels.due}:</strong> {String(data.dueDate)}</p>}
       {data.description != null && (
         <div style={{ marginTop: 12, whiteSpace: 'pre-wrap' }}>{String(data.description)}</div>
       )}

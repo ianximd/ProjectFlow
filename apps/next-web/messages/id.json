@@ -1641,7 +1641,11 @@
     "expiresAt": "Kedaluwarsa {date}",
     "publicBadge": "Tautan dibagikan",
     "readOnlyBadge": "Hanya-baca",
-    "typeUnavailable": "Jenis item ini belum dapat ditampilkan."
+    "typeUnavailable": "Jenis item ini belum dapat ditampilkan.",
+    "copied": "Tersalin!",
+    "fieldStatus": "Status",
+    "fieldPriority": "Prioritas",
+    "fieldDue": "Tenggat"
   },
   "AccessRequest": {
     "title": "Minta akses",

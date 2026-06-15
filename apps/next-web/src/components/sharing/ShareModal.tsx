@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { createShareLink, revokeShareLink, listShareLinks } from '@/server/actions/share';
 import { notifyActionError } from '@/lib/apiErrorToast';
@@ -18,13 +18,18 @@ export function ShareModal({
   const t = useTranslations('Share');
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [expiry, setExpiry] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
-  const refetch = () =>
-    listShareLinks(objectType, objectId).then((r) => { if (r.ok) setLinks(r.data); });
+  const refetch = useCallback(
+    () => listShareLinks(objectType, objectId).then((r) => {
+      if (r.ok) setLinks(r.data);
+      else notifyActionError(r);          // surface a failed initial/refresh load
+    }),
+    [objectType, objectId],
+  );
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { void refetch(); }, [objectType, objectId]);
+  useEffect(() => { void refetch(); }, [refetch]);
 
   // Close on Escape (mirrors the drawer's other dialogs).
   useEffect(() => {
@@ -34,7 +39,14 @@ export function ShareModal({
   }, [onClose]);
 
   const onCreate = () => start(async () => {
-    const r = await createShareLink(objectType, objectId, expiry ? new Date(expiry).toISOString() : null);
+    // datetime-local normally yields a valid value, but guard so a malformed
+    // string never throws RangeError inside the transition (invalid → no expiry).
+    let expiresAt: string | null = null;
+    if (expiry) {
+      const d = new Date(expiry);
+      expiresAt = Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    const r = await createShareLink(objectType, objectId, expiresAt);
     if (!r.ok) { notifyActionError(r); return; }
     setExpiry('');
     await refetch();
@@ -88,9 +100,13 @@ export function ShareModal({
               <button
                 type="button"
                 className={styles.copyBtn}
-                onClick={() => navigator.clipboard?.writeText(publicUrl(l.token))}
+                onClick={() => {
+                  void navigator.clipboard?.writeText(publicUrl(l.token))
+                    .then(() => { setCopiedId(l.id); setTimeout(() => setCopiedId(null), 1500); })
+                    .catch(() => { /* clipboard blocked (insecure ctx) — the readonly input stays selectable */ });
+                }}
               >
-                {t('copy')}
+                {copiedId === l.id ? t('copied') : t('copy')}
               </button>
               {l.expiresAt && (
                 <span className={styles.expires}>

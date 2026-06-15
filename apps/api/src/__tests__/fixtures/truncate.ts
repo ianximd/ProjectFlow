@@ -38,6 +38,10 @@ const TRUNCATION_ORDER = [
   // Workspaces/Users so their DELETE doesn't strand a schedule row.
   'ScheduledReportRuns',
   'ScheduledReports',
+  // Phase 10a (0058): AppsEnabled — feature-toggle overrides; FK Workspaces(Id) +
+  // Users(Id) (UpdatedBy). Workspace-scoped, so delete before Workspaces/Users or
+  // their DELETE fails FK_AppsEnabled_* once a toggle override exists.
+  'AppsEnabled',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

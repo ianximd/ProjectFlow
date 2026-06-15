@@ -2031,5 +2031,29 @@
     "comingSoonBody": "Aktifkan DOCS_FEATURE_ENABLED untuk mengaktifkan pembaca dokumen sebaris.",
     "pinned": "Dokumen yang disematkan",
     "noDoc": "Tidak ada ID dokumen yang dikonfigurasi untuk tampilan dokumen ini."
+  },
+  "Guests": {
+    "title": "Tamu & anggota terbatas",
+    "email": "Email",
+    "emailPlaceholder": "tamu@contoh.com",
+    "object": "Objek",
+    "level": "Tingkat akses",
+    "invite": "Undang",
+    "revoke": "Cabut",
+    "spaceRuleHint": "Tamu dapat ditambahkan ke Folder atau List, bukan seluruh Space. Pengguna dengan email organisasi Anda menjadi anggota terbatas.",
+    "noGrants": "Belum ada objek yang dibagikan",
+    "statusPending": "Menunggu",
+    "acceptFailedTitle": "Tidak dapat menerima undangan",
+    "acceptFailedBody": "Undangan mungkin telah kedaluwarsa, dicabut, atau ditujukan untuk email lain.",
+    "roles": {
+      "guest": "Tamu",
+      "limited": "Anggota terbatas"
+    },
+    "levels": {
+      "VIEW": "Lihat",
+      "COMMENT": "Komentar",
+      "EDIT": "Edit",
+      "FULL": "Penuh"
+    }
   }
 }

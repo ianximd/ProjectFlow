@@ -2031,5 +2031,29 @@
     "comingSoonBody": "Flip DOCS_FEATURE_ENABLED to enable the inline document reader.",
     "pinned": "Pinned doc",
     "noDoc": "No document ID configured for this doc view."
+  },
+  "Guests": {
+    "title": "Guests & limited members",
+    "email": "Email",
+    "emailPlaceholder": "guest@example.com",
+    "object": "Object",
+    "level": "Access level",
+    "invite": "Invite",
+    "revoke": "Revoke",
+    "spaceRuleHint": "Guests can be added to a Folder or List, not a whole Space. People with your organization's email become limited members.",
+    "noGrants": "No objects shared yet",
+    "statusPending": "Pending",
+    "acceptFailedTitle": "Could not accept invite",
+    "acceptFailedBody": "The invite may have expired, been revoked, or been issued to a different email.",
+    "roles": {
+      "guest": "Guest",
+      "limited": "Limited member"
+    },
+    "levels": {
+      "VIEW": "View",
+      "COMMENT": "Comment",
+      "EDIT": "Edit",
+      "FULL": "Full"
+    }
   }
 }

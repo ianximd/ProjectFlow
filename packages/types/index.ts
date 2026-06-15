@@ -1144,7 +1144,9 @@ export type CustomFieldType =
   | 'url' | 'email' | 'phone' | 'dropdown' | 'labels' | 'rating'
   | 'people' | 'progress_manual' | 'progress_auto'
   // Phase 5b: link tasks (relationship) + read-only aggregate over linked tasks (rollup).
-  | 'relationship' | 'rollup';
+  | 'relationship' | 'rollup'
+  // Phase 9f: a geographic point for the Map view.
+  | 'location';
 
 export type RollupFunction = 'sum' | 'avg' | 'count' | 'min' | 'max' | 'first' | 'concat';
 
@@ -1175,6 +1177,15 @@ export interface RelationshipRef {
   title: string;
   status: string;
   issueKey?: string | null;
+}
+
+/** A `location` custom-field value (Phase 9f). Stored as JSON in
+ *  TaskCustomFieldValues.Value; the Map view plots `lat`/`lng` and labels the
+ *  pin with `label`. */
+export interface LocationValue {
+  lat:   number;   // [-90, 90]
+  lng:   number;   // [-180, 180]
+  label: string;   // human-readable place name (may be '')
 }
 
 // ─── Recurring Tasks (Phase 5c) ───────────────────────────────────────────
@@ -1340,6 +1351,19 @@ export interface SavedView {
 
 export interface ViewGroup { key: string; label: string; count: number }
 export interface ViewTaskPage { tasks: Task[]; total: number; groups?: ViewGroup[] }
+
+// ─── Mind Map view (Phase 9f) ─────────────────────────────────────────────
+// A node/edge graph of the parent_task_id subtree under a view's scope node.
+// The root is the scope node itself; nodes are tasks; edges are parent→child.
+export interface MindMapNode {
+  id:       string;        // task id
+  title:    string;
+  status:   string;
+  parentId: string | null; // ParentTaskId, or null at a subtree root
+  depth:    number;        // 0 = a root task directly under the scope
+}
+export interface MindMapEdge { from: string; to: string }   // parent id → child id
+export interface MindMapGraph { nodes: MindMapNode[]; edges: MindMapEdge[]; rootIds: string[] }
 
 // ───────────────────────── Gantt + Timeline (Phase 9d) ─────────────────────────
 

@@ -181,6 +181,7 @@ app.use('/goals/*',         authMiddleware);
 app.use('/dashboards/*',    authMiddleware);
 app.use('/scheduled-reports/*', authMiddleware);
 app.use('/apps/*',          authMiddleware);
+app.use('/access/*',        authMiddleware);
 
 // Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
 // can ever be invoked. registerAuditSnapshots() is idempotent.

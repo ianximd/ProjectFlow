@@ -22,6 +22,7 @@ export class GanttRepository {
       { name: 'TaskIds',   type: sql.NVarChar(sql.MAX), value: taskIds.length ? taskIds.join(',') : null },
     ]);
     const h = rows[0];
+    if (!h) throw new Error('usp_Baseline_Capture returned no header row');
     return {
       id: h.Id, viewId: h.ViewId, name: h.Name,
       capturedAt: new Date(h.CapturedAt).toISOString(), createdBy: h.CreatedBy, tasks: [],
@@ -35,9 +36,11 @@ export class GanttRepository {
     ]);
     const headers = (sets[0] ?? []) as any[];
     const frozen  = (sets[1] ?? []) as any[];
+    // Key both sides lowercased: mssql returns UNIQUEIDENTIFIER uppercase today,
+    // but normalizing future-proofs the header↔frozen join against any casing skew.
     const byBaseline = new Map<string, BaselineTask[]>();
     for (const f of frozen) {
-      const k = String(f.BaselineId);
+      const k = String(f.BaselineId).toLowerCase();
       const list = byBaseline.get(k) ?? [];
       list.push({
         taskId:    f.TaskId,
@@ -49,7 +52,7 @@ export class GanttRepository {
     return headers.map((h) => ({
       id: h.Id, viewId: h.ViewId, name: h.Name,
       capturedAt: new Date(h.CapturedAt).toISOString(), createdBy: h.CreatedBy,
-      tasks: byBaseline.get(String(h.Id)) ?? [],
+      tasks: byBaseline.get(String(h.Id).toLowerCase()) ?? [],
     }));
   }
 }

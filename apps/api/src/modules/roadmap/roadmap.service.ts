@@ -71,8 +71,10 @@ export class RoadmapService {
     // so List/Board/Calendar surfaces re-merge the task live (best-effort; the helper
     // never throws into the write). The shared GraphQL Task type reads the row
     // casing-tolerantly, so the PascalCase usp_Task_UpdateDates row resolves fine.
+    // Fire-and-forget: don't make the drag's HTTP response wait on the pubsub
+    // fan-out (publishTaskEvent fully guards its own errors internally).
     const projectId = projectIdOf(row);
-    if (projectId) await publishTaskEvent('updated', { projectId, taskId, task: row });
+    if (projectId) void publishTaskEvent('updated', { projectId, taskId, task: row });
     return row;
   }
 

@@ -26,6 +26,7 @@ import { registerGoalsGraphql } from './goals.schema.js';
 import { registerDashboardsGraphql } from './dashboards.schema.js';
 import { registerReportsGraphql } from './reports.schema.js';
 import { registerScheduledReportGraphql } from './scheduled-report.schema.js';
+import { registerActivityGraphql } from './activity.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -913,6 +914,14 @@ registerReportsGraphql();
 // (cadence transported as a JSON string), each gated on scheduled_report.manage.
 // ─────────────────────────────────────────
 registerScheduledReportGraphql();
+
+// ─────────────────────────────────────────
+// Activity Feed (Phase 9e) — AuditLogEntry/AuditLogPage types + activityFeed
+// query, authz-mirrored from savedViews (requireObjectLevel for LIST/FOLDER/
+// SPACE, requireWorkspacePermission for EVERYTHING), delegates to
+// activityService.getActivity → usp_AuditLog_List + object-level post-filter.
+// ─────────────────────────────────────────
+registerActivityGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

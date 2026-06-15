@@ -17,6 +17,9 @@ import { TimelineView } from '@/components/views/timeline-view';
 import { ActivityView } from '@/components/views/activity-view';
 import { EmbedView } from '@/components/views/embed-view';
 import { DocView } from '@/components/views/doc-view';
+import { MapView } from '@/components/views/map-view';
+import { MindMapView } from '@/components/views/mind-map-view';
+import { ChatView } from '@/components/views/chat-view';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
@@ -204,6 +207,7 @@ export function ViewSurface({
             customFields={customFields}
             scopeType={scopeType}
             scopeId={scopeId}
+            workspaceId={workspaceId}
             boardWorkflowStatuses={boardWorkflowStatuses}
             onSelectionChange={onSelectionChange}
             live={live}
@@ -238,6 +242,7 @@ function ViewBody({
   customFields,
   scopeType,
   scopeId,
+  workspaceId,
   boardWorkflowStatuses,
   onSelectionChange,
   live,
@@ -251,6 +256,9 @@ function ViewBody({
   customFields: CustomField[];
   scopeType: ViewScopeType;
   scopeId: string;
+  /** Workspace id for EVERYTHING-scoped surfaces (Chat threads it into
+   *  CommentSection for @-mentions/assignment). Undefined for node scopes. */
+  workspaceId?: string;
   boardWorkflowStatuses?: BoardWorkflowStatus[] | null;
   onSelectionChange?: (ids: string[]) => void;
   live: LiveScopeProp;
@@ -308,6 +316,21 @@ function ViewBody({
       return <EmbedView activeView={activeView} />;
     case 'doc':
       return <DocView activeView={activeView} />;
+    case 'map':
+      return <MapView taskPage={taskPage} activeView={activeView} customFields={customFields} live={live} />;
+    case 'mindmap':
+      return <MindMapView taskPage={taskPage} activeView={activeView} customFields={customFields} live={live} />;
+    case 'chat':
+      return (
+        <ChatView
+          taskPage={taskPage}
+          activeView={activeView}
+          customFields={customFields}
+          workspaceId={workspaceId}
+          currentUserId={null} // TODO(9f follow-up): thread real session userId for edit/delete affordances
+          live={live}
+        />
+      );
     default:
       return (
         <ListView

@@ -707,6 +707,10 @@
     "expand": "Perluas",
     "collapse": "Ciutkan"
   },
+  "ChatView": {
+    "channel": "Saluran",
+    "noChannel": "Belum ada tugas untuk diobrolkan di tampilan ini"
+  },
   "Task": {
     "close": "Tutup",
     "issueTitle": "Judul isu",

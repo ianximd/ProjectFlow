@@ -707,6 +707,10 @@
     "expand": "Expand",
     "collapse": "Collapse"
   },
+  "ChatView": {
+    "channel": "Channel",
+    "noChannel": "No task to chat about in this view yet"
+  },
   "Task": {
     "close": "Close",
     "issueTitle": "Issue title",

@@ -3,6 +3,11 @@ import { getTranslations } from 'next-intl/server';
 import { fetchPublicShare } from '@/server/public/share';
 import { PublicObjectRenderer } from './PublicObjectRenderer';
 
+// A share link must reflect revoke/expire INSTANTLY — never serve a cached render
+// of a now-dead token. Force dynamic so the route is re-resolved every request
+// (no Full Route Cache, response is no-store).
+export const dynamic = 'force-dynamic';
+
 // PUBLIC, sessionless route — OUTSIDE the (app) group. Resolves the share token
 // via a cookieless fetch (see fetchPublicShare) and renders a read-only,
 // navigation-stripped projection of exactly one object. 404s on

@@ -30,6 +30,7 @@ import { registerActivityGraphql } from './activity.schema.js';
 import { registerChatGraphql } from './chat.schema.js';
 import { registerAppsGraphql } from './apps.schema.js';
 import { registerPermissionsGraphql } from './permissions.schema.js';
+import { registerShareGraphql } from './share.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -949,6 +950,7 @@ registerAppsGraphql();
 // All operations gated on role.manage (RBAC) or FULL object-level ACL.
 // ─────────────────────────────────────────
 registerPermissionsGraphql();
+registerShareGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

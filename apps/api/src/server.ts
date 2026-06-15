@@ -45,6 +45,9 @@ import { dashboardRoutes } from './modules/dashboards/dashboard.routes.js';
 import { scheduledReportRoutes } from './modules/scheduled-reports/scheduled-report.routes.js';
 import { appRoutes } from './modules/apps/app.routes.js';
 import { accessRoutes } from './modules/access/access.routes.js';
+import { shareRoutes } from './modules/share/share.routes.js';
+import { publicShareRoutes } from './modules/share/public-share.routes.js';
+import { accessRequestRoutes } from './modules/access/access-request.routes.js';
 import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
@@ -142,6 +145,11 @@ if (process.env.NODE_ENV !== 'test') {
 }
 app.route('/auth', authRoutes);
 
+// Public, unauthenticated share resolution (Phase 10c). NO authMiddleware, NO
+// workspace context — resolves a token to a read-only projection of one object.
+// Mounted OUTSIDE the authMiddleware block (path does NOT match /share/*).
+app.route('/public/share', publicShareRoutes);
+
 // Protected routes
 app.use('/tasks/*',      authMiddleware);
 app.use('/workspaces/*', authMiddleware);
@@ -182,6 +190,7 @@ app.use('/dashboards/*',    authMiddleware);
 app.use('/scheduled-reports/*', authMiddleware);
 app.use('/apps/*',          authMiddleware);
 app.use('/access/*',        authMiddleware);
+app.use('/share/*',         authMiddleware);
 
 // Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
 // can ever be invoked. registerAuditSnapshots() is idempotent.
@@ -197,6 +206,7 @@ app.use('/automations/*', auditMiddleware);
 app.use('/workflows/*',   auditMiddleware);
 app.use('/worklogs/*',    auditMiddleware);
 app.use('/outgoing-webhooks/*', auditMiddleware);
+app.use('/share/*',       auditMiddleware);
 
 // ── Response cache — hot read-only endpoints ─────────────────────────────────
 // Labels, components, versions, epics change infrequently → long TTL
@@ -260,6 +270,8 @@ app.route('/dashboards',        dashboardRoutes);
 app.route('/scheduled-reports', scheduledReportRoutes);
 app.route('/apps',              appRoutes);
 app.route('/access',            accessRoutes);
+app.route('/share',             shareRoutes);
+app.route('/access',            accessRequestRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
 // Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).

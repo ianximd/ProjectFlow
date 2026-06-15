@@ -35,6 +35,26 @@ export class AccessService {
     });
   }
 
+  /** Defense-in-depth: keep only the nodes the user can VIEW. Used by the
+   *  tree/listing endpoints so a guest never receives an ungranted sibling
+   *  even if the parent gate let the request through. Casing-tolerant on the
+   *  node id (some list/folder/project rows are PascalCase Id). A full member's
+   *  EDIT floor passes every node, so this is a no-op for them. */
+  async filterVisibleNodes<T extends { id?: string; Id?: string }>(
+    userId: string,
+    objectType: HierarchyNodeType,
+    nodes: T[],
+  ): Promise<T[]> {
+    const checks: Array<T | null> = await Promise.all(
+      nodes.map(async (n) => {
+        const id = (n.id ?? n.Id) as string;
+        const { level } = await this.resolveOrNull(userId, objectType, id);
+        return level ? n : null;
+      }),
+    );
+    return checks.filter((n): n is T => n !== null);
+  }
+
   async removeObjectPermission(input: {
     workspaceId: string; subjectType: 'USER' | 'ROLE'; subjectId: string;
     objectType: HierarchyNodeType; objectId: string; actorId: string; actorEmail?: string | null;

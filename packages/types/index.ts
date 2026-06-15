@@ -1239,6 +1239,57 @@ export interface RoleMember {
   assignedAt:    string;
 }
 
+// --- Guests & Limited Members (Phase 10d, migration 0062) ---
+export const WORKSPACE_GUEST_ROLE          = 'workspace-guest';
+export const WORKSPACE_LIMITED_MEMBER_ROLE = 'workspace-limited-member';
+export type GuestRoleSlug = typeof WORKSPACE_GUEST_ROLE | typeof WORKSPACE_LIMITED_MEMBER_ROLE;
+
+export type GuestInviteStatus = 'pending' | 'accepted' | 'revoked';
+
+export interface GuestInvite {
+  id:          string;
+  workspaceId: string;
+  email:       string;
+  objectType:  HierarchyNodeType;
+  objectId:    string;
+  level:       ObjectPermissionLevel;
+  token:       string;
+  status:      GuestInviteStatus;
+  invitedBy:   string;
+  expiresAt:   string | null;
+  createdAt:   string;
+  acceptedAt:  string | null;
+}
+
+export interface GuestGrant {
+  objectType: HierarchyNodeType;
+  objectId:   string;
+  level:      ObjectPermissionLevel;
+}
+
+export interface Guest {
+  userId:    string;
+  email:     string;
+  name:      string;
+  avatarUrl: string | null;
+  roleSlug:  GuestRoleSlug;
+  grants:    GuestGrant[];
+}
+
+export interface GuestListResult {
+  guests:  Guest[];
+  pending: GuestInvite[];
+}
+
+export interface InviteGuestInput {
+  workspaceId: string;
+  email:       string;
+  objectType:  HierarchyNodeType;
+  objectId:    string;
+  level:       ObjectPermissionLevel;
+  expiresAt?:  string;
+}
+
 // ─── Per-object permission editor (Phase 10b, reuses ObjectPermissions) ────────
 export type ObjectPermissionSubjectType = 'USER' | 'ROLE';
 export interface ObjectPermissionGrant {

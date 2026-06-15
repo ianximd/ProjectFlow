@@ -45,12 +45,22 @@ export class WorkspaceRepository {
     return rows[0];
   }
 
-  async update(id: string, fields: { name?: string; slug?: string; avatarUrl?: string | null }) {
+  async getVerifiedDomain(id: string): Promise<string | null> {
+    const rows = await execSpOne<{ VerifiedDomain: string | null }>('usp_Workspace_GetVerifiedDomain', [
+      { name: 'Id', type: sql.UniqueIdentifier, value: id },
+    ]);
+    return rows[0]?.VerifiedDomain ?? null;
+  }
+
+  // Partial-update safe: usp_Workspace_Update applies ISNULL(@X, X) per column,
+  // so an absent field (null here) preserves the existing value (incl. VerifiedDomain).
+  async update(id: string, fields: { name?: string; slug?: string; avatarUrl?: string | null; verifiedDomain?: string | null }) {
     const rows = await execSpOne('usp_Workspace_Update', [
-      { name: 'Id',        type: sql.UniqueIdentifier,  value: id },
-      { name: 'Name',      type: sql.NVarChar(255),     value: fields.name ?? null },
-      { name: 'Slug',      type: sql.NVarChar(100),     value: fields.slug ?? null },
-      { name: 'AvatarUrl', type: sql.NVarChar(500),     value: fields.avatarUrl ?? null },
+      { name: 'Id',             type: sql.UniqueIdentifier,  value: id },
+      { name: 'Name',           type: sql.NVarChar(255),     value: fields.name ?? null },
+      { name: 'Slug',           type: sql.NVarChar(100),     value: fields.slug ?? null },
+      { name: 'AvatarUrl',      type: sql.NVarChar(500),     value: fields.avatarUrl ?? null },
+      { name: 'VerifiedDomain', type: sql.NVarChar(255),     value: fields.verifiedDomain ?? null },
     ]);
     return rows[0] ?? null;
   }

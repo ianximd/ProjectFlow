@@ -163,9 +163,9 @@ workspaceRoutes.patch(
   '/:id',
   requirePermission('workspace.update', { workspaceParam: 'id' }),
   async (c) => {
-    const { name, slug, avatarUrl } = await c.req.json();
+    const { name, slug, avatarUrl, verifiedDomain } = await c.req.json();
     try {
-      const workspace = await workspaceService.update(c.req.param('id')!, { name, slug, avatarUrl });
+      const workspace = await workspaceService.update(c.req.param('id')!, { name, slug, avatarUrl, verifiedDomain });
       if (!workspace) return c.json({ error: { message: 'Workspace not found' } }, 404);
       await invalidateWorkspaceCaches();
       return c.json({ data: workspace });

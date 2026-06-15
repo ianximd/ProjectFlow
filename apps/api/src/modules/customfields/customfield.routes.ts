@@ -14,7 +14,7 @@ const SCOPE = z.enum(['SPACE', 'FOLDER', 'LIST']);
 const TYPE = z.enum([
   'text','text_area','number','currency','checkbox','date','url','email','phone',
   'dropdown','labels','rating','people','progress_manual','progress_auto',
-  'relationship','rollup',
+  'relationship','rollup','location',
 ]);
 const fieldRefSchema = z.object({ kind: z.enum(['builtin', 'custom']), key: z.string() });
 const configSchema = z.object({

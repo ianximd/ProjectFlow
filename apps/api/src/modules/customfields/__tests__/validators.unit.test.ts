@@ -95,6 +95,7 @@ describe('validateFieldValue', () => {
   it('location rejects a non-string label', () => {
     expect(ok('location', { lat: 0, lng: 0, label: 42 }).valid).toBe(false);
     expect(ok('location', { lat: 0, lng: 0, label: 42 }).code).toBe('BAD_LABEL');
+    expect(ok('location', { lat: 0, lng: 0 }).code).toBe('BAD_LABEL');
   });
 });
 

@@ -2,10 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireSession } from '../session';
-import { gqlData, previewViewTasks as previewViewTasksQuery, type ViewTaskPageResult } from '../queries/views';
+import { gqlData, previewViewTasks as previewViewTasksQuery, getMindMapGraph, type ViewTaskPageResult } from '../queries/views';
 import { toActionError } from './error';
 import type { ActionResult } from './result';
-import type { BulkAction, BulkUpdateResult, SavedView, ViewConfig } from '@projectflow/types';
+import type { BulkAction, BulkUpdateResult, MindMapGraph, SavedView, ViewConfig } from '@projectflow/types';
 
 // Saved views render on the List host route and the Board; a view mutation can
 // change either, so refresh both (mirrors tasks.ts's TASK_LIST_PATHS approach).
@@ -165,4 +165,16 @@ export async function bulkUpdateTasks(taskIds: string[], action: BulkAction): Pr
     });
     return r;
   });
+}
+
+/** SSR-backed Mind Map graph for a saved view (used by MindMapView). Read-only:
+ *  it gates the session and re-runs the cached SSR query, falling back to an
+ *  empty graph on any failure so the client renderer always has a valid shape. */
+export async function loadMindMapGraph(viewId: string): Promise<MindMapGraph> {
+  await requireSession();
+  try {
+    return await getMindMapGraph(viewId);
+  } catch {
+    return { nodes: [], edges: [], rootIds: [] };
+  }
 }

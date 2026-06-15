@@ -1,0 +1,73 @@
+.root {
+  height: 100%;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--background, #fff);
+}
+
+.empty {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground, #6b7280);
+  font-size: 13px;
+}
+
+.tree,
+.children {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.children {
+  margin-left: 18px;
+  border-left: 1px dashed var(--border, #e5e7eb);
+  padding-left: 10px;
+}
+
+.node {
+  padding: 2px 0;
+}
+
+.nodeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.nodeRow:hover {
+  background: var(--muted, #f3f4f6);
+}
+
+.toggle {
+  border: none;
+  background: none;
+  cursor: pointer;
+  width: 16px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.leaf {
+  width: 16px;
+  text-align: center;
+  color: var(--muted-foreground, #9ca3af);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.status {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted-foreground, #6b7280);
+  text-transform: capitalize;
+}

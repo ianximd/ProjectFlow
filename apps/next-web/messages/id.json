@@ -700,6 +700,13 @@
     "untitled": "Tugas tanpa judul",
     "close": "Tutup"
   },
+  "MindMap": {
+    "loading": "Memuat peta pikiran…",
+    "noNodes": "Tidak ada tugas dalam cakupan ini",
+    "untitled": "Tugas tanpa judul",
+    "expand": "Perluas",
+    "collapse": "Ciutkan"
+  },
   "Task": {
     "close": "Tutup",
     "issueTitle": "Judul isu",

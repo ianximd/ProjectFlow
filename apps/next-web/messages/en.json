@@ -700,6 +700,13 @@
     "untitled": "Untitled task",
     "close": "Close"
   },
+  "MindMap": {
+    "loading": "Loading mind map…",
+    "noNodes": "No tasks in this scope",
+    "untitled": "Untitled task",
+    "expand": "Expand",
+    "collapse": "Collapse"
+  },
   "Task": {
     "close": "Close",
     "issueTitle": "Issue title",

@@ -40,6 +40,7 @@ const ACTIVITY_FEED_QUERY = /* GraphQL */ `
         resource
         resourceId
         oldValues
+        newValues
         ipAddress
         createdAt
       }

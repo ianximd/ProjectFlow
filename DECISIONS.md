@@ -1475,7 +1475,7 @@ API **578 unit** (+37 = 15 embed-url + 22 activity-scope) / **279 integration** 
 ### Residuals / follow-ups (non-blocking)
 1. Doc view is a flag-gated stub — Phase 7 docs now exist, so a follow-up can flip `DOCS_FEATURE_ENABLED` and wire the real reader at the documented TODO.
 2. Activity `total` is the unfiltered SP count (entries may be post-filtered shorter) — client pagination counts can be slightly off once Project entries are dropped; acceptable v1.
-3. SPACE-scoped activity narrows by the workspace + passes through `Task` entries (object-level only filters `Project`→SPACE today); broadens automatically once Folder/List audit mounts exist.
+3. **Node-scoped (SPACE/FOLDER/LIST) activity feeds currently surface only audit rows for the node OBJECT ITSELF** — the SSR seed forwards `scopeId` as `resourceId` and the AuditLog has no subtree/path column, so the SP matches exact `ResourceId == scopeId` (a SPACE feed → rows for that Project row; Task CREATE rows have a null ResourceId and Task UPDATE rows carry the taskId, so contained-task events are NOT seeded). This is an intentional v1 narrowing (under-shows, never over-shows; the workspace gate + object-level post-filter keep it safe — note that simply dropping the resourceId filter would risk surfacing other scopes' Task events since `Task` passes through the post-filter). EVERYTHING is the fully-functional path today; the live `taskEvents` prepend works on any scope with a projectId. Proper subtree scoping needs a path-based audit filter (follow-up). The object-level post-filter's `Folder`/`List` map entries are inert until those audit mounts land.
 4. `prependEntry` hardcodes the 200-entry cap (dropped the plan's `max` param) — one caller, fine.
 
 ### DB-execution policy

@@ -74,9 +74,15 @@ export function nz(v: string | null | undefined): string | undefined {
  *  - `scope`   — the view's scopeType + scopeId
  *  - `filters` — the caller-supplied ActivityFilters (all optional)
  *
- * For LIST/FOLDER/SPACE scopes the scopeId is forwarded as resourceId so the
- * SP can narrow rows to events that touched objects inside that scope.
- * For EVERYTHING scopes no resourceId filter is applied.
+ * For LIST/FOLDER/SPACE scopes the scopeId is forwarded as resourceId. The
+ * AuditLog has no subtree/path column, so the SP matches on exact equality
+ * (ResourceId == scopeId) — i.e. a node-scoped feed currently surfaces only
+ * audit rows for the node OBJECT ITSELF (e.g. a SPACE feed → rows for that
+ * Project row), NOT events on contained tasks/lists (Task CREATE rows carry a
+ * null ResourceId; Task UPDATE rows carry the taskId, not the scopeId). This is
+ * an intentional v1 narrowing (it under-shows, never over-shows); proper subtree
+ * scoping needs a path-based audit filter (follow-up). EVERYTHING is workspace-
+ * wide (no resourceId filter) and is the fully-functional path today.
  */
 export function buildAuditFilters(
   node:    ScopeNode,

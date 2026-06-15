@@ -38,6 +38,8 @@ export function MindMapView({ activeView }: Props) {
   // late resolve after a view switch (or unmount) doesn't write stale state.
   useEffect(() => {
     let cancelled = false;
+    setGraph(null);
+    setCollapsed(new Set());
     loadMindMapGraph(activeView.id)
       .then((g) => { if (!cancelled) setGraph(g); })
       .catch(() => { /* keep the loading state; the surface stays inert */ });

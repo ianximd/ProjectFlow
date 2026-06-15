@@ -20,7 +20,7 @@ import styles from './map-view.module.css';
 import 'leaflet/dist/leaflet.css';
 
 // ── Type-only stubs so we can type the dynamic refs before they load ──────────
-import type { Map as LeafletMap, LatLngExpression } from 'leaflet';
+import type { LatLngExpression } from 'leaflet';
 
 // ── Dynamic imports (ssr: false) — leaflet touches window at import time ──────
 // Each component is loaded lazily so the SSR pass never imports the leaflet
@@ -152,6 +152,9 @@ export function MapView({ taskPage, customFields = [], live }: Props) {
     [selectedTaskId, pins],
   );
 
+  // NOTE: react-leaflet reads center/zoom only on first mount — pins arriving live
+  // after mount do not recentre the map (v1: user pans manually). Re-centre via a
+  // useMap() child is a deferred follow-up.
   // Map center: first pin, or world view when empty.
   const center: LatLngExpression = pins.length > 0 ? [pins[0]!.lat, pins[0]!.lng] : [0, 0];
   const zoom = pins.length > 0 ? 4 : 1;

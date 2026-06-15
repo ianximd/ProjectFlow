@@ -299,29 +299,6 @@ export const loadGanttData = cache(async (viewId: string): Promise<ViewGanttData
   return viewGanttData ?? null;
 });
 
-// ── Phase 9f: Map view ────────────────────────────────────────────────────────
-
-export interface MapTaskPin {
-  taskId: string;
-  title: string;
-  status: string;
-  lat: number;
-  lng: number;
-  label: string;
-}
-
-const MAP_TASKS_QUERY = /* GraphQL */ `
-  query MapTasks($viewId: String!, $meMode: Boolean) {
-    mapTasks(viewId: $viewId, meMode: $meMode) { taskId title status lat lng label }
-  }
-`;
-
-/** SSR-load the map pins for a map view (tasks that have a location custom field). */
-export const getMapTasks = cache(async (viewId: string, meMode = false): Promise<MapTaskPin[]> => {
-  const { mapTasks } = await gqlData<{ mapTasks: MapTaskPin[] }>(MAP_TASKS_QUERY, { viewId, meMode });
-  return mapTasks ?? [];
-});
-
 // ── Phase 9f: Mind-map view ───────────────────────────────────────────────────
 
 const MIND_MAP_QUERY = /* GraphQL */ `

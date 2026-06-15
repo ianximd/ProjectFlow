@@ -22,7 +22,11 @@ interface Props {
   currentUserId?: string | null;
   /** Workspace id — threaded into CommentSection for @-mentions and assignment. */
   workspaceId?: string;
-  /** Live-subscription scope (created/updated/deleted), resolved SSR in the page. */
+  /**
+   * Live-subscription scope (created/updated/deleted), resolved SSR in the page.
+   * Accepted for view-surface prop-parity but intentionally unused here —
+   * CommentSection subscribes to comment:created independently.
+   */
   live: LiveScopeProp;
 }
 

@@ -1146,6 +1146,7 @@ export interface Role {
   description: string | null;
   scope:       RoleScope;
   isSystem:    boolean;
+  workspaceId: string | null;
   createdAt:   string;
   updatedAt:   string;
 }
@@ -1181,6 +1182,31 @@ export interface RoleMember {
   workspaceName: string | null;
   assignedBy:    string | null;
   assignedAt:    string;
+}
+
+// ─── Per-object permission editor (Phase 10b, reuses ObjectPermissions) ────────
+export type ObjectPermissionSubjectType = 'USER' | 'ROLE';
+export interface ObjectPermissionGrant {
+  id: string;
+  subjectType: ObjectPermissionSubjectType;
+  subjectId: string;
+  subjectName: string | null;
+  subjectEmail: string | null;
+  objectType: HierarchyNodeType;
+  objectId: string;
+  level: ObjectPermissionLevel;
+  inherited: boolean;
+  inheritedFromName: string | null;
+}
+export interface SetObjectPermissionInput {
+  subjectType: ObjectPermissionSubjectType;
+  subjectId: string;
+  level: ObjectPermissionLevel;
+}
+export interface CreateWorkspaceRoleInput {
+  name: string;
+  description?: string | null;
+  permissionIds: string[];
 }
 
 // ─── Custom Fields (Phase 2, migration 0030) ──────────────────────────────

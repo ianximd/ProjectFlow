@@ -32,6 +32,7 @@ function mapRole(r: any): Role {
     description: r.Description ?? null,
     scope:       r.Scope,
     isSystem:    Boolean(r.IsSystem),
+    workspaceId: r.WorkspaceId ?? null,
     createdAt:   r.CreatedAt instanceof Date ? r.CreatedAt.toISOString() : String(r.CreatedAt),
     updatedAt:   r.UpdatedAt instanceof Date ? r.UpdatedAt.toISOString() : String(r.UpdatedAt),
   };
@@ -113,14 +114,22 @@ export class RoleRepository {
     return rows[0] ? mapRole(rows[0]) : null;
   }
 
-  async createRole(input: { name: string; slug: string; description: string | null; scope: RoleScope }): Promise<Role> {
+  async createRole(input: { name: string; slug: string; description: string | null; scope: RoleScope; workspaceId?: string | null }): Promise<Role> {
     const rows = await execSpOne<any>('dbo.usp_Role_Create', [
-      { name: 'Name',        type: sql.NVarChar(100), value: input.name },
-      { name: 'Slug',        type: sql.NVarChar(100), value: input.slug },
-      { name: 'Description', type: sql.NVarChar(500), value: input.description },
-      { name: 'Scope',       type: sql.NVarChar(16),  value: input.scope },
+      { name: 'Name',        type: sql.NVarChar(100),    value: input.name },
+      { name: 'Slug',        type: sql.NVarChar(100),    value: input.slug },
+      { name: 'Description', type: sql.NVarChar(500),    value: input.description },
+      { name: 'Scope',       type: sql.NVarChar(16),     value: input.scope },
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: input.workspaceId ?? null },
     ]);
     return mapRole(rows[0]);
+  }
+
+  async listRolesForWorkspace(workspaceId: string): Promise<RoleWithCounts[]> {
+    const rows = await execSpOne<any>('dbo.usp_Role_ListForWorkspace', [
+      { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
+    ]);
+    return rows.map(mapRoleWithCounts);
   }
 
   async updateRole(roleId: string, input: { name?: string; description?: string | null }): Promise<Role | null> {

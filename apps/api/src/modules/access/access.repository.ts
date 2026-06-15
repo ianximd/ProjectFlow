@@ -1,6 +1,6 @@
 import sql from 'mssql';
 import { execSpOne } from '../../shared/lib/sqlClient.js';
-import type { HierarchyNodeType, ObjectPermissionLevel } from '@projectflow/types';
+import type { HierarchyNodeType, ObjectPermissionGrant, ObjectPermissionLevel } from '@projectflow/types';
 
 export interface ResolvedAccess {
   Level: ObjectPermissionLevel | null;
@@ -28,6 +28,7 @@ export class AccessRepository {
     objectType: HierarchyNodeType,
     objectId: string,
     level: ObjectPermissionLevel,
+    grantedBy: string | null = null,
   ) {
     const rows = await execSpOne('usp_ObjectPermission_Set', [
       { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
@@ -36,6 +37,7 @@ export class AccessRepository {
       { name: 'ObjectType',  type: sql.NVarChar(8),      value: objectType },
       { name: 'ObjectId',    type: sql.UniqueIdentifier, value: objectId },
       { name: 'Level',       type: sql.NVarChar(8),      value: level },
+      { name: 'GrantedBy',   type: sql.UniqueIdentifier, value: grantedBy },
     ]);
     return rows[0];
   }
@@ -52,5 +54,28 @@ export class AccessRepository {
       { name: 'ObjectType',  type: sql.NVarChar(8),      value: objectType },
       { name: 'ObjectId',    type: sql.UniqueIdentifier, value: objectId },
     ]);
+  }
+
+  async remove(subjectType: 'USER' | 'ROLE', subjectId: string, objectType: HierarchyNodeType, objectId: string): Promise<number> {
+    const rows = await execSpOne<{ Deleted: number }>('usp_ObjectPermission_Remove', [
+      { name: 'SubjectType', type: sql.NVarChar(8),      value: subjectType },
+      { name: 'SubjectId',   type: sql.UniqueIdentifier, value: subjectId },
+      { name: 'ObjectType',  type: sql.NVarChar(8),      value: objectType },
+      { name: 'ObjectId',    type: sql.UniqueIdentifier, value: objectId },
+    ]);
+    return Number(rows[0]?.Deleted ?? 0);
+  }
+
+  async listForObject(objectType: HierarchyNodeType, objectId: string): Promise<ObjectPermissionGrant[]> {
+    const rows = await execSpOne<any>('usp_ObjectPermission_ListForObject', [
+      { name: 'ObjectType', type: sql.NVarChar(8),      value: objectType },
+      { name: 'ObjectId',   type: sql.UniqueIdentifier, value: objectId },
+    ]);
+    return rows.map((r) => ({
+      id: r.Id, subjectType: r.SubjectType, subjectId: r.SubjectId,
+      subjectName: r.SubjectName ?? null, subjectEmail: r.SubjectEmail ?? null,
+      objectType: r.ObjectType, objectId: r.ObjectId, level: r.Level,
+      inherited: Boolean(r.Inherited), inheritedFromName: r.InheritedFromName ?? null,
+    }));
   }
 }

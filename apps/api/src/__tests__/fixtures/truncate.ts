@@ -42,6 +42,11 @@ const TRUNCATION_ORDER = [
   // Users(Id) (UpdatedBy). Workspace-scoped, so delete before Workspaces/Users or
   // their DELETE fails FK_AppsEnabled_* once a toggle override exists.
   'AppsEnabled',
+  // Phase 10c (0061): share links + access requests — both FK Workspaces(Id) +
+  // Users(Id). No children; delete before Workspaces/Users or their DELETE fails
+  // FK_ShareLinks_* / FK_AccessRequests_* once a row exists.
+  'ShareLinks',
+  'AccessRequests',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

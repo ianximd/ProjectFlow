@@ -1,0 +1,12 @@
+.grid { display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; }
+.meta { display: flex; flex-direction: column; gap: 2px; }
+.label { font-weight: 600; }
+.desc { font-size: 12px; color: var(--text-2, #6b7280); }
+.inherited { font-size: 11px; color: var(--text-3, #9ca3af); font-style: italic; }
+.switch { position: relative; width: 40px; height: 22px; border: none; border-radius: 11px; cursor: pointer; transition: background .15s; }
+.switch:disabled { opacity: .5; cursor: default; }
+.switch.on { background: #22c55e; }
+.switch.off { background: #d1d5db; }
+.knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch.on .knob { transform: translateX(18px); }

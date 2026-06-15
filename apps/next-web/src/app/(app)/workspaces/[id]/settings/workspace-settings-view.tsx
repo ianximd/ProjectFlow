@@ -11,6 +11,7 @@ import type { WorkspaceDetail } from '@/server/queries/workspace';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { AppCenter } from '@/components/AppCenter';
 
 export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetail }) {
   const t = useTranslations('Workspaces');
@@ -134,6 +135,12 @@ export function WorkspaceSettingsView({ workspace }: { workspace: WorkspaceDetai
             )}
           </div>
         </form>
+      </Card>
+
+      {/* ── Apps ─────────────────────────────────────────────────────────── */}
+      <Card className="p-5">
+        <h3 className="text-sm font-semibold text-foreground mb-4">{t('settingsApps')}</h3>
+        <AppCenter workspaceId={workspace.id} scopeType="workspace" scopeId={null} />
       </Card>
 
       {/* ── Danger zone ──────────────────────────────────────────────────── */}

@@ -983,6 +983,7 @@
     "membersInviteSend": "Send invite",
     "settingsBreadcrumb": "Workspace settings",
     "settingsWorkspaceFallback": "Workspace",
+    "settingsApps": "Apps",
     "settingsGeneral": "General",
     "settingsNameLabel": "Name",
     "settingsSlugLabel": "URL slug",

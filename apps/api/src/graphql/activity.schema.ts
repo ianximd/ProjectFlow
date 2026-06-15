@@ -122,7 +122,8 @@ export function registerActivityGraphql(): void {
         return activityService.getActivity(
           ctx.user.userId,
           scopeType,
-          scopeType === 'EVERYTHING' ? (args.workspaceId ?? scopeId) : scopeId,
+          args.scopeId ?? null,
+          args.workspaceId ?? undefined,
           {
             actor:    args.actor    ?? undefined,
             action:   args.action   ?? undefined,

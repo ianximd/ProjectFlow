@@ -1320,7 +1320,7 @@ export interface ActivityFilters {
   resource?: string;
   /** 1-based page number (default 1). */
   page?: number;
-  /** Page size, 1–100 (default 25). */
+  /** Page size, 1–200 (default 50). */
   pageSize?: number;
 }
 

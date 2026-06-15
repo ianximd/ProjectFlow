@@ -58,4 +58,18 @@ describe('normalizeEmbedUrl', () => {
     const out = normalizeEmbedUrl('https://app.example.com/view?id=123');
     expect(typeof out).toBe('string');
   });
+
+  // ── adversarial / obfuscation cases ─────────────────────────────────────────
+
+  it('rejects vbscript: scheme', () => {
+    expect(() => normalizeEmbedUrl('vbscript:msgbox(1)')).toThrow(EmbedUrlError);
+  });
+
+  it('rejects scheme-relative URLs (//example.com/x)', () => {
+    expect(() => normalizeEmbedUrl('//example.com/x')).toThrow(EmbedUrlError);
+  });
+
+  it('rejects case/whitespace-obfuscated javascript: scheme', () => {
+    expect(() => normalizeEmbedUrl('  JaVaScRiPt:alert(1)')).toThrow(EmbedUrlError);
+  });
 });

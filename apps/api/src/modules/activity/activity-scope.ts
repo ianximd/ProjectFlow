@@ -33,10 +33,10 @@ export interface AuditFilters {
   pageSize:    number;
 }
 
-/** Default page size for activity feed queries. */
-const DEFAULT_PAGE_SIZE = 25;
-/** Maximum allowed page size. */
-const MAX_PAGE_SIZE = 100;
+/** Default page size for activity feed queries (matches usp_AuditLog_List default). */
+const DEFAULT_PAGE_SIZE = 50;
+/** Maximum allowed page size (matches usp_AuditLog_List cap). */
+const MAX_PAGE_SIZE = 200;
 
 /**
  * Clamp a page number to a minimum of 1.
@@ -50,14 +50,27 @@ export function clampPage(page: number | undefined): number {
  * Clamp a pageSize value into [1, MAX_PAGE_SIZE].
  * Falls back to DEFAULT_PAGE_SIZE if undefined.
  */
-export function nz(pageSize: number | undefined): number {
+export function clampPageSize(pageSize: number | undefined): number {
   if (!pageSize || pageSize < 1) return DEFAULT_PAGE_SIZE;
   return Math.min(pageSize, MAX_PAGE_SIZE);
 }
 
 /**
+ * Normalise an optional string filter value.
+ * Returns undefined for null, undefined, or blank/whitespace-only strings so
+ * that a blank actor/action/resource is treated as "no filter" rather than
+ * matching zero rows in the SP.
+ */
+export function nz(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const trimmed = v.trim();
+  return trimmed === '' ? undefined : trimmed;
+}
+
+/**
  * Build an AuditFilters bag from:
- *  - `node`    — the resolved scope node (workspaceId + scopePath from getScopeNode)
+ *  - `node`    — the resolved scope node (workspaceId from getScopeNode;
+ *                scopePath is present in the type but not consumed here)
  *  - `scope`   — the view's scopeType + scopeId
  *  - `filters` — the caller-supplied ActivityFilters (all optional)
  *
@@ -77,11 +90,11 @@ export function buildAuditFilters(
 
   return {
     workspaceId: node.workspaceId,
-    userId:      filters.actor    ?? undefined,
-    resource:    filters.resource ?? undefined,
-    action:      filters.action   ?? undefined,
+    userId:      nz(filters.actor),
+    resource:    nz(filters.resource),
+    action:      nz(filters.action),
     resourceId,
     page:        clampPage(filters.page),
-    pageSize:    nz(filters.pageSize),
+    pageSize:    clampPageSize(filters.pageSize),
   };
 }

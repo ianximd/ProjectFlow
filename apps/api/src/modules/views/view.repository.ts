@@ -234,6 +234,19 @@ export class ViewRepository {
    * `groupExpr`/`_fid` join params from the compiler are intentionally NOT applied —
    * capacity has no sort joins.
    */
+  /** Phase 1 descendant query — every task under a SPACE/FOLDER/LIST node, by
+   *  ListPath prefix. Returns raw SELECT t.* rows (PascalCase) for the Mind Map
+   *  graph builder. usp_Hierarchy_DescendantTasks returns a single recordset, so
+   *  execSpOne (the first recordset = flat row array) is the correct helper —
+   *  same call hierarchy.repository.ts already makes. */
+  async descendantTasks(scopeType: 'SPACE' | 'FOLDER' | 'LIST', scopeId: string): Promise<any[]> {
+    const rows = await execSpOne('usp_Hierarchy_DescendantTasks', [
+      { name: 'NodeType', type: sql.NVarChar(8),      value: scopeType },
+      { name: 'NodeId',   type: sql.UniqueIdentifier, value: scopeId },
+    ]);
+    return rows as any[];
+  }
+
   async capacityByAssignee(
     compiled: CompiledQuery,
     range: { from: string | null; to: string | null },

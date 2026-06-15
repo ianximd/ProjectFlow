@@ -12,7 +12,9 @@ import { WorkflowService } from '../workflows/workflow.service.js';
 import { isWorkspaceMember } from '../workspaces/membership.js';
 import { accessService } from '../access/access.service.js';
 import { roleService } from '../roles/role.service.js';
-import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult, CapacityResult, EmbedViewConfig } from '@projectflow/types';
+import { buildMindMapGraph } from './mindmap.js';
+import { parseLocationValue } from './location.js';
+import type { SavedView, ViewConfig, ViewScopeType, ViewType, ViewTaskPage, CustomField, BulkAction, BulkUpdateResult, CapacityResult, EmbedViewConfig, LocationValue, MindMapGraph } from '@projectflow/types';
 import { aggregateCapacity } from './capacity/capacity-aggregate.js';
 
 export { EmbedUrlError };
@@ -354,6 +356,43 @@ export class ViewService {
       page.groups = await this.repo.groupCounts(compiled, builtinGroupExpr(catalog, config.groupBy));
     }
     return page;
+  }
+
+  /**
+   * Map view data: the view's compiled task page (Phase 3 compiler, fully
+   * object-level scoped) filtered to tasks that carry a VALID `location`
+   * custom-field value. Returns each kept task plus its decoded LocationValue.
+   */
+  async mapTasks(
+    userId: string,
+    viewId: string,
+    opts: { page: number; pageSize?: number; meMode?: boolean },
+  ): Promise<{ taskId: string; title: string; status: string; location: LocationValue }[]> {
+    const view = await this.getOrThrow(viewId);
+    const fields = view.scopeType !== 'EVERYTHING' && view.scopeId
+      ? await this.cfRepo.list(view.scopeType as any, view.scopeId)
+      : [];
+    const locationFieldIds = fields.filter((f) => f.type === 'location').map((f) => f.id.toLowerCase());
+
+    const page = await this.runView(userId, viewId, opts);
+    const out: { taskId: string; title: string; status: string; location: LocationValue }[] = [];
+    for (const t of page.tasks as any[]) {
+      const cfv = (t.customFieldValues ?? t.CustomFieldValues ?? {}) as Record<string, unknown>;
+      for (const fid of locationFieldIds) {
+        const loc = parseLocationValue(cfv[fid]);
+        if (loc) { out.push({ taskId: t.id ?? t.Id, title: t.title ?? t.Title, status: t.status ?? t.Status, location: loc }); break; }
+      }
+    }
+    return out;
+  }
+
+  /** Mind Map view data: the parent_task_id subtree under the view's scope node,
+   *  shaped into a node/edge graph. EVERYTHING scope has no single node → empty. */
+  async mindMapGraph(userId: string, viewId: string): Promise<MindMapGraph> {
+    const view = await this.getOrThrow(viewId);
+    if (view.scopeType === 'EVERYTHING' || !view.scopeId) return { nodes: [], edges: [], rootIds: [] };
+    const rows = await this.repo.descendantTasks(view.scopeType as 'SPACE' | 'FOLDER' | 'LIST', view.scopeId);
+    return buildMindMapGraph(rows as any);
   }
 
   /**

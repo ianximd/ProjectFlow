@@ -79,6 +79,61 @@ export type Visibility = 'PUBLIC' | 'PRIVATE';
 export type ObjectPermissionLevel = 'VIEW' | 'COMMENT' | 'EDIT' | 'FULL';
 export type HierarchyNodeType = 'SPACE' | 'FOLDER' | 'LIST';
 
+// ── Public Share Links + Access Requests (Phase 10c) ──────────────────────────
+
+export type ShareObjectType = 'task' | 'doc' | 'dashboard' | 'view' | 'whiteboard';
+
+export interface ShareLink {
+  id:          string;
+  workspaceId: string;
+  objectType:  ShareObjectType;
+  objectId:    string;
+  token:       string;
+  level:       ObjectPermissionLevel;  // 'VIEW' in v1 (read-only)
+  expiresAt:   string | null;
+  createdBy:   string;
+  createdAt:   string;
+  revokedAt:   string | null;
+}
+
+export interface CreateShareLinkInput {
+  objectType: ShareObjectType;
+  objectId:   string;
+  expiresAt?: string | null;
+}
+
+/** A navigation-stripped, write-stripped read-only projection of one object,
+ *  served by the UNAUTHENTICATED /public/share/:token route. `data` is the
+ *  per-type read-only payload; it carries NO sibling/parent links. */
+export interface ShareProjection {
+  objectType: ShareObjectType;
+  objectId:   string;
+  level:      ObjectPermissionLevel;
+  title:      string;
+  data:       Record<string, unknown>;
+}
+
+export type AccessRequestStatus = 'pending' | 'granted' | 'denied';
+
+export interface AccessRequest {
+  id:          string;
+  workspaceId: string;
+  objectType:  ShareObjectType;
+  objectId:    string;
+  requestedBy: string;
+  note:        string | null;
+  status:      AccessRequestStatus;
+  resolvedBy:  string | null;
+  resolvedAt:  string | null;
+  createdAt:   string;
+}
+
+export interface CreateAccessRequestInput {
+  objectType: ShareObjectType;
+  objectId:   string;
+  note?:      string;
+}
+
 // ── Apps / feature toggles (Phase 10a) ────────────────────────────────────────
 
 /** Scope at which a feature app may be toggled. 'workspace' is the root

@@ -27,6 +27,7 @@ import { registerDashboardsGraphql } from './dashboards.schema.js';
 import { registerReportsGraphql } from './reports.schema.js';
 import { registerScheduledReportGraphql } from './scheduled-report.schema.js';
 import { registerActivityGraphql } from './activity.schema.js';
+import { registerChatGraphql } from './chat.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -922,6 +923,14 @@ registerScheduledReportGraphql();
 // activityService.getActivity → usp_AuditLog_List + object-level post-filter.
 // ─────────────────────────────────────────
 registerActivityGraphql();
+
+// ─────────────────────────────────────────
+// Chat (Phase 9f) — ChatMessage type + chatChannel query + postChatMessage
+// mutation, a thin authz-gated mirror over commentService (mentions/watchers/
+// fan-out/realtime all run inside commentService.create). Read gated on LIST
+// VIEW ACL; write gated on comment.create in the task's workspace.
+// ─────────────────────────────────────────
+registerChatGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

@@ -235,6 +235,34 @@ export function registerViewsGraphql(): void {
     baselines:       t.field({ type: [GanttBaselineType], resolve: (d) => d.baselines }),
   }) });
 
+  // ── Map + Mind Map (Phase 9f) ────────────────────────────────────────────────
+  const MapTaskType = builder.objectRef<{ taskId: string; title: string; status: string; location: { lat: number; lng: number; label: string } }>('MapTask');
+  MapTaskType.implement({ fields: (t) => ({
+    taskId: t.exposeString('taskId'),
+    title:  t.exposeString('title'),
+    status: t.exposeString('status'),
+    lat:    t.float({ resolve: (m) => m.location.lat }),
+    lng:    t.float({ resolve: (m) => m.location.lng }),
+    label:  t.string({ resolve: (m) => m.location.label }),
+  }) });
+
+  const MindMapNodeType = builder.objectRef<import('@projectflow/types').MindMapNode>('MindMapNode');
+  MindMapNodeType.implement({ fields: (t) => ({
+    id:       t.exposeString('id'),
+    title:    t.exposeString('title'),
+    status:   t.exposeString('status'),
+    parentId: t.string({ nullable: true, resolve: (n) => n.parentId }),
+    depth:    t.exposeInt('depth'),
+  }) });
+  const MindMapEdgeType = builder.objectRef<import('@projectflow/types').MindMapEdge>('MindMapEdge');
+  MindMapEdgeType.implement({ fields: (t) => ({ from: t.exposeString('from'), to: t.exposeString('to') }) });
+  const MindMapGraphType = builder.objectRef<import('@projectflow/types').MindMapGraph>('MindMapGraph');
+  MindMapGraphType.implement({ fields: (t) => ({
+    nodes:   t.field({ type: [MindMapNodeType], resolve: (g) => g.nodes }),
+    edges:   t.field({ type: [MindMapEdgeType], resolve: (g) => g.edges }),
+    rootIds: t.stringList({ resolve: (g) => g.rootIds }),
+  }) });
+
   builder.queryFields((t) => ({
     savedViews: t.field({
       type: [SavedViewType],
@@ -332,6 +360,33 @@ export function registerViewsGraphql(): void {
         if (node) await requireObjectLevel(ctx, node, view.scopeId, 'VIEW');
         else await requireEverythingWorkspace(ctx, view.workspaceId);
         return ganttService.resolve(userId, view.scopeType, view.scopeId, view.config, view.workspaceId, view.id);
+      },
+    }),
+    mapTasks: t.field({
+      type: [MapTaskType],
+      args: { viewId: t.arg.string({ required: true }), page: t.arg.int({ required: false }), meMode: t.arg.boolean({ required: false }) },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        const view = await viewService.getOrThrow(a.viewId);
+        // Replicates the viewTasks authz branch: node-scoped views check the
+        // hierarchy ACL (VIEW), EVERYTHING checks workspace membership.
+        const node = authzNode(view.scopeType);
+        if (node) await requireObjectLevel(ctx, node, view.scopeId, 'VIEW');
+        else await requireEverythingWorkspace(ctx, view.workspaceId);
+        return viewService.mapTasks(userId, a.viewId, { page: a.page ?? 1, meMode: a.meMode ?? undefined });
+      },
+    }),
+    mindMapGraph: t.field({
+      type: MindMapGraphType,
+      args: { viewId: t.arg.string({ required: true }) },
+      resolve: async (_, a, ctx) => {
+        const userId = requireUser(ctx);
+        const view = await viewService.getOrThrow(a.viewId);
+        // Same authz branch as viewTasks (node-scoped ACL vs EVERYTHING workspace).
+        const node = authzNode(view.scopeType);
+        if (node) await requireObjectLevel(ctx, node, view.scopeId, 'VIEW');
+        else await requireEverythingWorkspace(ctx, view.workspaceId);
+        return viewService.mindMapGraph(userId, a.viewId);
       },
     }),
   }));

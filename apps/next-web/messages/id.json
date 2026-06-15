@@ -1629,6 +1629,28 @@
     "emptyProjectTitle": "Tidak ada proyek untuk dilaporkan",
     "emptyProjectBody": "Buat proyek di ruang kerja ini, lalu kembali untuk melihat wawasan kecepatan, burndown, dan beban kerja."
   },
+  "Share": {
+    "title": "Bagikan",
+    "close": "Tutup",
+    "readOnlyHint": "Siapa saja dengan tautan dapat melihat ini — hanya-baca, tanpa perlu masuk.",
+    "expiry": "Kedaluwarsa (opsional)",
+    "createLink": "Buat tautan publik",
+    "copy": "Salin",
+    "revoke": "Cabut",
+    "noLinks": "Belum ada tautan publik.",
+    "expiresAt": "Kedaluwarsa {date}",
+    "publicBadge": "Tautan dibagikan",
+    "readOnlyBadge": "Hanya-baca",
+    "typeUnavailable": "Jenis item ini belum dapat ditampilkan."
+  },
+  "AccessRequest": {
+    "title": "Minta akses",
+    "description": "Anda tidak memiliki akses ke item ini. Kirim permintaan ke pemiliknya.",
+    "notePlaceholder": "Tambahkan catatan (opsional)",
+    "requestAccess": "Minta akses",
+    "sending": "Mengirim…",
+    "sent": "Permintaan terkirim. Anda akan diberi tahu saat disetujui."
+  },
   "Inbox": {
     "title": "Kotak Masuk",
     "heading": "Notifikasi",
@@ -1660,6 +1682,8 @@
     "labelTaskUpdated": "Tugas diperbarui",
     "labelTaskDueSoon": "Tugas segera jatuh tempo",
     "labelScheduledReport": "Laporan siap",
+    "labelAccessRequested": "Akses diminta",
+    "labelAccessGranted": "Akses diberikan",
     "summaryTaskAssigned": "Anda ditugaskan pada <b>{title}</b>.",
     "summaryCommentAssigned": "Sebuah komentar ditugaskan kepada Anda pada <b>{title}</b>.",
     "summaryCommentAdded": "Komentar baru ditambahkan pada <b>{title}</b>.",
@@ -1667,6 +1691,8 @@
     "summaryTaskUpdated": "Pembaruan dilakukan pada <b>{title}</b>.",
     "summaryTaskDueSoon": "<b>{title}</b> akan segera jatuh tempo.",
     "summaryScheduledReport": "Laporan terjadwal telah dikirim",
+    "summaryAccessRequested": "Seseorang meminta akses ke item yang dibagikan.",
+    "summaryAccessGranted": "Permintaan akses Anda disetujui.",
     "fallbackTask": "sebuah tugas",
     "fallbackFollowedTask": "tugas yang Anda ikuti",
     "fallbackDiscussion": "sebuah diskusi",

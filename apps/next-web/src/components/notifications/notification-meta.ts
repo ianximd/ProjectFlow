@@ -8,6 +8,7 @@
 
 import {
   Bell, MessageSquare, UserPlus, AtSign, FileText, AlertCircle, CalendarClock,
+  KeyRound, ShieldCheck,
 } from 'lucide-react';
 import type { useTranslations } from 'next-intl';
 import { formatShortDate } from '@/lib/date';
@@ -31,6 +32,8 @@ export const TYPE_META: Record<string, {
   TASK_UPDATED:     { icon: FileText,      labelKey: 'labelTaskUpdated',     summaryKey: 'summaryTaskUpdated',     tone: 'violet'  },
   TASK_DUE_SOON:    { icon: AlertCircle,   labelKey: 'labelTaskDueSoon',     summaryKey: 'summaryTaskDueSoon',     tone: 'amber'   },
   SCHEDULED_REPORT_READY: { icon: CalendarClock, labelKey: 'labelScheduledReport', summaryKey: 'summaryScheduledReport', tone: 'violet' },
+  ACCESS_REQUESTED: { icon: KeyRound,    labelKey: 'labelAccessRequested', summaryKey: 'summaryAccessRequested', tone: 'amber'   },
+  ACCESS_GRANTED:   { icon: ShieldCheck, labelKey: 'labelAccessGranted',   summaryKey: 'summaryAccessGranted',   tone: 'emerald' },
 };
 
 export const TONE_BG: Record<NotificationTone, string> = {

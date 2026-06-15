@@ -1,0 +1,40 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  min-width: 440px;
+  max-width: min(560px, 92vw);
+  background: #1a202c;
+  border: 1px solid #4a5568;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  color: #e2e8f0;
+}
+.header { display: flex; align-items: center; justify-content: space-between; }
+.heading { margin: 0; font-size: 16px; font-weight: 700; }
+.close { border: none; background: none; color: #a0aec0; font-size: 22px; cursor: pointer; line-height: 1; }
+.hint { font-size: 13px; color: #a0aec0; margin: 0; }
+.createRow { display: flex; align-items: flex-end; gap: 10px; }
+.expiryLabel { display: flex; flex-direction: column; font-size: 12px; gap: 4px; color: #a0aec0; }
+.expiryLabel input { background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; color: #e2e8f0; padding: 6px 8px; color-scheme: dark; }
+.createBtn { border: none; border-radius: 6px; padding: 6px 14px; background: #3182ce; color: #fff; cursor: pointer; font-size: 13px; }
+.createBtn:disabled { opacity: 0.6; cursor: default; }
+.list { display: flex; flex-direction: column; gap: 8px; list-style: none; padding: 0; margin: 0; }
+.empty { font-size: 13px; color: #718096; }
+.item { display: flex; align-items: center; gap: 8px; }
+.url { flex: 1; font-size: 12px; padding: 5px 6px; background: #2d3748; border: 1px solid #4a5568; border-radius: 6px; color: #e2e8f0; }
+.copyBtn, .revokeBtn { border: none; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 12px; }
+.copyBtn { background: #4a5568; color: #e2e8f0; }
+.revokeBtn { background: #e53e3e; color: #fff; }
+.revokeBtn:disabled { opacity: 0.6; cursor: default; }
+.expires { font-size: 11px; color: #a0aec0; }

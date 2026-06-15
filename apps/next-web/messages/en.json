@@ -1629,6 +1629,28 @@
     "emptyProjectTitle": "No project to report on",
     "emptyProjectBody": "Create a project in this workspace, then come back to see velocity, burndown, and workload insights."
   },
+  "Share": {
+    "title": "Share",
+    "close": "Close",
+    "readOnlyHint": "Anyone with the link can view this — read-only, no sign-in required.",
+    "expiry": "Expiry (optional)",
+    "createLink": "Create public link",
+    "copy": "Copy",
+    "revoke": "Revoke",
+    "noLinks": "No public links yet.",
+    "expiresAt": "Expires {date}",
+    "publicBadge": "Shared link",
+    "readOnlyBadge": "Read-only",
+    "typeUnavailable": "This item type can't be displayed yet."
+  },
+  "AccessRequest": {
+    "title": "Request access",
+    "description": "You don't have access to this item. Send a request to its owners.",
+    "notePlaceholder": "Add a note (optional)",
+    "requestAccess": "Request access",
+    "sending": "Sending…",
+    "sent": "Request sent. You'll be notified when it's granted."
+  },
   "Inbox": {
     "title": "Inbox",
     "heading": "Notifications",
@@ -1660,6 +1682,8 @@
     "labelTaskUpdated": "Task updated",
     "labelTaskDueSoon": "Task due soon",
     "labelScheduledReport": "Report ready",
+    "labelAccessRequested": "Access requested",
+    "labelAccessGranted": "Access granted",
     "summaryTaskAssigned": "You were assigned to <b>{title}</b>.",
     "summaryCommentAssigned": "A comment was assigned to you on <b>{title}</b>.",
     "summaryCommentAdded": "A new comment was added on <b>{title}</b>.",
@@ -1667,6 +1691,8 @@
     "summaryTaskUpdated": "An update was made to <b>{title}</b>.",
     "summaryTaskDueSoon": "<b>{title}</b> is due soon.",
     "summaryScheduledReport": "A scheduled report has been delivered",
+    "summaryAccessRequested": "Someone requested access to a shared item.",
+    "summaryAccessGranted": "Your access request was approved.",
     "fallbackTask": "a task",
     "fallbackFollowedTask": "a task you follow",
     "fallbackDiscussion": "a discussion",

@@ -32,6 +32,7 @@ import { WatcherControl } from './WatcherControl';
 import { DependenciesSection } from './tasks/dependencies-section';
 import { RecurrenceEditor } from './tasks/recurrence-editor';
 import { SaveAsTemplateModal } from './templates/SaveAsTemplateModal';
+import { ShareModal } from './sharing/ShareModal';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import type { MemberRow } from '@/server/queries/workspace';
 import type { EffectiveField, TaskType } from '@projectflow/types';
@@ -187,7 +188,10 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const [blockers, setBlockers] = useState<Blocker[] | null>(null);
   // "Save as template" dialog (captures this task as a TASK-scoped template).
   const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  // Phase 10c: per-task sharing modal (public read-only link + revoke).
+  const [shareOpen, setShareOpen] = useState(false);
   const tTpl = useTranslations('Templates');
+  const tShare = useTranslations('Share');
   // The task's effective workflow statuses, fetched on open (empty until loaded
   // or when the task has no workflow — the select then uses DEFAULT_STATUS_OPTIONS).
   const [statusOptions, setStatusOptions] = useState<string[]>([]);
@@ -456,6 +460,21 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
             </span>
           )}
           <PresenceBar viewers={viewers} currentUserId={currentUserId} />
+          <button
+            type="button"
+            className={styles.closeBtn}
+            onClick={() => setShareOpen(true)}
+            aria-label={tShare('title')}
+            title={tShare('title')}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+            </svg>
+          </button>
           <button
             type="button"
             className={styles.closeBtn}
@@ -1161,6 +1180,9 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
           sourceId={taskId}
           defaultName={title === '(untitled)' ? '' : title}
         />
+      )}
+      {shareOpen && (
+        <ShareModal objectType="task" objectId={taskId} onClose={() => setShareOpen(false)} />
       )}
     </>
   );

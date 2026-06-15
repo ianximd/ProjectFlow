@@ -1263,7 +1263,11 @@ export interface TaskWatcher {
 
 // ───────────────────────── Views Engine (Phase 3) ─────────────────────────
 export type ViewScopeType = 'LIST' | 'FOLDER' | 'SPACE' | 'EVERYTHING';
-export type ViewType = 'list' | 'board' | 'table' | 'calendar' | 'workload' | 'box';
+export type ViewType =
+  | 'list' | 'board' | 'table' | 'calendar'
+  | 'workload' | 'box'                          // Phase 8d
+  | 'gantt' | 'timeline'                        // Phase 9d
+  | 'activity' | 'map' | 'mindmap' | 'embed' | 'chat' | 'doc';  // Phase 9e/9f
 export type CapacityStatus = 'over' | 'at' | 'under';
 
 export type FieldRefKind = 'builtin' | 'custom';
@@ -1307,6 +1311,49 @@ export interface SavedView {
 
 export interface ViewGroup { key: string; label: string; count: number }
 export interface ViewTaskPage { tasks: Task[]; total: number; groups?: ViewGroup[] }
+
+// ───────────────────────── Gantt + Timeline (Phase 9d) ─────────────────────────
+
+/** A task projected for the Gantt/Timeline lane: its scheduling window + grouping
+ *  facets. Dates are ISO strings (or null for an unscheduled task). */
+export interface GanttTask {
+  id:          string;
+  title:       string;
+  status:      string;
+  startDate:   string | null;   // ISO; null = unscheduled
+  dueDate:     string | null;   // ISO
+  assigneeIds: string[];
+}
+
+/** A dependency edge: `dependsOn` must finish before `taskId` can start
+ *  (the canonical Phase 5 `waiting_on` direction). */
+export interface GanttEdge {
+  taskId:    string;
+  dependsOn: string;
+}
+
+export interface BaselineTask {
+  taskId:    string;
+  startDate: string | null;
+  dueDate:   string | null;
+}
+
+export interface GanttBaseline {
+  id:         string;
+  viewId:     string;
+  name:       string;
+  capturedAt: string;
+  createdBy:  string;
+  tasks:      BaselineTask[];
+}
+
+export interface ViewGanttData {
+  tasks:           GanttTask[];
+  edges:           GanttEdge[];
+  /** Task ids on the longest dependency chain by duration (the critical path). */
+  criticalPathIds: string[];
+  baselines:       GanttBaseline[];
+}
 
 // ─── Workload / Box capacity (Phase 8d) ────────────────────────────────────
 /** Which unit a Workload view measures capacity in. 'time' sums assigned

@@ -41,6 +41,7 @@ export const TASK_EVENTS = gql`
         priority
         type
         storyPoints
+        startDate
         dueDate
         sprintId
         updatedAt

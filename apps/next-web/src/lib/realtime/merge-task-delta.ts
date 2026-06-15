@@ -17,6 +17,7 @@ export interface TaskDelta {
   priority?: string | null;
   type?: string | null;
   storyPoints?: number | null;
+  startDate?: string | null;
   dueDate?: string | null;
   sprintId?: string | null;
   updatedAt?: string | null;
@@ -58,6 +59,7 @@ export function mergeTaskDelta(tasks: Task[], delta: TaskDelta): Task[] {
       ...(delta.priority    != null ? { priority:    delta.priority }    : {}),
       ...(delta.type        != null ? { type:        delta.type }        : {}),
       ...(delta.storyPoints != null ? { storyPoints: delta.storyPoints } : {}),
+      ...(delta.startDate   != null ? { startDate:   delta.startDate }   : {}),
       ...(delta.dueDate     != null ? { dueDate:     delta.dueDate }     : {}),
       ...(delta.sprintId    != null ? { sprintId:    delta.sprintId }    : {}),
     };

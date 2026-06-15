@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { requireSession } from '@/server/session';
 import { getSavedViews, getViewTasks, getViewWorkflowStatuses, getViewCapacity, loadGanttData, type ViewTaskPageResult } from '@/server/queries/views';
+import { getActivityFeed } from '@/server/queries/activity';
 import { getCustomFields } from '@/server/queries/custom-fields';
 import type { CustomField, ViewScopeType } from '@projectflow/types';
 import { ViewSurface, type LiveScopeProp } from '@/components/views/view-surface';
@@ -109,6 +110,13 @@ export default async function ViewsPage({
   const gantt =
     activeView?.type === 'gantt' ? await loadGanttData(activeView.id) : null;
 
+  // Activity view: SSR-seed the first page of the activity feed. Live events are
+  // prepended client-side via the TASK_EVENTS subscription (see ActivityView).
+  const activityPage =
+    activeView?.type === 'activity'
+      ? await getActivityFeed(scopeType, nodeScopeId, workspaceId)
+      : null;
+
   return (
     <ViewSurface
       views={views}
@@ -123,6 +131,7 @@ export default async function ViewsPage({
       live={live}
       capacity={capacity}
       gantt={gantt}
+      activityPage={activityPage}
     />
   );
 }

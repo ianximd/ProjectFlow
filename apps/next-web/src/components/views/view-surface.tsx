@@ -14,12 +14,15 @@ import { WorkloadView } from '@/components/views/workload-view';
 import { BoxView } from '@/components/views/box-view';
 import { GanttView } from '@/components/views/gantt-view';
 import { TimelineView } from '@/components/views/timeline-view';
+import { ActivityView } from '@/components/views/activity-view';
+import { EmbedView } from '@/components/views/embed-view';
+import { DocView } from '@/components/views/doc-view';
 import { FilterBuilder } from '@/components/views/filter-builder';
 import { BulkBar } from '@/components/views/bulk-bar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { ViewTaskPageResult } from '@/server/queries/views';
-import type { CapacityResult, CustomField, SavedView, ViewScopeType, ViewType, ViewGanttData } from '@projectflow/types';
+import type { AuditLogPage, CapacityResult, CustomField, SavedView, ViewScopeType, ViewType, ViewGanttData } from '@projectflow/types';
 
 /**
  * Live-subscription scope for the view surfaces, resolved SSR in the views page
@@ -71,6 +74,8 @@ interface Props {
   /** Gantt payload (edges + critical path + baselines), resolved SSR for a Gantt
    *  active view. Null otherwise. */
   gantt?: ViewGanttData | null;
+  /** Activity feed page, resolved SSR for an Activity active view. Null otherwise. */
+  activityPage?: AuditLogPage | null;
 }
 
 export function ViewSurface({
@@ -86,6 +91,7 @@ export function ViewSurface({
   live,
   capacity,
   gantt,
+  activityPage,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -203,6 +209,7 @@ export function ViewSurface({
             live={live}
             capacity={capacity}
             gantt={gantt}
+            activityPage={activityPage}
           />
         ) : (
           <EmptyViewsState />
@@ -236,6 +243,7 @@ function ViewBody({
   live,
   capacity,
   gantt,
+  activityPage,
 }: {
   type: ViewType;
   taskPage: ViewTaskPageResult | null;
@@ -248,6 +256,7 @@ function ViewBody({
   live: LiveScopeProp;
   capacity?: CapacityResult | null;
   gantt?: ViewGanttData | null;
+  activityPage?: AuditLogPage | null;
 }) {
   switch (type) {
     case 'table':
@@ -293,6 +302,12 @@ function ViewBody({
       return <GanttView taskPage={taskPage} activeView={activeView} gantt={gantt ?? null} live={live} />;
     case 'timeline':
       return <TimelineView taskPage={taskPage} activeView={activeView} customFields={customFields} live={live} />;
+    case 'activity':
+      return <ActivityView activityPage={activityPage ?? null} live={live} />;
+    case 'embed':
+      return <EmbedView activeView={activeView} />;
+    case 'doc':
+      return <DocView activeView={activeView} />;
     default:
       return (
         <ListView

@@ -1513,6 +1513,8 @@ API **588 unit** (+10 = location validator cases + 4 mindmap builder) / **283 in
 2. **ChatView `currentUserId={null}`** — the views page doesn't thread a session user id; CommentSection tolerates null (posting works via the session cookie; edit/delete affordances are hidden). Follow-up: capture `requireSession()`'s user id and thread it through `ViewSurface`→`ViewBody`→`ChatView`.
 3. Map doesn't re-center on live pins (react-leaflet first-mount center/zoom) — follow-up via a `useMap()` child.
 4. Mind Map node-scope feed depends on `usp_Hierarchy_DescendantTasks` ListPath prefixing (same scoping the compiler uses); EVERYTHING scope → empty (no single node). `renderNode` is recreated per render (fine at task-hierarchy scale).
+5. **Node-scoped Chat passes `workspaceId=null` to `CommentSection`** — the views page only sets `workspaceId` for EVERYTHING scope (SPACE/FOLDER/LIST pass `undefined`), so on a node-scoped chat view @-mention/assignment member autocomplete degrades (posting still works via the cookie; proven by integration + e2e). Same gap the Board surface already has ("workspaceId the surface doesn't thread yet"). Follow-up: thread the scope's workspaceId for node scopes.
+6. Map/`mapTasks` fetch only page 1 (pageSize 25) — a view with >25 located tasks plots the first page only (the same pagination characteristic as every Views-Engine surface, not 9f-specific).
 
 ### DB-execution policy
 ONE migration (`0057`, CHECK-widen) + SP deploy via globalSetup; all DB work (migration apply/rollback, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. **Stop for review/merge before Phase 10.**

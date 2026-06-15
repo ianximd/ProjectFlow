@@ -69,6 +69,33 @@ describe('validateFieldValue', () => {
     expect(ok('rollup', 42).valid).toBe(false);
     expect(ok('rollup', 42).code).toBe('ROLLUP_READONLY');
   });
+  it('location accepts a valid lat/lng with an optional label', () => {
+    expect(ok('location', { lat: 0, lng: 0, label: 'Null Island' }).valid).toBe(true);
+    expect(ok('location', { lat: -89.9, lng: 179.9, label: '' }).valid).toBe(true);
+    expect(ok('location', { lat: 90, lng: -180, label: 'edge' }).valid).toBe(true);
+  });
+  it('location rejects a non-object value', () => {
+    expect(ok('location', 'here').valid).toBe(false);
+    expect(ok('location', null).code).toBe('NOT_LOCATION');
+  });
+  it('location rejects a latitude outside [-90, 90]', () => {
+    expect(ok('location', { lat: 91, lng: 0, label: '' }).valid).toBe(false);
+    expect(ok('location', { lat: 91, lng: 0, label: '' }).code).toBe('BAD_LATITUDE');
+    expect(ok('location', { lat: -90.1, lng: 0, label: '' }).valid).toBe(false);
+  });
+  it('location rejects a longitude outside [-180, 180]', () => {
+    expect(ok('location', { lat: 0, lng: 181, label: '' }).valid).toBe(false);
+    expect(ok('location', { lat: 0, lng: 181, label: '' }).code).toBe('BAD_LONGITUDE');
+    expect(ok('location', { lat: 0, lng: -180.5, label: '' }).valid).toBe(false);
+  });
+  it('location rejects a non-finite lat/lng (NaN/Infinity)', () => {
+    expect(ok('location', { lat: Number.NaN, lng: 0, label: '' }).valid).toBe(false);
+    expect(ok('location', { lat: 0, lng: Number.POSITIVE_INFINITY, label: '' }).valid).toBe(false);
+  });
+  it('location rejects a non-string label', () => {
+    expect(ok('location', { lat: 0, lng: 0, label: 42 }).valid).toBe(false);
+    expect(ok('location', { lat: 0, lng: 0, label: 42 }).code).toBe('BAD_LABEL');
+  });
 });
 
 describe('validateFieldConfig', () => {

@@ -82,6 +82,18 @@ export function validateFieldValue(
     case 'rollup':
       // Rollup is computed (read-only) from related tasks, like progress_auto.
       return fail('ROLLUP_READONLY', 'rollup is computed and cannot be set directly');
+    case 'location': {
+      if (typeof value !== 'object' || value === null || Array.isArray(value))
+        return fail('NOT_LOCATION', 'Value must be a { lat, lng, label } object');
+      const v = value as Record<string, unknown>;
+      if (!isFiniteNumber(v.lat) || v.lat < -90 || v.lat > 90)
+        return fail('BAD_LATITUDE', 'lat must be a finite number between -90 and 90');
+      if (!isFiniteNumber(v.lng) || v.lng < -180 || v.lng > 180)
+        return fail('BAD_LONGITUDE', 'lng must be a finite number between -180 and 180');
+      if (!isString(v.label))
+        return fail('BAD_LABEL', 'label must be a string');
+      return okResult;
+    }
     default:
       return fail('UNKNOWN_TYPE', `Unknown field type: ${type}`);
   }

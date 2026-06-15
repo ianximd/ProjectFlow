@@ -79,6 +79,51 @@ export type Visibility = 'PUBLIC' | 'PRIVATE';
 export type ObjectPermissionLevel = 'VIEW' | 'COMMENT' | 'EDIT' | 'FULL';
 export type HierarchyNodeType = 'SPACE' | 'FOLDER' | 'LIST';
 
+// ── Apps / feature toggles (Phase 10a) ────────────────────────────────────────
+
+/** Scope at which a feature app may be toggled. 'workspace' is the root
+ *  (ScopeId is null); the others reuse the hierarchy node identity. */
+export type AppScopeType = 'workspace' | 'space' | 'folder' | 'list';
+
+/** The full set of toggleable feature keys (the registry is the source of truth
+ *  for defaults; this union is its key space). */
+export type AppKey =
+  | 'time_tracking'
+  | 'multiple_assignees'
+  | 'sprint_points'
+  | 'nested_subtasks'
+  | 'dependency_warning'
+  | 'reschedule_dependencies'
+  | 'custom_task_ids'
+  | 'email';
+
+/** One declared app in the default-on registry. */
+export interface AppRegistryEntry {
+  key:                AppKey;
+  label:              string;          // i18n key suffix under AppCenter.apps
+  defaultEnabled:     boolean;
+  /** Which scope types may override this app (App Center renders only these). */
+  overridableScopes:  AppScopeType[];
+}
+
+/** A stored override row (only overrides are persisted; defaults live in code). */
+export interface AppToggle {
+  appKey:    AppKey;
+  scopeType: AppScopeType;
+  scopeId:   string | null;            // null at workspace scope
+  enabled:   boolean;
+}
+
+/** The resolved effective state of one app for a scope (default or override). */
+export interface ResolvedApp {
+  key:      AppKey;
+  enabled:  boolean;
+  /** True when the value came from an explicit override (vs. the registry default). */
+  overridden: boolean;
+  /** The scope the winning override lives at (null = inherited default). */
+  source:   AppScopeType | null;
+}
+
 export interface Folder {
   id: string;
   workspaceId: string;

@@ -2,6 +2,12 @@ import { RoadmapRepository } from './roadmap.repository.js';
 import type { RoadmapItemRow } from './roadmap.repository.js';
 import { dependencyService } from '../dependencies/dependency.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
+import { publishTaskEvent } from '../../graphql/task-events.js';
+
+// projectId lives on the SELECT * row returned by usp_Task_UpdateDates (Tasks.ProjectId).
+function projectIdOf(row: any): string | null {
+  return row?.ProjectId ?? row?.projectId ?? null;
+}
 
 const repo = new RoadmapRepository();
 const taskRepo = new TaskRepository();
@@ -61,6 +67,12 @@ export class RoadmapService {
     clearDueDate?: boolean,
   ) {
     const row = await repo.updateDates(taskId, requesterId, startDate, dueDate, clearStartDate, clearDueDate);
+    // A Gantt/Timeline drag moves dates via this path; publish the full updated row
+    // so List/Board/Calendar surfaces re-merge the task live (best-effort; the helper
+    // never throws into the write). The shared GraphQL Task type reads the row
+    // casing-tolerantly, so the PascalCase usp_Task_UpdateDates row resolves fine.
+    const projectId = projectIdOf(row);
+    if (projectId) await publishTaskEvent('updated', { projectId, taskId, task: row });
     return row;
   }
 

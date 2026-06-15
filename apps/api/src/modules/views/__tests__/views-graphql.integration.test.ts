@@ -110,7 +110,7 @@ describe('Views GraphQL', () => {
 
     const create = await gql(u.accessToken,
       `mutation($input: CreateSavedViewInput!){ createSavedView(input: $input){ id } }`,
-      { input: { scopeType: 'SPACE', scopeId: p.Id, type: 'gantt', name: 'Bad', isShared: false, isDefault: false, config: emptyConfig } });
+      { input: { scopeType: 'SPACE', scopeId: p.Id, type: 'nonsense', name: 'Bad', isShared: false, isDefault: false, config: emptyConfig } });
     expect(create.errors, JSON.stringify(create)).toBeDefined();
     expect(create.errors![0]?.extensions?.code).not.toBe('INTERNAL_SERVER_ERROR');
     expect(create.data?.createSavedView ?? null).toBeNull();

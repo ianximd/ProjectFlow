@@ -695,6 +695,11 @@
     "addTaskPlaceholder": "Add a task and press Enter…",
     "noTasks": "No tasks yet."
   },
+  "Map": {
+    "noLocatedTasks": "No tasks have a location yet",
+    "untitled": "Untitled task",
+    "close": "Close"
+  },
   "Task": {
     "close": "Close",
     "issueTitle": "Issue title",
@@ -1033,6 +1038,7 @@
     "typeProgressAuto": "Progress (auto)",
     "typeRelationship": "Relationship",
     "typeRollup": "Rollup",
+    "typeLocation": "Location",
     "noOptions": "No options",
     "loadingMembers": "Loading members…",
     "noMembers": "No members",

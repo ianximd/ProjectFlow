@@ -87,6 +87,7 @@ export function FieldManager({
     progress_auto: t('typeProgressAuto'),
     relationship: t('typeRelationship'),
     rollup: t('typeRollup'),
+    location: t('typeLocation'),
   };
 
   const [open, setOpen] = useState(false);

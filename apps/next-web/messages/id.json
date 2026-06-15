@@ -695,6 +695,11 @@
     "addTaskPlaceholder": "Tambah tugas dan tekan Enter…",
     "noTasks": "Belum ada tugas."
   },
+  "Map": {
+    "noLocatedTasks": "Belum ada tugas yang memiliki lokasi",
+    "untitled": "Tugas tanpa judul",
+    "close": "Tutup"
+  },
   "Task": {
     "close": "Tutup",
     "issueTitle": "Judul isu",
@@ -1033,6 +1038,7 @@
     "typeProgressAuto": "Kemajuan (otomatis)",
     "typeRelationship": "Relasi",
     "typeRollup": "Rollup",
+    "typeLocation": "Lokasi",
     "noOptions": "Tidak ada opsi",
     "loadingMembers": "Memuat anggota…",
     "noMembers": "Tidak ada anggota",

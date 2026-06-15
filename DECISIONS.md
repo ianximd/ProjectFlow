@@ -1408,3 +1408,44 @@ API **535 unit / 271 integration** (incl. idempotency worker-restart + C1 403 + 
 
 ### DB-execution policy
 All DB work (0054/0055 apply+rollback+re-apply, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Prod cutover of 0054/0055 deferred to ops. **Stop for review/merge before Slice 9d.**
+
+## 2026-06-15 — Phase 9d (Gantt + Timeline Views)
+
+Adds the **Gantt** and **Timeline** view types end-to-end, plus the cross-cutting **view-type union expansion** that 9e/9f depend on. A Gantt view shows dependency lines (Phase-5 `TaskDependencies`), a highlighted critical path (longest dependency chain by duration), and a captured baseline overlay; a drag (v1 double-click "+1 day") updates dates and reflects live in List/Board. Timeline is a lighter facet-grouped date-lane view over the same task page.
+
+### Migration renumber (plan 0049 → **0056**)
+The plan assumed an on-disk tip of `0048`; the actual tip was `0055` (9c added 0054/0055), so the migration was renumbered to **`0056_view_types_and_baselines.sql`** (+ embedded comment kept in sync). Local Docker `ProjectFlow_Test` now at **0056**; SP count **370** (+3: `usp_Baseline_Capture`, `usp_Baseline_List`, `usp_View_GanttDeps`).
+
+### CK_SavedViews_Type → full 14-type union (and the rollback correction)
+`0056` drops + recreates `CK_SavedViews_Type` from the **six-type** state (Phase 8d's `0048` had already extended it to include `workload`/`box`) to the full union `list, board, table, calendar, workload, box, gantt, timeline, activity, map, mindmap, embed, chat, doc`. The same union is kept **byte-identical** in three places: the DB CHECK, the `ViewType` union (`packages/types`), and the GraphQL `VIEW_TYPES`/`assertViewType` allow-list (`views.schema.ts`). **The plan's rollback was wrong** — it restored the *four-type* CHECK, which would orphan any existing `workload`/`box` rows; the actual `rollback/0056` restores the **six-type** pre-0056 state. Migration verified idempotent + reversible (apply → down → re-apply, all clean). Side effect: the pre-existing `views-graphql` integration test that used `type:'gantt'` as its "invalid type" probe was updated to `'nonsense'` (gantt is now valid).
+
+### Baselines (frozen date snapshots)
+`Baselines(Id, ViewId→SavedViews ON DELETE CASCADE, Name, CapturedAt, CreatedBy)` + `BaselineTasks(BaselineId, TaskId, StartDate DATE, DueDate DATETIME2)` (dates mirror `Tasks.StartDate`/`DueDate` from 0024). `usp_Baseline_Capture` freezes the in-scope tasks' current dates inside one txn (comma-delimited `@TaskIds` GUID transport + `STRING_SPLIT`/`TRY_CONVERT`, mirroring `usp_WorkLogTag_Set`); `usp_Baseline_List` returns two recordsets (headers newest-first + frozen rows) which the repo zips by `BaselineId` (keys lowercased to future-proof the join against GUID casing skew). `usp_View_GanttDeps` returns `TaskDependencies` edges where BOTH endpoints are in the supplied id set.
+
+### Single Gantt task source = the Phase-3 compiler
+`GanttService.resolve` reuses `ViewService.runConfig` (the same compiled task query the other views use → inherits tenant/scope/filter isolation) at `pageSize: 200`, joins the scope's dependency edges, computes the critical path (pure, memoized longest-path DFS over the acyclic DAG; on a duration tie it prefers the chain with more nodes so a zero-duration successor still extends the path — a unit test caught the original strict-`>` tie-break dropping `['A','B']` to `['A']`), and reads the view's baselines. **Casing reaffirmed:** `runConfig` returns RAW PascalCase `SELECT t.*` rows (the camelCase `mapTaskRow` normalization lives only in the GraphQL layer), so `resolve` reads `r.Id`/`r.StartDate`/`r.Assignees[].UserId` (PascalCase) by design. GraphQL `viewGanttData(viewId)` query + `captureBaseline(viewId,name)` mutation, both fail-closed via the same `requireObjectLevel(VIEW)` / `requireEverythingWorkspace` gates as the sibling view resolvers. `captureBaseline` is gated at VIEW (read) level deliberately — a baseline is a read-derived snapshot of dates the caller can already see; no task data is mutated.
+
+### startDate threaded through the shared Task type (plan omitted)
+The shared GraphQL `Task` (`TaskShape`/`TaskType`) + `mapTaskRow` + the SSR `VIEW_TASKS_QUERY`/`PREVIEW_VIEW_TASKS_QUERY` previously carried `dueDate` but **not `startDate`** — yet the Gantt/Timeline bars read `tk.startDate` from the SSR `taskPage`. Added `startDate` (casing-tolerant `x.startDate ?? x.StartDate`, Date scalar) across all of them (`normalize-task` already read it). Also threaded `startDate` into the **live** delta path (`TASK_EVENTS` subscription + `TaskDelta` + `mergeTaskDelta`) so a cross-tab drag's start-date change merges live too.
+
+### Reschedule realtime publish (the date PATCH path now emits)
+`roadmap.service.updateDates` previously returned the updated row but published nothing, so a Gantt/Timeline drag would not reflect live. It now `void publishTaskEvent('updated', { projectId, taskId, task: row })` (fire-and-forget — doesn't block the drag's HTTP response; the helper guards its own errors). The **full PascalCase `usp_Task_UpdateDates` row** is published as `task` (not just `taskId`) so List/Board/Calendar re-merge the new dates live; the shared `TaskType` resolves both casings, so the PascalCase row serializes fine. Reuses the existing `updateTaskDates` roadmap server action for the drag; only `captureBaseline` is a new action.
+
+### Renderers + v1 move affordance
+`gantt-view.tsx` (bars, SVG dependency elbows via pure `gantt-geom.lanePath`, critical-path highlight, baseline overlay + capture button) and `timeline-view.tsx` (facet-grouped date lanes) both consume the SSR task page through `useLiveTasks` exactly like `calendar-view.tsx`; registered in `view-surface.tsx`'s `ViewBody` switch; SSR-loaded in the views page (`loadGanttData`, mirroring the board/workload conditional fetches). The move affordance is a v1 **double-click "+1 day"** (a pointer-drag handler can refine the UX later without changing the data contract). i18n `Gantt`/`Timeline` namespaces (en + real-Indonesian id), parity green.
+
+### e2e lessons (reusable)
+- A dependency line between **adjacent** tasks (A.due == B.start) renders a degenerate **zero-width vertical** SVG path → Playwright reports it `hidden`. Seed non-adjacent dates (A 06-01→06-03, B 06-05→06-10) so the elbow has horizontal extent.
+- The absolutely-positioned bars sit under their row wrapper in Playwright's hit-test (`<div data-testid="…-row"> intercepts pointer events`) → drive the drag via `locator.dispatchEvent('dblclick')` (bypasses actionability; React's root listener still fires `onDoubleClick`). Same interception class as the 8a header-timer-behind-drawer note.
+
+### Verification (local Docker `ProjectFlow_Test`)
+API **541 unit** (+6 gantt) / **274 integration** (+3 gantt; fixed the 1 invalid-type regression), web **162 unit** (+4 gantt-geom) + en/id parity, `apps/api` tsc + `apps/next-web` next build both clean, **gantt-timeline e2e 2/2** (deps + critical path + baseline + live-drag-in-List; timeline lanes + reschedule). Migration reversible + idempotent.
+
+### Residuals / follow-ups (non-blocking)
+1. `GanttService.resolve` caps the canvas at 200 tasks with no overflow signal (`ViewGanttData` has no `total`) — the plan's acknowledged bound; add a `total` if a "+N more" affordance is wanted.
+2. `captureBaseline` returns `tasks: []` in the mutation response by design (the gantt-view `router.refresh()`-re-fetches `viewGanttData` for the populated baseline) — documented, not a bug for this UI.
+3. v1 move = double-click "+1 day"; a real pointer-drag handler is deferred (data contract unchanged).
+4. `baselineDiff` is unit-tested + exported but not yet wired to a UI overlay (available for a planned-vs-actual drift badge).
+
+### DB-execution policy
+All DB work (0056 apply+rollback+re-apply, SP deploy, integration, e2e dev servers) ran ONLY against local Docker `ProjectFlow_Test` — never the prod-pointing `apps/api/.env`. Prod cutover of 0056 deferred to ops. **Stop for review/merge before Slice 9e.**

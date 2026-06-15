@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { SavedView, ViewConfig, ViewGroup, CapacityResult } from '@projectflow/types';
+import type { SavedView, ViewConfig, ViewGroup, CapacityResult, ViewGanttData } from '@projectflow/types';
 import { ApiError } from '../api';
 import { runGraphql } from '../actions/graphql';
 import { normalizeTask, type Task } from './normalize-task';
@@ -106,6 +106,7 @@ const VIEW_TASKS_QUERY = /* GraphQL */ `
         priority
         type
         storyPoints
+        startDate
         dueDate
         sprintId
         customFieldValues
@@ -198,6 +199,7 @@ const PREVIEW_VIEW_TASKS_QUERY = /* GraphQL */ `
         priority
         type
         storyPoints
+        startDate
         dueDate
         sprintId
         customFieldValues
@@ -277,4 +279,22 @@ export const getViewCapacity = cache(async (
     workspaceId: workspaceId ?? null,
   });
   return viewCapacity ?? { metric: config.capacityMetric ?? 'time', from: range.from, to: range.to, rows: [] };
+});
+
+const VIEW_GANTT_QUERY = /* GraphQL */ `
+  query ViewGanttData($id: String!) {
+    viewGanttData(viewId: $id) {
+      tasks { id title status startDate dueDate assigneeIds }
+      edges { taskId dependsOn }
+      criticalPathIds
+      baselines { id name capturedAt createdBy tasks { taskId startDate dueDate } }
+    }
+  }
+`;
+
+/** SSR-load the Gantt payload (in-scope tasks + dependency edges + critical path +
+ *  baselines) for a gantt view. Returns null when the view has no Gantt data. */
+export const loadGanttData = cache(async (viewId: string): Promise<ViewGanttData | null> => {
+  const { viewGanttData } = await gqlData<{ viewGanttData: ViewGanttData | null }>(VIEW_GANTT_QUERY, { id: viewId });
+  return viewGanttData ?? null;
 });

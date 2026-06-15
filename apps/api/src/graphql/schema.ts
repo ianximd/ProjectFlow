@@ -128,6 +128,7 @@ export interface TaskShape {
   storyPoints?: number | null;
   sprintId?: string | null;
   reporterId: string;
+  startDate?: IsoOrDate | null;
   dueDate?: IsoOrDate | null;
   createdAt: IsoOrDate;
   updatedAt: IsoOrDate;
@@ -283,6 +284,7 @@ TaskType.implement({
     storyPoints: t.int({ nullable: true, resolve: (x: any) => x.storyPoints ?? x.StoryPoints ?? null }),
     sprintId:    t.string({ nullable: true, resolve: (x: any) => x.sprintId ?? x.SprintId ?? null }),
     reporterId:  t.string({ nullable: true, resolve: (x: any) => x.reporterId ?? x.ReporterId ?? null }),
+    startDate:   t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.startDate ?? x.StartDate; return v ? new Date(v) : null; } }),
     dueDate:     t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.dueDate ?? x.DueDate; return v ? new Date(v) : null; } }),
     createdAt:   t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.createdAt ?? x.CreatedAt; return v ? new Date(v) : null; } }),
     updatedAt:   t.field({ type: 'Date', nullable: true, resolve: (x: any) => { const v = x.updatedAt ?? x.UpdatedAt; return v ? new Date(v) : null; } }),

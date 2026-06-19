@@ -29,6 +29,12 @@ export interface CompleteRequest {
   system?: string;
   sources?: RetrievedSource[];
   maxTokens?: number;
+  /**
+   * Opt-in to extended thinking. Default: false.
+   * WARNING: enabling this can roughly double cost and latency — only use when
+   * multi-step reasoning is worth the expense (e.g. complex nl_automation plans).
+   */
+  enableThinking?: boolean;
 }
 
 /** Output from a plain-text completion. */
@@ -38,7 +44,11 @@ export interface CompleteResult {
   completionTokens?: number;
 }
 
-/** Input to a structured (JSON) completion. */
+/**
+ * Input to a structured (JSON) completion.
+ * NOTE: T is a caller-side annotation only — runtime validation of the
+ * returned object against jsonSchema is out of scope for Phase 11a.
+ */
 export interface StructuredRequest<T> extends CompleteRequest {
   schemaName: string;
   jsonSchema: object;

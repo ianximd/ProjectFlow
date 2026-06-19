@@ -35,7 +35,7 @@ export class AiRepository {
       .input('WorkspaceId',      sql.UniqueIdentifier, row.workspaceId)
       .input('UserId',           sql.UniqueIdentifier, row.userId)
       .input('Feature',          sql.NVarChar(20),     row.feature)
-      .input('Provider',         sql.NVarChar(40),     row.provider ?? null)
+      .input('Provider',         sql.NVarChar(40),     row.provider)
       .input('Model',            sql.NVarChar(60),     row.model ?? null)
       .input('Status',           sql.NVarChar(10),     row.status)
       .input('PromptTokens',     sql.Int,              row.promptTokens ?? null)

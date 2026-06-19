@@ -32,10 +32,9 @@ export type GatewayContext = {
 /** Returns FakeProvider unless ANTHROPIC_API_KEY is set. */
 export function makeProvider(): AiProvider {
   if (process.env.ANTHROPIC_API_KEY) {
-    // Dynamic import avoids a hard dependency on the Anthropic SDK when the
-    // key is absent (e.g. in unit-test environments where the package may not
-    // be installed). The import is synchronous-compatible here because we
-    // construct the provider lazily on first call.
+    // AnthropicProvider is imported eagerly via require() (synchronous); it is
+    // only instantiated when ANTHROPIC_API_KEY is set, keeping the Anthropic SDK
+    // out of the module graph in key-absent environments (e.g. unit tests).
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { AnthropicProvider } = require('./anthropic.provider.js') as typeof import('./anthropic.provider.js');
     return new AnthropicProvider();

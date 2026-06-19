@@ -69,14 +69,15 @@ export class AnthropicProvider implements AiProvider {
   // -------------------------------------------------------------------------
   async complete(req: CompleteRequest): Promise<CompleteResult> {
     const maxTokens = req.maxTokens ?? DEFAULT_MAX_TOKENS;
+    // Extended thinking roughly doubles cost and latency; only enable on explicit opt-in.
+    // budget_tokens must be ≥ 1024 and < max_tokens (Anthropic requirement).
+    const thinkingParam = req.enableThinking === true && maxTokens > 1024
+      ? { thinking: { type: 'enabled' as const, budget_tokens: Math.floor(maxTokens * 0.5) } }
+      : {};
     const response = await this.client.messages.create({
       model:      this.model,
       max_tokens: maxTokens,
-      // Thinking requires budget_tokens < max_tokens and budget ≥ 1024.
-      // Only enable when we have enough token budget; otherwise omit.
-      ...(maxTokens > 1024
-        ? { thinking: { type: 'enabled' as const, budget_tokens: Math.floor(maxTokens * 0.5) } }
-        : {}),
+      ...thinkingParam,
       system:     buildSystem(req),
       messages:   [{ role: 'user', content: req.prompt }],
     });
@@ -131,12 +132,15 @@ export class AnthropicProvider implements AiProvider {
   // -------------------------------------------------------------------------
   async *stream(req: CompleteRequest): AsyncIterable<StreamChunk> {
     const maxTokens = req.maxTokens ?? DEFAULT_MAX_TOKENS;
+    // Extended thinking roughly doubles cost and latency; only enable on explicit opt-in.
+    // budget_tokens must be ≥ 1024 and < max_tokens (Anthropic requirement).
+    const thinkingParam = req.enableThinking === true && maxTokens > 1024
+      ? { thinking: { type: 'enabled' as const, budget_tokens: Math.floor(maxTokens * 0.5) } }
+      : {};
     const stream = this.client.messages.stream({
       model:      this.model,
       max_tokens: maxTokens,
-      ...(maxTokens > 1024
-        ? { thinking: { type: 'enabled' as const, budget_tokens: Math.floor(maxTokens * 0.5) } }
-        : {}),
+      ...thinkingParam,
       system:     buildSystem(req),
       messages:   [{ role: 'user', content: req.prompt }],
     });

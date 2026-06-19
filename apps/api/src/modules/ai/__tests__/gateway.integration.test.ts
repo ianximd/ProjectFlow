@@ -13,7 +13,7 @@
  *   (ANTHROPIC_API_KEY must NOT be set — so makeProvider() picks FakeProvider)
  */
 
-import { beforeEach, afterAll, it, expect, describe } from 'vitest';
+import { beforeEach, afterEach, afterAll, it, expect, describe } from 'vitest';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { getPool, closePool } from '../../../shared/lib/db.js';
 import { AiGatewayService } from '../gateway/ai-gateway.service.js';
@@ -25,8 +25,21 @@ const WORKSPACE_ID = '11111111-0000-0000-0000-000000000001';
 const USER_ID      = '22222222-0000-0000-0000-000000000002';
 
 describe('AiGatewayService audit path (integration)', () => {
+  // Capture the original value so parallel test runs can restore it correctly.
+  let originalApiKey: string | undefined;
+
   beforeEach(async () => {
+    originalApiKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     await truncateAll();
+  });
+
+  afterEach(() => {
+    if (originalApiKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = originalApiKey;
+    }
   });
 
   afterAll(async () => {
@@ -34,8 +47,7 @@ describe('AiGatewayService audit path (integration)', () => {
   });
 
   it('complete() writes exactly one AiRuns row with correct fields', async () => {
-    // Arrange: force FakeProvider regardless of env
-    delete process.env.ANTHROPIC_API_KEY;
+    // Arrange: force FakeProvider regardless of env (key already deleted in beforeEach)
     const service = new AiGatewayService(new FakeProvider(), new AiRepository());
 
     // Act
@@ -76,7 +88,6 @@ describe('AiGatewayService audit path (integration)', () => {
   });
 
   it('second call produces a second row (one row per call)', async () => {
-    delete process.env.ANTHROPIC_API_KEY;
     const service = new AiGatewayService(new FakeProvider(), new AiRepository());
 
     await service.complete(
@@ -94,8 +105,6 @@ describe('AiGatewayService audit path (integration)', () => {
   });
 
   it('failed provider call writes status=error row and rethrows', async () => {
-    delete process.env.ANTHROPIC_API_KEY;
-
     const boom = new Error('provider exploded');
     const failProvider = {
       name: 'fake',

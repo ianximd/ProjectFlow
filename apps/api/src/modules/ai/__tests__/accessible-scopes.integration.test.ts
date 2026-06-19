@@ -17,7 +17,7 @@ import sql from 'mssql';
 import { request, json } from '../../../__tests__/setup/testServer.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
-import { closePool } from '../../../shared/lib/db.js';
+import { closePool, getPool } from '../../../shared/lib/db.js';
 import { execSp, execSpOne } from '../../../shared/lib/sqlClient.js';
 
 type ScopeRow = { ScopeType: string; ScopeId: string };
@@ -123,6 +123,86 @@ describe('usp_AccessibleScopes_ForUser — explicit scenarios', () => {
     expect(scopes.has(KEY(folder))).toBe(true);
     expect(scopes.has(KEY(list))).toBe(true);
     expect(scopes.size).toBe(3);
+  });
+});
+
+/**
+ * ROLE arm: a scope node granted via SubjectType='ROLE' to a custom workspace
+ * role is visible ONLY to members that hold that role (via dbo.UserRoles).
+ */
+describe('usp_AccessibleScopes_ForUser — ROLE-based ObjectPermissions grant', () => {
+  it('non-member granted a custom role sees the role-granted list in PRIVATE space; sibling and space remain hidden', async () => {
+    const owner = await createTestUser({ email: `rb-owner-${Date.now()}@projectflow.test` });
+    const t = owner.accessToken;
+    const ws = await createTestWorkspace(t);
+
+    // PRIVATE space — only explicit grants expose nodes to non-members.
+    const spacePriv = await createTestProject(ws.Id, t, { name: 'RBPriv', key: `RBP${Date.now() % 100000}` });
+    await setVisibility(spacePriv.Id, 'PRIVATE');
+    const lGranted = await mkList(ws.Id, spacePriv.Id, null, t, 'RB-Granted');
+    const lSibling = await mkList(ws.Id, spacePriv.Id, null, t, 'RB-Sibling');
+
+    // A user who is NOT in WorkspaceMembers — floor is NULL, PRIVATE exclusion
+    // fires unless HasExplicit = 1. This isolates the ROLE arm as the only
+    // path that can surface a node.
+    const roleUser = await createTestUser({ email: `rb-role-${Date.now()}@projectflow.test` });
+
+    // Confirm: without any grant the user sees nothing.
+    const scopesBefore = await accessibleScopes(roleUser.user.Id, ws.Id);
+    expect(scopesBefore.size).toBe(0);
+
+    // Seed: custom workspace role → assign to roleUser → grant VIEW on lGranted only.
+    const pool = await getPool();
+    const roleId: string = (
+      await pool.request()
+        .input('wsId', sql.UniqueIdentifier, ws.Id)
+        .query(`
+          INSERT INTO dbo.Roles (Name, Slug, Scope, WorkspaceId)
+          OUTPUT INSERTED.Id
+          VALUES ('AI Reader', 'ai-reader-${Date.now()}', 'WORKSPACE', @wsId)
+        `)
+    ).recordset[0].Id;
+
+    await pool.request()
+      .input('userId', sql.UniqueIdentifier, roleUser.user.Id)
+      .input('roleId', sql.UniqueIdentifier, roleId)
+      .input('wsId', sql.UniqueIdentifier, ws.Id)
+      .query(`
+        INSERT INTO dbo.UserRoles (UserId, RoleId, WorkspaceId)
+        VALUES (@userId, @roleId, @wsId)
+      `);
+
+    await pool.request()
+      .input('wsId', sql.UniqueIdentifier, ws.Id)
+      .input('roleId', sql.UniqueIdentifier, roleId)
+      .input('objId', sql.UniqueIdentifier, lGranted.id)
+      .query(`
+        INSERT INTO dbo.ObjectPermissions (WorkspaceId, SubjectType, SubjectId, ObjectType, ObjectId, Level)
+        VALUES (@wsId, 'ROLE', @roleId, 'LIST', @objId, 'VIEW')
+      `);
+
+    // After role grant: lGranted visible, lSibling and spacePriv still hidden.
+    const scopesAfter = await accessibleScopes(roleUser.user.Id, ws.Id);
+    expect(scopesAfter.has(KEY(lGranted))).toBe(true);                          // role-granted list visible
+    expect(scopesAfter.has(KEY(lSibling))).toBe(false);                         // sibling — no grant
+    expect(scopesAfter.has(KEY({ type: 'SPACE', id: spacePriv.Id }))).toBe(false); // space itself not granted
+    expect(scopesAfter.size).toBe(1);
+
+    // Oracle cross-check: SP must agree exactly with usp_ObjectAccess_Resolve.
+    const allNodes = [
+      { type: 'SPACE', id: spacePriv.Id },
+      { type: 'LIST', id: lGranted.id },
+      { type: 'LIST', id: lSibling.id },
+    ];
+    const oracle = new Set<string>();
+    for (const n of allNodes) {
+      const r = await resolveOne(roleUser.user.Id, n.type, n.id);
+      if (r.Level !== null) oracle.add(KEY(n));
+    }
+    expect(
+      [...scopesAfter].sort(),
+      'set SP disagrees with resolver for role-granted non-member',
+    ).toEqual([...oracle].sort());
   });
 });
 

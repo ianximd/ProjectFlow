@@ -49,6 +49,8 @@ import { shareRoutes } from './modules/share/share.routes.js';
 import { publicShareRoutes } from './modules/share/public-share.routes.js';
 import { accessRequestRoutes } from './modules/access/access-request.routes.js';
 import { guestRoutes } from './modules/guests/guest.routes.js';
+import { aiRoutes } from './modules/ai/ai.routes.js';
+import { aiDevRoutes } from './modules/ai/ai.dev.routes.js';
 import { attachCollabUpgrade } from './modules/collab/collab.server.js';
 import { webhookOutgoingRoutes } from './modules/webhooks/webhook-outgoing.routes.js';
 import { startOutgoingWebhookWorker } from './modules/webhooks/webhook-outgoing.worker.js';
@@ -194,6 +196,7 @@ app.use('/apps/*',          authMiddleware);
 app.use('/access/*',        authMiddleware);
 app.use('/share/*',         authMiddleware);
 app.use('/guests/*',        authMiddleware);
+app.use('/ai/*',            authMiddleware);
 
 // Phase 6 W43 — populate the snapshot registry BEFORE the audit middleware
 // can ever be invoked. registerAuditSnapshots() is idempotent.
@@ -253,6 +256,7 @@ app.route('/reports',        reportsRoutes);
 app.route('/automations',    automationRoutes);
 app.route('/dev',            automationDevRoutes);
 app.route('/dev',            scheduledReportDevRoutes);
+app.route('/dev',            aiDevRoutes);
 app.route('/worklogs',       worklogRoutes);
 app.route('/timesheets',     timesheetRoutes);
 app.route('/versions',       versionRoutes);
@@ -276,6 +280,7 @@ app.route('/access',            accessRoutes);
 app.route('/share',             shareRoutes);
 app.route('/access',            accessRequestRoutes);
 app.route('/guests',            guestRoutes);
+app.route('/ai',                aiRoutes);
 
 // GraphQL API (Pothos schema + graphql-yoga — handles both queries and SSE subscriptions)
 // Auth is handled inside the GraphQL context (JWT-based, per-resolver enforcement).

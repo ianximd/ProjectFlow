@@ -1,4 +1,11 @@
 {
+  "Ai": {
+    "ask": "Ask AI",
+    "placeholder": "Ask anything about your workspace…",
+    "thinking": "Thinking…",
+    "sources": "Sources",
+    "noAnswer": "No answer found in your accessible content."
+  },
   "AppCenter": {
     "title": "App Center",
     "toggle": "Toggle {app}",

@@ -1,4 +1,11 @@
 {
+  "Ai": {
+    "ask": "Tanya AI",
+    "placeholder": "Tanyakan apa saja tentang ruang kerja Anda…",
+    "thinking": "Sedang berpikir…",
+    "sources": "Sumber",
+    "noAnswer": "Tidak ada jawaban yang ditemukan dalam konten yang dapat Anda akses."
+  },
   "AppCenter": {
     "title": "Pusat Aplikasi",
     "toggle": "Alihkan {app}",

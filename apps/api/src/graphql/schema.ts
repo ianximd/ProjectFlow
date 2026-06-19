@@ -32,6 +32,7 @@ import { registerAppsGraphql } from './apps.schema.js';
 import { registerPermissionsGraphql } from './permissions.schema.js';
 import { registerShareGraphql } from './share.schema.js';
 import { registerGuestGraphql } from './guests.schema.js';
+import { registerAiGraphql } from './ai.schema.js';
 import { requireObjectLevel, requireWorkspacePermission } from './authz.js';
 
 // ─────────────────────────────────────────
@@ -958,6 +959,12 @@ registerShareGraphql();
 // acceptGuestInvite(email-match)/revokeGuest(guest.manage).
 // ─────────────────────────────────────────
 registerGuestGraphql();
+
+// ─────────────────────────────────────────
+// AI Q&A (Phase 11b) — aiAsk query (AiAnswer/AiCitation types), gated on ai.use,
+// delegating to qaService. Citations resolve only to objects the caller can VIEW.
+// ─────────────────────────────────────────
+registerAiGraphql();
 
 // ─────────────────────────────────────────
 // Build & export

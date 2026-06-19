@@ -20,8 +20,11 @@ export class FakeProvider implements AiProvider {
   readonly name = 'fake';
 
   async complete(req: CompleteRequest): Promise<CompleteResult> {
-    const ids = (req.sources ?? []).map((s) => s.id).join(',');
-    const text = `[fake answer] ${req.prompt.slice(0, 80)}${ids ? ` sources:${ids}` : ''}`;
+    // Echo each source id as a bracketed citation `[id]` so the citation parser
+    // (which matches `[n]`) resolves them — this is what makes FakeProvider usable
+    // for deterministic citation assertions in the Q&A tests.
+    const cites = (req.sources ?? []).map((s) => `[${s.id}]`).join(' ');
+    const text = `[fake answer] ${req.prompt.slice(0, 80)}${cites ? ` sources: ${cites}` : ''}`;
     return { text, promptTokens: req.prompt.length, completionTokens: text.length };
   }
 

@@ -33,13 +33,13 @@ BEGIN
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_Object')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_Object' AND object_id = OBJECT_ID('dbo.AiChunks'))
     CREATE INDEX IX_AiChunks_Object ON dbo.AiChunks (WorkspaceId, ObjectType, ObjectId);
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_Scope')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_Scope' AND object_id = OBJECT_ID('dbo.AiChunks'))
     CREATE INDEX IX_AiChunks_Scope ON dbo.AiChunks (WorkspaceId, ScopeType, ScopeId);
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_List')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiChunks_List' AND object_id = OBJECT_ID('dbo.AiChunks'))
     CREATE INDEX IX_AiChunks_List ON dbo.AiChunks (WorkspaceId, ListId);
 GO
 
@@ -60,7 +60,7 @@ GO
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'AiRuns')
 BEGIN
     CREATE TABLE dbo.AiRuns (
-        Id               UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
+        Id               UNIQUEIDENTIFIER NOT NULL CONSTRAINT PK_AiRuns PRIMARY KEY DEFAULT NEWID(),
         WorkspaceId      UNIQUEIDENTIFIER NOT NULL,
         UserId           UNIQUEIDENTIFIER NOT NULL,
         Feature          NVARCHAR(20)     NOT NULL,
@@ -77,6 +77,6 @@ BEGIN
     );
 END
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiRuns_Workspace')
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_AiRuns_Workspace' AND object_id = OBJECT_ID('dbo.AiRuns'))
     CREATE INDEX IX_AiRuns_Workspace ON dbo.AiRuns (WorkspaceId, CreatedAt);
 GO

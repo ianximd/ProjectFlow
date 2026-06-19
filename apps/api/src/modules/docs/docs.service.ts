@@ -3,12 +3,30 @@ import { positionBetween, FIRST_POSITION } from './fractionalIndex.js';
 import { TaskService } from '../tasks/task.service.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { ListRepository } from '../hierarchy/list.repository.js';
+import { aiIndexService } from '../ai/index/ai-index.service.js';
+import { subLogger } from '../../shared/lib/logger.js';
 import type {
   Doc, DocPage, DocPageVersionMeta, DocTaskLink, DocScopeType, DocTaskLinkKind,
 } from '@projectflow/types';
 
 const repo        = new DocsRepository();
 const listRepo    = new ListRepository();
+const log         = subLogger('docs');
+
+/**
+ * AI index (Phase 11a) — re-index the doc that owns a page. A page mutation
+ * (create / body change / delete / version restore) changes the owning doc's
+ * indexable text. Resolves the doc + its workspace from the page's scope node,
+ * then enqueues an upsert. Fire-and-forget; never throws into the caller.
+ */
+async function reindexDocForPage(pageId: string): Promise<void> {
+  try {
+    const node = await repo.resolveScopeNode(pageId);
+    if (node) void aiIndexService.enqueueIndex(node.workspaceId, 'doc', node.docId);
+  } catch (err: any) {
+    log.error({ err: err?.message, pageId }, 'ai-index doc reindex failed');
+  }
+}
 
 /** Compute the fractional Position for a new/moved page among its siblings. */
 function computePosition(
@@ -27,11 +45,14 @@ function computePosition(
 }
 
 export class DocsService {
-  createDoc(
+  async createDoc(
     workspaceId: string, scopeType: DocScopeType, scopeId: string,
     name: string, icon: string | null, userId: string,
   ) {
-    return repo.createDoc(workspaceId, scopeType, scopeId, name, icon, userId);
+    const result = await repo.createDoc(workspaceId, scopeType, scopeId, name, icon, userId);
+    // AI index (Phase 11a): index the new doc (its name; body is empty initially).
+    void aiIndexService.enqueueIndex(workspaceId, 'doc', result.doc.id);
+    return result;
   }
 
   getDoc(docId: string): Promise<Doc | null> {
@@ -65,11 +86,17 @@ export class DocsService {
   ): Promise<DocPage> {
     const siblings = await repo.listPages(docId);
     const position = computePosition(siblings, parentPageId, afterPageId);
-    return repo.createPage(docId, parentPageId, title ?? 'Untitled', icon ?? null, position);
+    const page = await repo.createPage(docId, parentPageId, title ?? 'Untitled', icon ?? null, position);
+    // AI index (Phase 11a): a new page adds indexable text to the doc.
+    void reindexDocForPage(page.id);
+    return page;
   }
 
-  updatePage(pageId: string, patch: { title?: string; icon?: string; cover?: string }): Promise<DocPage | null> {
-    return repo.updatePage(pageId, patch);
+  async updatePage(pageId: string, patch: { title?: string; icon?: string; cover?: string }): Promise<DocPage | null> {
+    const page = await repo.updatePage(pageId, patch);
+    // AI index (Phase 11a): title (indexable) may have changed — re-index the doc.
+    if (page) void reindexDocForPage(pageId);
+    return page;
   }
 
   async movePage(
@@ -84,8 +111,12 @@ export class DocsService {
     return repo.movePage(pageId, parentPageId, position);
   }
 
-  deletePage(pageId: string): Promise<void> {
-    return repo.deletePage(pageId);
+  async deletePage(pageId: string): Promise<void> {
+    // Resolve the owning doc BEFORE the delete — resolveScopeNode wouldn't find
+    // the page afterwards. Other pages may remain, so re-index (not delete) the doc.
+    const node = await repo.resolveScopeNode(pageId).catch(() => null);
+    await repo.deletePage(pageId);
+    if (node) void aiIndexService.enqueueIndex(node.workspaceId, 'doc', node.docId);
   }
 
   createVersion(pageId: string, snapshot: string, userId: string): Promise<DocPageVersionMeta> {
@@ -96,8 +127,11 @@ export class DocsService {
     return repo.listVersions(pageId);
   }
 
-  restoreVersion(pageId: string, versionId: string, userId: string): Promise<DocPage | null> {
-    return repo.restoreVersion(pageId, versionId, userId);
+  async restoreVersion(pageId: string, versionId: string, userId: string): Promise<DocPage | null> {
+    const page = await repo.restoreVersion(pageId, versionId, userId);
+    // AI index (Phase 11a): restore swaps the page body — re-index the doc.
+    if (page) void reindexDocForPage(pageId);
+    return page;
   }
 
   listLinks(docPageId: string): Promise<DocTaskLink[]> {

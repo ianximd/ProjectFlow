@@ -6,6 +6,7 @@ import { extractMentionUserIds } from './mentions.js';
 import { TaskRepository } from '../tasks/task.repository.js';
 import { pubsub } from '../../graphql/pubsub.js';
 import { emitAutomationEvent } from '../automation/automation.bus.js';
+import { aiIndexService } from '../ai/index/ai-index.service.js';
 import type { Comment, CreateCommentInput } from '@projectflow/types';
 
 const repo     = new CommentRepository();
@@ -56,6 +57,12 @@ export const commentService = {
           taskId: comment.taskId, actorId: authorId, commentId: comment.id,
         });
       }
+
+      // AI index (Phase 11a): index the comment body. Fire-and-forget; resolves
+      // its own LIST scope through the parent task in the worker.
+      if (workspaceId) {
+        void aiIndexService.enqueueIndex(workspaceId, 'comment', comment.id);
+      }
     })().catch(() => { /* non-fatal */ });
 
     return comment;
@@ -87,6 +94,10 @@ export const commentService = {
           payload: { taskId: comment.taskId, taskTitle, commentId: comment.id },
         }).catch(() => {});
       }
+
+      // AI index (Phase 11a): the body changed — re-index. Fire-and-forget.
+      const workspaceId = (task as any).workspaceId ?? (task as any).WorkspaceId ?? null;
+      if (workspaceId) void aiIndexService.enqueueIndex(workspaceId, 'comment', comment.id);
     })().catch(() => {});
 
     return comment;
@@ -110,8 +121,17 @@ export const commentService = {
   resolve: (commentId: string, actorId: string, resolved: boolean): Promise<Comment | null> =>
     repo.resolve(commentId, actorId, resolved),
 
-  delete: (id: string, authorId: string): Promise<boolean> =>
-    repo.delete(id, authorId),
+  async delete(id: string, authorId: string): Promise<boolean> {
+    // Resolve the comment's workspace BEFORE the delete so we can tombstone its
+    // chunks. getContext reads the comment→task→workspace anchor.
+    const ctx = await repo.getContext(id).catch(() => null);
+    const ok = await repo.delete(id, authorId);
+    if (ok && ctx?.workspaceId) {
+      // AI index (Phase 11a): tombstone the deleted comment's chunks. Fire-and-forget.
+      void aiIndexService.enqueueDelete(ctx.workspaceId, 'comment', id);
+    }
+    return ok;
+  },
 
   react: (commentId: string, userId: string, emoji: string) =>
     repo.react(commentId, userId, emoji),

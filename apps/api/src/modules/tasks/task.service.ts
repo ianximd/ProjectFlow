@@ -10,6 +10,7 @@ import { goalService } from '../goals/goal.service.js';
 import { appService } from '../apps/app.service.js';
 import { publishTaskEvent } from '../../graphql/task-events.js';
 import { emitAutomationEvent } from '../automation/automation.bus.js';
+import { aiIndexService } from '../ai/index/ai-index.service.js';
 import { MultipleAssigneesDisabledError } from './task.errors.js';
 import { subLogger } from '../../shared/lib/logger.js';
 import type { Task, CreateTaskInput, UpdateTaskInput, TaskFilters } from '@projectflow/types';
@@ -70,6 +71,12 @@ export class TaskService {
       actorId,
       reporterId: (task as any).reporterId ?? (task as any).ReporterId ?? null,
     });
+
+    // AI index (Phase 11a): keep AiChunks in sync. Fire-and-forget; the service
+    // fails open so a Redis/queue outage never faults the create.
+    void aiIndexService.enqueueIndex(
+      (task as any).workspaceId ?? (task as any).WorkspaceId, 'task', task.id,
+    ).catch((err: any) => log.error({ err: err?.message }, 'ai-index enqueue failed'));
 
     return task;
   }
@@ -221,6 +228,12 @@ export class TaskService {
     webhookOutgoingService.dispatch(task.workspaceId, 'issue.deleted', {
       id: task.id, issueKey: task.issueKey, projectId: task.projectId,
     }).catch((err: any) => log.error({ err: err?.message }, 'webhook dispatch failed'));
+
+    // AI index (Phase 11a): tombstone the task's chunks. Fire-and-forget.
+    void aiIndexService.enqueueDelete(
+      (task as any).workspaceId ?? (task as any).WorkspaceId, 'task', task.id,
+    ).catch((err: any) => log.error({ err: err?.message }, 'ai-index enqueue failed'));
+
     return task;
   }
 
@@ -269,6 +282,12 @@ export class TaskService {
           }
         }
       }
+
+      // AI index (Phase 11a): an update may change Title/Description — re-index.
+      // Fire-and-forget; the service fails open.
+      void aiIndexService.enqueueIndex(
+        (task as any).workspaceId ?? (task as any).WorkspaceId, 'task', taskId,
+      ).catch((err: any) => log.error({ err: err?.message }, 'ai-index enqueue failed'));
     }
     return task;
   }

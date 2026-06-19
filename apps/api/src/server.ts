@@ -57,6 +57,7 @@ import { startRecurrenceWorker } from './modules/recurrence/recurrence.worker.js
 import { startScheduledReportWorker } from './modules/scheduled-reports/scheduled-report.worker.js';
 import { startSchedulerWorker } from './modules/automation/automation.scheduler.worker.js';
 import { startSprintWorker } from './modules/sprints/sprint.worker.js';
+import { startAiIndexWorker } from './modules/ai/index/ai-index.worker.js';
 import { requestIdMiddleware } from './shared/middleware/requestId.middleware.js';
 import { rateLimiter, authRateLimiter } from './shared/middleware/rateLimiter.middleware.js';
 import { auditMiddleware } from './shared/middleware/audit.middleware.js';
@@ -379,6 +380,12 @@ if (process.env.NODE_ENV !== 'test') {
     // BullMQ queue/worker need it. Manual sprint start/complete works without it.
     startSprintWorker().catch((err) =>
       logger.warn({ err: err?.message }, 'sprint worker failed to start'),
+    );
+
+    // Start the AI indexing worker (Phase 11a). Conditional on Redis — the BullMQ
+    // queue/worker need it. Keeps dbo.AiChunks in sync with task/doc/comment edits.
+    startAiIndexWorker().catch((err) =>
+      logger.warn({ err: err?.message }, 'ai-index worker failed to start'),
     );
   }
 

@@ -54,6 +54,10 @@ const TRUNCATION_ORDER = [
   // (intentional: audit rows must survive workspace deletion). Delete before the
   // Workspaces/Users loop so future FK additions don't silently break truncation.
   'AiRuns',
+  // Phase 11a (0063): AI chunk index — AiChunks.WorkspaceId FK Workspaces(Id).
+  // Delete before the Workspaces loop or its DELETE fails FK_AiChunks once a
+  // chunk row exists.
+  'AiChunks',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

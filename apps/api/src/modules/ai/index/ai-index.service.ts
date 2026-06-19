@@ -23,6 +23,14 @@ const DEBOUNCE_TTL_SECONDS = 30;
 async function enqueue(
   workspaceId: string, objectType: AiObjectType, objectId: string, op: 'upsert' | 'delete',
 ): Promise<void> {
+  // Guard: a missing workspaceId or objectId would produce a job with key
+  // "...:undefined" that the worker cannot meaningfully process. Fail open —
+  // log and return rather than enqueue a bogus job or throw into the caller.
+  if (!workspaceId || !objectId) {
+    log.warn({ workspaceId, objectType, objectId, op }, 'ai-index enqueue skipped: falsy workspaceId or objectId');
+    return;
+  }
+
   try {
     // Coalesce bursts of the SAME op on the SAME object. A delete and an upsert
     // get different gate keys so a delete is never swallowed by a prior upsert.

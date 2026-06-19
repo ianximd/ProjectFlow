@@ -328,7 +328,17 @@ export class IndexRepository {
     return scored.map((x) => x.cand);
   }
 
-  /** Hydrate full chunk rows by id, scoped to the workspace. */
+  /**
+   * Hydrate full chunk rows by id, scoped to the workspace.
+   *
+   * The `ids` passed in are already ACL-filtered: they come from
+   * keywordCandidates / semanticCandidates, which both JOIN
+   * usp_AccessibleScopes_ForUser before returning. No ACL re-JOIN is needed
+   * here — adding one would be a redundant double-check and could mask bugs in
+   * the candidate queries. Do NOT pass externally-sourced IDs directly to this
+   * method without first running them through keywordCandidates /
+   * semanticCandidates (or an equivalent ACL-filtered query).
+   */
   async loadChunks(workspaceId: string, ids: string[]): Promise<ChunkRow[]> {
     if (ids.length === 0) return [];
     const pool = await getPool();

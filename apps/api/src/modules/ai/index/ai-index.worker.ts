@@ -35,7 +35,7 @@ import { makeEmbedder } from '../retrieval/voyage.embedder.js';
 import {
   indexRepository, type ChunkInsert, type AiScopeType,
 } from './index.repository.js';
-import { AI_INDEX_QUEUE, aiIndexConnection, type AiIndexJobData } from './ai-index.queue.js';
+import { AI_INDEX_QUEUE, aiIndexConnection, closeAiIndexQueue, type AiIndexJobData } from './ai-index.queue.js';
 
 const log = subLogger('ai-index');
 
@@ -117,7 +117,7 @@ async function resolveDoc(workspaceId: string, docId: string): Promise<ResolvedO
   const pool = await getPool();
   const docRes = await pool.request()
     .input('DocId', sql.UniqueIdentifier, docId)
-    .query(`SELECT Name, ScopeType, ScopeId FROM dbo.Docs WHERE Id = @DocId`);
+    .query(`SELECT Name, ScopeType, ScopeId FROM dbo.Docs WHERE Id = @DocId AND DeletedAt IS NULL`);
   const doc = docRes.recordset[0];
   if (!doc) return null;
 
@@ -246,6 +246,7 @@ export async function startAiIndexWorker(): Promise<Worker<AiIndexJobData> | nul
   });
 
   registerCloser('ai-index-worker', () => worker.close());
+  registerCloser('ai-index-queue',  () => closeAiIndexQueue());
   log.info('ai-index worker started');
   return worker;
 }

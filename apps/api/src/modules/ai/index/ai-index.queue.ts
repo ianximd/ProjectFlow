@@ -43,3 +43,13 @@ export function getAiIndexQueue(): Queue<AiIndexJobData> {
   }
   return queue;
 }
+
+/**
+ * Close the producer Queue if it was ever created. Safe to call when the queue
+ * was never initialised (no-op). Intended for graceful-shutdown registration —
+ * call registerCloser('ai-index-queue', closeAiIndexQueue) from the worker
+ * startup path so the Redis connection tears down cleanly alongside the worker.
+ */
+export function closeAiIndexQueue(): Promise<void> {
+  return queue ? queue.close() : Promise.resolve();
+}

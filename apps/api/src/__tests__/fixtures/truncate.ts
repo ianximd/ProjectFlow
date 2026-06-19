@@ -50,6 +50,10 @@ const TRUNCATION_ORDER = [
   // Phase 10d (0062): guest invites — FK Workspaces(Id) + Users(InvitedBy).
   // No children; delete before Workspaces/Users or their DELETE fails FK_GuestInvites_*.
   'GuestInvites',
+  // Phase 11a (0063): AI gateway audit log — no FK constraints on WorkspaceId/UserId
+  // (intentional: audit rows must survive workspace deletion). Delete before the
+  // Workspaces/Users loop so future FK additions don't silently break truncation.
+  'AiRuns',
   // Phase 8e (0049): Goals & Targets — Targets FK Goals; Goals FK GoalFolders +
   // Workspaces. Child→parent (Targets → Goals → GoalFolders), all before Workspaces/Users.
   'Targets',

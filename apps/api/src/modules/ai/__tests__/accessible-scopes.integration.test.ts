@@ -23,15 +23,33 @@ import { execSp, execSpOne } from '../../../shared/lib/sqlClient.js';
 type ScopeRow = { ScopeType: string; ScopeId: string };
 type ResolveRow = { Level: string | null; Found: boolean };
 
-const KEY = (r: { ScopeType?: string; type: string; ScopeId?: string; id?: string }) =>
-  `${(r.ScopeType ?? r.type).toUpperCase()}:${(r.ScopeId ?? r.id)!.toLowerCase()}`;
+/**
+ * Canonical key for a row returned by usp_AccessibleScopes_ForUser
+ * (or any SP/oracle that uses the { ScopeType, ScopeId } shape).
+ */
+const keyFromRow = (r: { ScopeType: string; ScopeId: string }): string =>
+  `${r.ScopeType.toUpperCase()}:${r.ScopeId.toLowerCase()}`;
+
+/**
+ * Canonical key built from an explicit type string + id string.
+ * Used for manual spot-checks and in-test object references.
+ */
+const scopeKey = (type: string, id: string): string =>
+  `${type.toUpperCase()}:${id.toLowerCase()}`;
+
+/** Collision-safe project key: counter + timestamp (mirrors the factories.ts pattern). */
+let _keyCounter = 0;
+function uniqueProjectKey(prefix: string): string {
+  _keyCounter += 1;
+  return `${prefix}${Date.now().toString(36).slice(-4)}${_keyCounter}`.toUpperCase().slice(0, 10);
+}
 
 async function accessibleScopes(userId: string, workspaceId: string): Promise<Set<string>> {
   const rows = await execSpOne<ScopeRow>('usp_AccessibleScopes_ForUser', [
     { name: 'UserId', type: sql.UniqueIdentifier, value: userId },
     { name: 'WorkspaceId', type: sql.UniqueIdentifier, value: workspaceId },
   ]);
-  return new Set(rows.map((r) => KEY({ ScopeType: r.ScopeType, type: r.ScopeType, ScopeId: r.ScopeId })));
+  return new Set(rows.map((r) => keyFromRow(r)));
 }
 
 async function resolveOne(userId: string, objectType: string, objectId: string): Promise<ResolveRow> {
@@ -69,6 +87,8 @@ async function inviteGuest(
   ownerToken: string, wsId: string, email: string,
   grant: { objectType: 'SPACE' | 'FOLDER' | 'LIST'; objectId: string; level: 'VIEW' | 'COMMENT' | 'EDIT' | 'FULL' },
 ): Promise<{ id: string }> {
+  // createTestUser returns { user: { Id, Email, Name }, accessToken, ... }
+  // .user.Id is the PascalCase field name as returned by the register endpoint.
   const guest = await createTestUser({ email });
   const { invite } = await json<{ invite: any }>(await request('/guests/invites', {
     method: 'POST', token: ownerToken,
@@ -88,7 +108,7 @@ describe('usp_AccessibleScopes_ForUser — explicit scenarios', () => {
     const owner = await createTestUser({ email: `as-owner-${Date.now()}@projectflow.test` });
     const t = owner.accessToken;
     const ws = await createTestWorkspace(t);
-    const spaceA = await createTestProject(ws.Id, t, { name: 'A', key: `AA${Date.now() % 100000}` });
+    const spaceA = await createTestProject(ws.Id, t, { name: 'A', key: uniqueProjectKey('AA') });
     await setVisibility(spaceA.Id, 'PRIVATE');
     const l1 = await mkList(ws.Id, spaceA.Id, null, t, 'L1');
     const l2 = await mkList(ws.Id, spaceA.Id, null, t, 'L2');
@@ -98,9 +118,9 @@ describe('usp_AccessibleScopes_ForUser — explicit scenarios', () => {
     });
 
     const scopes = await accessibleScopes(guest.id, ws.Id);
-    expect(scopes.has(KEY(l1))).toBe(true);    // the granted list
-    expect(scopes.has(KEY(l2))).toBe(false);   // sibling — no grant
-    expect(scopes.has(KEY({ type: 'SPACE', id: spaceA.Id }))).toBe(false); // space invisible
+    expect(scopes.has(scopeKey(l1.type, l1.id))).toBe(true);    // the granted list
+    expect(scopes.has(scopeKey(l2.type, l2.id))).toBe(false);   // sibling — no grant
+    expect(scopes.has(scopeKey('SPACE', spaceA.Id))).toBe(false); // space invisible
     expect(scopes.size).toBe(1);
   });
 
@@ -108,7 +128,7 @@ describe('usp_AccessibleScopes_ForUser — explicit scenarios', () => {
     const owner = await createTestUser({ email: `as-mo-${Date.now()}@projectflow.test` });
     const t = owner.accessToken;
     const ws = await createTestWorkspace(t);
-    const space = await createTestProject(ws.Id, t, { name: 'P', key: `PP${Date.now() % 100000}` });
+    const space = await createTestProject(ws.Id, t, { name: 'P', key: uniqueProjectKey('PP') });
     const folder = await mkFolder(ws.Id, space.Id, t, 'F');
     const list = await mkList(ws.Id, space.Id, folder.id, t, 'L');
 
@@ -119,9 +139,9 @@ describe('usp_AccessibleScopes_ForUser — explicit scenarios', () => {
 
     const scopes = await accessibleScopes(member.user.Id, ws.Id);
     // EDIT floor → every node in a PUBLIC space is visible.
-    expect(scopes.has(KEY({ type: 'SPACE', id: space.Id }))).toBe(true);
-    expect(scopes.has(KEY(folder))).toBe(true);
-    expect(scopes.has(KEY(list))).toBe(true);
+    expect(scopes.has(scopeKey('SPACE', space.Id))).toBe(true);
+    expect(scopes.has(scopeKey(folder.type, folder.id))).toBe(true);
+    expect(scopes.has(scopeKey(list.type, list.id))).toBe(true);
     expect(scopes.size).toBe(3);
   });
 });
@@ -137,7 +157,7 @@ describe('usp_AccessibleScopes_ForUser — ROLE-based ObjectPermissions grant', 
     const ws = await createTestWorkspace(t);
 
     // PRIVATE space — only explicit grants expose nodes to non-members.
-    const spacePriv = await createTestProject(ws.Id, t, { name: 'RBPriv', key: `RBP${Date.now() % 100000}` });
+    const spacePriv = await createTestProject(ws.Id, t, { name: 'RBPriv', key: uniqueProjectKey('RBP') });
     await setVisibility(spacePriv.Id, 'PRIVATE');
     const lGranted = await mkList(ws.Id, spacePriv.Id, null, t, 'RB-Granted');
     const lSibling = await mkList(ws.Id, spacePriv.Id, null, t, 'RB-Sibling');
@@ -183,9 +203,9 @@ describe('usp_AccessibleScopes_ForUser — ROLE-based ObjectPermissions grant', 
 
     // After role grant: lGranted visible, lSibling and spacePriv still hidden.
     const scopesAfter = await accessibleScopes(roleUser.user.Id, ws.Id);
-    expect(scopesAfter.has(KEY(lGranted))).toBe(true);                          // role-granted list visible
-    expect(scopesAfter.has(KEY(lSibling))).toBe(false);                         // sibling — no grant
-    expect(scopesAfter.has(KEY({ type: 'SPACE', id: spacePriv.Id }))).toBe(false); // space itself not granted
+    expect(scopesAfter.has(scopeKey(lGranted.type, lGranted.id))).toBe(true);          // role-granted list visible
+    expect(scopesAfter.has(scopeKey(lSibling.type, lSibling.id))).toBe(false);         // sibling — no grant
+    expect(scopesAfter.has(scopeKey('SPACE', spacePriv.Id))).toBe(false); // space itself not granted
     expect(scopesAfter.size).toBe(1);
 
     // Oracle cross-check: SP must agree exactly with usp_ObjectAccess_Resolve.
@@ -197,7 +217,7 @@ describe('usp_AccessibleScopes_ForUser — ROLE-based ObjectPermissions grant', 
     const oracle = new Set<string>();
     for (const n of allNodes) {
       const r = await resolveOne(roleUser.user.Id, n.type, n.id);
-      if (r.Level !== null) oracle.add(KEY(n));
+      if (r.Level !== null) oracle.add(scopeKey(n.type, n.id));
     }
     expect(
       [...scopesAfter].sort(),
@@ -217,8 +237,8 @@ describe('usp_AccessibleScopes_ForUser — oracle cross-check vs usp_ObjectAcces
     const ws = await createTestWorkspace(t);
 
     // Two spaces: public + private; each with a folder and lists (one nested).
-    const pub = await createTestProject(ws.Id, t, { name: 'Pub', key: `PUB${Date.now() % 10000}` });
-    const priv = await createTestProject(ws.Id, t, { name: 'Priv', key: `PRV${Date.now() % 10000}` });
+    const pub = await createTestProject(ws.Id, t, { name: 'Pub', key: uniqueProjectKey('PUB') });
+    const priv = await createTestProject(ws.Id, t, { name: 'Priv', key: uniqueProjectKey('PRV') });
     await setVisibility(priv.Id, 'PRIVATE');
 
     const pubFolder = await mkFolder(ws.Id, pub.Id, t, 'PubF');
@@ -257,7 +277,7 @@ describe('usp_AccessibleScopes_ForUser — oracle cross-check vs usp_ObjectAcces
       const out = new Set<string>();
       for (const n of allNodes) {
         const r = await resolveOne(userId, n.type, n.id);
-        if (r.Level !== null) out.add(KEY(n));
+        if (r.Level !== null) out.add(scopeKey(n.type, n.id));
       }
       return out;
     }
@@ -278,7 +298,7 @@ describe('usp_AccessibleScopes_ForUser — oracle cross-check vs usp_ObjectAcces
 
     // Spot-check the guest expectation explicitly: ONLY the nested private list.
     const guestScopes = await accessibleScopes(guest.id, ws.Id);
-    expect([...guestScopes]).toEqual([KEY({ type: 'LIST', id: privList2.id })]);
+    expect([...guestScopes]).toEqual([scopeKey('LIST', privList2.id)]);
 
     // Stranger sees nothing.
     expect((await accessibleScopes(stranger.user.Id, ws.Id)).size).toBe(0);

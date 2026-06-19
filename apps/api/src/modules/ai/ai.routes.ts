@@ -24,7 +24,7 @@ const searchSchema = z.object({
    * callers don't need to know the internal field names.
    */
   scope: z
-    .object({ type: z.string(), id: z.string() })
+    .object({ type: z.enum(['SPACE', 'FOLDER', 'LIST']), id: z.string() })
     .optional(),
   k: z.number().int().positive().max(20).optional(),
 });
@@ -45,7 +45,7 @@ aiRoutes.post(
     const { workspaceId, query, scope, k } = c.req.valid('json');
 
     const chunks = await retrievalService.retrieve(userId, workspaceId, query, {
-      scope: scope ? { scopeType: scope.type as any, scopeId: scope.id } : undefined,
+      scope: scope ? { scopeType: scope.type, scopeId: scope.id } : undefined,
       k,
     });
 

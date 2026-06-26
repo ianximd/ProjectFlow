@@ -269,7 +269,17 @@
     "oauthErrorNoEmailTitle": "Email tidak tersedia",
     "oauthErrorNoEmailBody": "Akun Anda tidak mengembalikan alamat email. Buat email terverifikasi terlihat di penyedia dan coba lagi.",
     "oauthErrorAccountExistsTitle": "Akun sudah ada",
-    "oauthErrorAccountExistsBody": "Akun dengan email ini sudah ada. Masuk dengan kata sandi Anda — setelah fitur menghubungkan tersedia, Anda dapat menghubungkan penyedia ini dari pengaturan."
+    "oauthErrorAccountExistsBody": "Akun dengan email ini sudah ada. Masuk dengan kata sandi Anda — setelah fitur menghubungkan tersedia, Anda dapat menghubungkan penyedia ini dari pengaturan.",
+    "confirmPasswordLabel": "Konfirmasi kata sandi",
+    "confirmPasswordPlaceholder": "••••••••",
+    "passwordsDoNotMatch": "Kata sandi tidak cocok",
+    "showPassword": "Tampilkan kata sandi",
+    "hidePassword": "Sembunyikan kata sandi",
+    "passwordStrengthLabel": "Kekuatan kata sandi",
+    "strengthWeak": "Lemah",
+    "strengthFair": "Cukup",
+    "strengthGood": "Bagus",
+    "strengthStrong": "Kuat"
   },
   "Projects": {
     "breadcrumb": "Proyek",

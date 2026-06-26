@@ -269,7 +269,17 @@
     "oauthErrorNoEmailTitle": "No email available",
     "oauthErrorNoEmailBody": "Your account did not return an email address. Make a verified email visible on the provider and try again.",
     "oauthErrorAccountExistsTitle": "Account already exists",
-    "oauthErrorAccountExistsBody": "An account with this email already exists. Sign in with your password — once linking ships, you can connect this provider from settings."
+    "oauthErrorAccountExistsBody": "An account with this email already exists. Sign in with your password — once linking ships, you can connect this provider from settings.",
+    "confirmPasswordLabel": "Confirm password",
+    "confirmPasswordPlaceholder": "••••••••",
+    "passwordsDoNotMatch": "Passwords don't match",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "passwordStrengthLabel": "Password strength",
+    "strengthWeak": "Weak",
+    "strengthFair": "Fair",
+    "strengthGood": "Good",
+    "strengthStrong": "Strong"
   },
   "Projects": {
     "breadcrumb": "Projects",

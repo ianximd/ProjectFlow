@@ -17,7 +17,14 @@ existing data/mutation logic intact.
 - No architectural rewrite of the 1,349-line `TaskDrawer.tsx` logic. Data loading, optimistic
   mutations, presence, and subscriptions are preserved as-is.
 - No new task features beyond surfacing the existing `activityFeed` in an Activity tab.
-- No changes to backend APIs (the Activity tab reuses the existing `activityFeed` GraphQL query).
+- No new task-mutation APIs. The Activity tab reuses the existing `activityFeed` query and audit
+  data; it requires only a **small scope-resolution change** (see §3a) to accept a `TASK` scope —
+  no new endpoints, no change to how tasks are mutated.
+
+> **Review correction (2026-06-27):** an earlier draft claimed the Activity tab needed *no*
+> backend change. That was verified false — `getScopeNode` (SQL proc `usp_CustomField_GetScopeNode`)
+> supports only `SPACE`/`FOLDER`/`LIST`, so a `TASK` scope currently throws `NOT_FOUND`
+> (`activity.service.ts:74`). The required change is captured in §3a. Decision: **include it in v1.**
 
 ---
 
@@ -55,6 +62,32 @@ Light extraction is acceptable where it makes the new layout maintainable (e.g. 
 tab bar, sidebar, and per-tab panel render functions/components), but full state-prop extraction
 of every section is explicitly out of scope.
 
+**Tab panels stay as in-file render functions** within `TaskDrawer.tsx` (not separate components),
+so the drawer's large local-state surface — title/description/priority/status/assignees/dates
+mirrors, `useTransition` states, picker state — is not threaded through props. The only new
+**file** is `ActivityTab` (it owns its own fetch + state and takes just `taskId` + `workspaceId`).
+
+---
+
+## 3a. Backend Change — Task-Scoped Activity (required for the Activity tab)
+
+Enabling `activityFeed(scopeType: "TASK", scopeId: <taskId>, workspaceId: <wsId>)`:
+
+1. **SQL proc** `usp_CustomField_GetScopeNode` — add a `TASK` branch returning the task's
+   `WorkspaceId` (+ path) from `dbo.Tasks WHERE Id = @ScopeId AND DeletedAt IS NULL`. Ship as a new
+   migration.
+2. **GraphQL validation** (`apps/api/src/graphql/activity.schema.ts`) — add `TASK` to the accepted
+   scope-type set.
+3. **Service cast** (`apps/api/src/modules/activity/activity.service.ts:70`) — widen the
+   `'LIST' | 'FOLDER' | 'SPACE'` cast to include `'TASK'`.
+4. **Type union** (`packages/types`) — add `'TASK'` to the custom-field scope-type union.
+
+The filter layer already works: `buildAuditFilters` forwards `scopeId` as `resourceId`, and task
+UPDATE audit rows store `resourceId = taskId` (`audit.middleware.ts:144`). No further query change.
+
+The frontend **must pass `workspaceId`** (the drawer already receives it as a prop) so the scope
+node resolves.
+
 ---
 
 ## 4. Layout & Placement
@@ -91,11 +124,15 @@ Large click-to-edit title (borderless, grows with content; Escape reverts, Enter
   (full `WorkLogSection`)**. Each is a clean sub-section with a small muted uppercase header.
 - **Comments**: `CommentSection` (live Apollo subscription, mentions, reactions).
 - **Files**: `AttachmentSection` (drag-drop upload, download, delete).
-- **Activity**: new — `activityFeed` scoped to the task id, grouped by day, human-readable diffs.
+- **Activity**: new — `activityFeed` scoped to the task id (see §3a), grouped by day. Diff
+  formatting is **bounded**: render `field: old → new` for known task fields (status, priority,
+  title, dates, assignees, …); fall back to a compact raw-JSON line for unrecognized
+  `oldValues`/`newValues` keys. No attempt to prettify every possible audit shape.
 
 ### Sidebar (~300px, scrollable property rows)
-Status, Priority, Type (+ milestone marker ◆), Story points, Assignees (chips + picker),
-Start/Due dates (+ clear), Tags, Watchers, and **Time tracking summary** (estimate bar + actual
+Status, Priority, Type (+ milestone marker ◆), Story points (**read-only badge** — editing is out
+of scope), Assignees (chips + picker), Start/Due dates (+ clear), Tags, Watchers, and
+**Time tracking summary** (estimate bar + actual
 rollup + start/stop timer + "Log time" button). The Time tracking block — both the sidebar summary
 and the Details-tab `WorkLogSection` — is hidden when the `time_tracking` app is OFF for the scope.
 
@@ -145,8 +182,11 @@ the layout. (Confirmed with user.)
 
 ## 7. Testing
 
-- **Unit:** `ActivityTab` (render, day-grouping, diff formatting), tab switching, expand toggle,
-  responsive-collapse logic.
+- **Backend:** integration test for `activityFeed` with `scopeType: "TASK"` — resolves the
+  workspace node and returns the task's audit rows (extends `activity.integration.test.ts`, which
+  currently only covers `EVERYTHING`).
+- **Unit:** `ActivityTab` (render, day-grouping, bounded diff formatting + raw fallback), tab
+  switching, expand toggle, responsive-collapse logic.
 - **Reuse:** existing sub-component tests stay green (sub-components unchanged).
 - **i18n:** add tab labels and Activity strings to `apps/next-web/messages/en.json` and `id.json`.
 - **Manual/visual:** light + dark theme pass on every section; keyboard navigation; expand and

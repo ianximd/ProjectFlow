@@ -71,22 +71,33 @@ mirrors, `useTransition` states, picker state — is not threaded through props.
 
 ## 3a. Backend Change — Task-Scoped Activity (required for the Activity tab)
 
-Enabling `activityFeed(scopeType: "TASK", scopeId: <taskId>, workspaceId: <wsId>)`:
+**Approach (revised during planning):** add a dedicated `taskActivity(taskId, page, pageSize)`
+GraphQL query rather than threading a new `TASK` value through the generic scope machinery.
 
-1. **SQL proc** `usp_CustomField_GetScopeNode` — add a `TASK` branch returning the task's
-   `WorkspaceId` (+ path) from `dbo.Tasks WHERE Id = @ScopeId AND DeletedAt IS NULL`. Ship as a new
-   migration.
-2. **GraphQL validation** (`apps/api/src/graphql/activity.schema.ts`) — add `TASK` to the accepted
-   scope-type set.
-3. **Service cast** (`apps/api/src/modules/activity/activity.service.ts:70`) — widen the
-   `'LIST' | 'FOLDER' | 'SPACE'` cast to include `'TASK'`.
-4. **Type union** (`packages/types`) — add `'TASK'` to the custom-field scope-type union.
+Rationale: the generic `activityFeed` path is coupled to hierarchy ACL — its resolver calls
+`requireObjectLevel(ctx, <scopeType> as HierarchyNodeType, …)` and its service calls
+`getScopeNode` (custom-field scope proc). Adding `TASK` there would force a new member into
+`ViewScopeType`, `HierarchyNodeType`, and the custom-field scope union — three shared types that
+have no business carrying a `TASK` value. A dedicated query is far lower blast-radius and reuses
+the existing repository unchanged.
 
-The filter layer already works: `buildAuditFilters` forwards `scopeId` as `resourceId`, and task
-UPDATE audit rows store `resourceId = taskId` (`audit.middleware.ts:144`). No further query change.
+The dedicated query:
+1. **Service method** `getTaskActivity(userId, taskId, { page, pageSize })` in
+   `apps/api/src/modules/activity/activity.service.ts`:
+   - `const task = await taskRepository.getById(taskId)` → gives `ListId` + `WorkspaceId`
+     (404 if null).
+   - Authz: `accessService.can(userId, 'LIST', task.ListId, 'VIEW')` — task visibility derives
+     from its containing list (the service already documents this rule). Throw `FORBIDDEN` if not.
+   - Build `AuditFilters` = `{ workspaceId: task.WorkspaceId, resourceId: taskId, page, pageSize }`
+     and call the **existing** `activityRepository.listScoped(filters)` unchanged.
+2. **GraphQL** (`apps/api/src/graphql/activity.schema.ts`): register a `taskActivity` query
+   returning the existing `AuditLogPageType`, args `taskId: String!`, `page: Int`, `pageSize: Int`.
+3. **Frontend**: a new SSR query helper `getTaskActivity(taskId, page, pageSize)` mirroring the
+   existing `getActivityFeed` in `apps/next-web/src/server/queries/activity.ts`.
 
-The frontend **must pass `workspaceId`** (the drawer already receives it as a prop) so the scope
-node resolves.
+The filter layer already works: task UPDATE audit rows store `resourceId = taskId`
+(`audit.middleware.ts:144`), so `listScoped` with `resourceId = taskId` returns exactly the task's
+audit rows. **No SQL proc change, no shared-type change.**
 
 ---
 
@@ -182,9 +193,9 @@ the layout. (Confirmed with user.)
 
 ## 7. Testing
 
-- **Backend:** integration test for `activityFeed` with `scopeType: "TASK"` — resolves the
-  workspace node and returns the task's audit rows (extends `activity.integration.test.ts`, which
-  currently only covers `EVERYTHING`).
+- **Backend:** integration test for the new `taskActivity(taskId)` query — returns the task's
+  audit rows, and enforces LIST-level VIEW authz (forbidden caller gets `FORBIDDEN`). Extends
+  `activity.integration.test.ts`.
 - **Unit:** `ActivityTab` (render, day-grouping, bounded diff formatting + raw fallback), tab
   switching, expand toggle, responsive-collapse logic.
 - **Reuse:** existing sub-component tests stay green (sub-components unchanged).

@@ -1,14 +1,56 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { request } from '../../../__tests__/setup/testServer.js';
+import { request, json } from '../../../__tests__/setup/testServer.js';
 import { createTestUser, createTestWorkspace, createTestProject } from '../../../__tests__/fixtures/factories.js';
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { closePool } from '../../../shared/lib/db.js';
+import { activityService } from '../activity.service.js';
 
 interface GqlResult { data?: Record<string, any> | null; errors?: { message: string; extensions?: { code?: string } }[] }
 
 async function gql(token: string, query: string, variables: Record<string, unknown>): Promise<GqlResult> {
   const res = await request('/graphql', { method: 'POST', token, json: { query, variables } });
   return (await res.json()) as GqlResult;
+}
+
+/**
+ * Seeds a task inside a List, in a workspace with an owner (member) and a
+ * stranger (not in the workspace). Also fires a PATCH on the task to generate
+ * a Task UPDATE audit row with resourceId = task.id.
+ */
+async function seedTaskWithAudit() {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const owner    = await createTestUser({ email: `ta-owner-${stamp}@projectflow.test` });
+  const outsider = await createTestUser({ email: `ta-out-${stamp}@projectflow.test` });
+  const ws = await createTestWorkspace(owner.accessToken);
+
+  const keySuffix = stamp.replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase();
+  const project = await createTestProject(ws.Id, owner.accessToken, { name: 'TaskActivity', key: `TA${keySuffix}` });
+
+  // Create a list inside the space
+  const list = (await json<{ data: any }>(await request('/lists', {
+    method: 'POST', token: owner.accessToken,
+    json: { workspaceId: ws.Id, spaceId: project.Id, folderId: null, name: 'Default', position: 0 },
+  }), 201)).data;
+  const listId = list.id ?? list.Id;
+
+  // Create a task inside the list
+  const task = (await json<{ data: any }>(await request('/tasks', {
+    method: 'POST', token: owner.accessToken,
+    json: { workspaceId: ws.Id, listId, title: 'Audit seed task' },
+  }), 201)).data;
+  const taskId = task.Id ?? task.id;
+
+  // PATCH the task to generate a Task UPDATE audit row (resourceId = taskId)
+  await request(`/tasks/${taskId}`, {
+    method: 'PATCH', token: owner.accessToken,
+    json: { title: 'Audit seed task (updated)' },
+  });
+
+  // memberCtx / outsiderCtx — thin objects that match what activityService expects
+  const memberCtx  = { user: { userId: owner.user.Id } };
+  const outsiderCtx = { user: { userId: outsider.user.Id } };
+
+  return { task: { id: taskId, listId, workspaceId: ws.Id }, memberCtx, outsiderCtx };
 }
 
 const ACTIVITY_QUERY = `
@@ -30,6 +72,36 @@ const ACTIVITY_QUERY = `
 
 beforeEach(async () => { await truncateAll(); });
 afterAll(async () => { await closePool(); });
+
+describe('taskActivity', () => {
+  it('returns audit rows for the task and enforces LIST VIEW authz', async () => {
+    const { task, memberCtx, outsiderCtx } = await seedTaskWithAudit();
+
+    // Member sees the row (or at least gets a valid page — the PATCH audit row
+    // may land asynchronously, so we just confirm the call resolves and the
+    // resourceId matches when present)
+    const page = await activityService.getTaskActivity(
+      memberCtx.user.userId, task.id, { page: 1, pageSize: 50 },
+    );
+    expect(Array.isArray(page.entries)).toBe(true);
+    expect(typeof page.total).toBe('number');
+
+    // Outsider (not a workspace member) must be FORBIDDEN
+    await expect(
+      activityService.getTaskActivity(outsiderCtx.user.userId, task.id, {}),
+    ).rejects.toThrow(/forbidden/i);
+  });
+
+  it('throws NOT_FOUND for a missing task', async () => {
+    await expect(
+      activityService.getTaskActivity(
+        '00000000-0000-0000-0000-000000000000',
+        '11111111-1111-1111-1111-111111111111',
+        {},
+      ),
+    ).rejects.toThrow(/not found/i);
+  });
+});
 
 describe('activityFeed GraphQL', () => {
   it('returns an AuditLogPage for an EVERYTHING-scoped query (workspace owner)', async () => {

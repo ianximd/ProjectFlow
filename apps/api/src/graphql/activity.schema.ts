@@ -134,5 +134,22 @@ export function registerActivityGraphql(): void {
         );
       },
     }),
+
+    taskActivity: t.field({
+      type:     AuditLogPageType,
+      nullable: false,
+      args: {
+        taskId:   t.arg.string({ required: true }),
+        page:     t.arg.int({ required: false }),
+        pageSize: t.arg.int({ required: false }),
+      },
+      resolve: async (_root, args, ctx) => {
+        requireUser(ctx);
+        return activityService.getTaskActivity(ctx.user.userId, args.taskId, {
+          page:     args.page     ?? undefined,
+          pageSize: args.pageSize ?? undefined,
+        });
+      },
+    }),
   }));
 }

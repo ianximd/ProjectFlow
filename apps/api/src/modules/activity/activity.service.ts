@@ -11,6 +11,7 @@ import { CustomFieldRepository } from '../customfields/customfield.repository.js
 import { accessService } from '../access/access.service.js';
 import { activityRepository } from './activity.repository.js';
 import { buildAuditFilters } from './activity-scope.js';
+import { TaskRepository } from '../tasks/task.repository.js';
 import type { ActivityFilters, AuditLogEntry, AuditLogPage } from '@projectflow/types';
 import type { HierarchyNodeType } from '@projectflow/types';
 
@@ -32,7 +33,8 @@ const HIERARCHY_RESOURCE: Record<string, HierarchyNodeType> = {
   // containing LIST; the list-level check is sufficient for v1.
 };
 
-const _cfRepo = new CustomFieldRepository();
+const _cfRepo    = new CustomFieldRepository();
+const _taskRepo  = new TaskRepository();
 
 export class ActivityService {
   /**
@@ -105,6 +107,39 @@ export class ActivityService {
       page:     page.page,
       pageSize: page.pageSize,
     };
+  }
+
+  /**
+   * Activity feed for a single task. Visibility derives from the containing
+   * LIST (same rule as HIERARCHY_RESOURCE). Reuses listScoped with a
+   * resourceId=taskId filter — task UPDATE audit rows carry resourceId=taskId.
+   */
+  async getTaskActivity(
+    userId:   string,
+    taskId:   string,
+    opts:     { page?: number; pageSize?: number } = {},
+  ): Promise<AuditLogPage> {
+    const task = await _taskRepo.getById(taskId);
+    if (!task) {
+      throw new GraphQLError('Task not found', { extensions: { code: 'NOT_FOUND' } });
+    }
+    const listId = (task as { ListId?: string; listId?: string }).ListId
+                 ?? (task as { listId?: string }).listId;
+    const workspaceId = (task as { WorkspaceId?: string; workspaceId?: string }).WorkspaceId
+                 ?? (task as { workspaceId?: string }).workspaceId;
+    if (!listId || !workspaceId) {
+      throw new GraphQLError('Task not found', { extensions: { code: 'NOT_FOUND' } });
+    }
+    const allowed = await accessService.can(userId, 'LIST', listId, 'VIEW');
+    if (!allowed) {
+      throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } });
+    }
+    return activityRepository.listScoped({
+      workspaceId,
+      resourceId: taskId,
+      page:       opts.page && opts.page >= 1 ? opts.page : 1,
+      pageSize:   opts.pageSize && opts.pageSize >= 1 ? Math.min(opts.pageSize, 200) : 50,
+    });
   }
 }
 

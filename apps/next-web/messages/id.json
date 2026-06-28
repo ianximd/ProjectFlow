@@ -829,7 +829,8 @@
     "commentsSection": "Komentar",
     "hierarchyBreadcrumb": "Navigasi hierarki",
     "recurrenceSection": "Pengulangan",
-    "recurringBadge": "Tugas berulang"
+    "recurringBadge": "Tugas berulang",
+    "tabs": { "details": "Detail", "comments": "Komentar", "files": "Berkas", "activity": "Aktivitas" }
   },
   "Comments": {
     "loading": "Memuat komentar…",

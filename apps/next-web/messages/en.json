@@ -829,7 +829,8 @@
     "commentsSection": "Comments",
     "hierarchyBreadcrumb": "Hierarchy breadcrumb",
     "recurrenceSection": "Recurrence",
-    "recurringBadge": "Recurring task"
+    "recurringBadge": "Recurring task",
+    "tabs": { "details": "Details", "comments": "Comments", "files": "Files", "activity": "Activity" }
   },
   "Comments": {
     "loading": "Loading comments…",

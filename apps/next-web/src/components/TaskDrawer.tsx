@@ -31,6 +31,7 @@ import { TagPicker } from './TagPicker';
 import { WatcherControl } from './WatcherControl';
 import { DependenciesSection } from './tasks/dependencies-section';
 import { RecurrenceEditor } from './tasks/recurrence-editor';
+import { ActivityTab } from './task-drawer/ActivityTab';
 import { SaveAsTemplateModal } from './templates/SaveAsTemplateModal';
 import { ShareModal } from './sharing/ShareModal';
 import { notifyActionError } from '@/lib/apiErrorToast';
@@ -107,6 +108,10 @@ const PRIORITY_OPTIONS = ['HIGHEST', 'HIGH', 'MEDIUM', 'LOW', 'LOWEST'] as const
 const DEFAULT_STATUS_OPTIONS = ['Ideas', 'To Do', 'In Progress', 'Testing', 'Done'] as const;
 
 type Blocker = { taskId: string; title: string; status: string };
+
+type DrawerTab = 'details' | 'comments' | 'files' | 'activity';
+
+const TAB_ORDER = ['details', 'comments', 'files', 'activity'] as const;
 
 // <input type="date"> expects "YYYY-MM-DD". Used for both Start and Due — the
 // drawer is day-granular end-to-end now.
@@ -200,6 +205,12 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   // Owned here so the badge and the RecurrenceEditor stay in sync; the editor
   // reports active-state changes (load / save / clear) up via onActiveChange.
   const [recurrenceActive, setRecurrenceActive] = useState(false);
+
+  // Tabbed two-column layout: which main-column tab is active, and whether the
+  // drawer is expanded to near-full-screen. Both are pure view state — they
+  // don't touch any of the task's persisted fields.
+  const [activeTab, setActiveTab] = useState<DrawerTab>('details');
+  const [expanded, setExpanded] = useState(false);
 
   // Members list is fetched lazily — only when the picker opens — so opening a
   // drawer for a task on a busy workspace doesn't fire an extra round-trip the
@@ -444,68 +455,730 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
   const startDate   = task.StartDate ?? task.startDate;
   const dueDate     = task.DueDate   ?? task.dueDate;
 
+  // ── Details tab ─────────────────────────────────────────────────────────
+  // Description, dependencies, recurrence, custom fields, pull requests, and
+  // the time-tracking work log. Relocated verbatim from the old single body —
+  // logic unchanged; inline hex swapped for theme tokens.
+  const renderDetailsTab = () => (
+    <>
+      {/* Description: markdown-rendered by default, click to edit. Empty
+          state shows an "Add description" hint so the section is always
+          actionable. Cmd/Ctrl+Enter commits, Escape cancels. */}
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('descriptionSection')}</p>
+        {editingDescription ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <textarea
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setDraftDescription(descriptionValue);
+                  setEditingDescription(false);
+                } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                  e.preventDefault();
+                  const next = draftDescription;
+                  setDescriptionValue(next);
+                  setEditingDescription(false);
+                  doUpdateField({ description: next.length === 0 ? null : next });
+                }
+              }}
+              autoFocus
+              rows={Math.min(20, Math.max(6, draftDescription.split('\n').length + 1))}
+              placeholder={t('descriptionPlaceholder')}
+              disabled={savingField}
+              style={{
+                background:   'var(--secondary)',
+                border:       '1px solid var(--border)',
+                borderRadius: 6,
+                color:        'var(--foreground)',
+                padding:      '10px 12px',
+                fontSize:     14,
+                lineHeight:   1.55,
+                fontFamily:   'inherit',
+                resize:       'vertical',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = draftDescription;
+                  setDescriptionValue(next);
+                  setEditingDescription(false);
+                  doUpdateField({ description: next.length === 0 ? null : next });
+                }}
+                disabled={savingField}
+                style={{
+                  background:   'var(--primary)',
+                  color:        'var(--primary-foreground)',
+                  border:       'none',
+                  borderRadius: 6,
+                  padding:      '6px 14px',
+                  fontSize:     13,
+                  fontWeight:   500,
+                  cursor:       savingField ? 'progress' : 'pointer',
+                }}
+              >
+                {savingField ? t('saving') : t('save')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDraftDescription(descriptionValue);
+                  setEditingDescription(false);
+                }}
+                style={{
+                  background:   'transparent',
+                  color:        'var(--muted-foreground)',
+                  border:       '1px solid var(--border)',
+                  borderRadius: 6,
+                  padding:      '6px 14px',
+                  fontSize:     13,
+                  cursor:       'pointer',
+                }}
+              >
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setDraftDescription(descriptionValue);
+              setEditingDescription(true);
+            }}
+            aria-label={t('descriptionSection')}
+            style={{
+              background: 'transparent',
+              border:     '1px dashed transparent',
+              borderRadius: 6,
+              padding:    '8px 10px',
+              margin:     '-8px -10px',
+              textAlign:  'left',
+              cursor:     'text',
+              color:      'inherit',
+              width:      '100%',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
+          >
+            {descriptionValue.trim().length > 0 ? (
+              <div className={`markdown-body ${styles.description}`}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    // Match GuideViewer's typography so descriptions feel
+                    // like real markdown, not free text.
+                    p:  (p) => <p style={{ margin: '0 0 0.6em' }} {...p} />,
+                    ul: (p) => <ul style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
+                    ol: (p) => <ol style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
+                    a:  ({ href, ...rest }) => (
+                      <a
+                        href={href}
+                        target={href?.startsWith('http') ? '_blank' : undefined}
+                        rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
+                        style={{ color: 'var(--primary)', textDecoration: 'underline' }}
+                        onClick={(e) => e.stopPropagation()}
+                        {...rest}
+                      />
+                    ),
+                    code: ({ children, ...rest }) => (
+                      <code
+                        style={{
+                          background:   'var(--secondary)',
+                          borderRadius: 4,
+                          padding:      '1px 6px',
+                          fontSize:     '0.9em',
+                          fontFamily:   'ui-monospace, SFMono-Regular, Menlo, monospace',
+                        }}
+                        {...rest}
+                      >
+                        {children}
+                      </code>
+                    ),
+                  }}
+                >
+                  {descriptionValue}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <span style={{ color: 'var(--muted-foreground)', fontSize: 13, fontStyle: 'italic' }}>
+                {t('addDescriptionHint')}
+              </span>
+            )}
+          </button>
+        )}
+        {fieldError && (
+          <p style={{ color: 'var(--destructive)', fontSize: 12, margin: 0 }}>
+            {t('failedUpdateField')}
+          </p>
+        )}
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('dependenciesSection')}</p>
+        <DependenciesSection taskId={taskId} workspaceId={workspaceId} />
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('recurrenceSection')}</p>
+        <RecurrenceEditor taskId={taskId} onActiveChange={setRecurrenceActive} />
+      </div>
+
+      {effectiveFields.length > 0 && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('customFieldsSection')}</p>
+          {effectiveFields.map((ef) => (
+            <div
+              key={ef.field.id}
+              style={{
+                display:    'flex',
+                // relationship fields can grow tall (chip list + picker), so
+                // top-align the label rather than centring as the scalar cells do.
+                alignItems: ef.field.type === 'relationship' ? 'flex-start' : 'center',
+                gap:        12,
+                marginBottom: 8,
+              }}
+            >
+              <label style={{ minWidth: 120, fontSize: 13, color: 'var(--muted-foreground)', paddingTop: ef.field.type === 'relationship' ? 6 : 0 }}>
+                {ef.field.name}
+              </label>
+              <div style={{ flex: 1 }}>
+                {ef.field.type === 'relationship' ? (
+                  <RelationshipField taskId={taskId} fieldId={ef.field.id} workspaceId={workspaceId} />
+                ) : ef.field.type === 'rollup' ? (
+                  <RollupValue value={ef.value} />
+                ) : (
+                  <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('pullRequestsSection')}</p>
+        <PullRequestsSection taskId={taskId} />
+      </div>
+
+      {/* Time-tracking work log lives in the Details tab. The app-gate also
+          wraps the sidebar time summary (TaskEstimateBar) — both are gated on
+          the same time_tracking toggle. */}
+      {timeTrackingOn && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
+          <WorkLogSection taskId={taskId} currentUserId={currentUserId} spaceId={spaceId} />
+        </div>
+      )}
+    </>
+  );
+
+  // ── Sidebar ─────────────────────────────────────────────────────────────
+  // Status, priority, type+milestone, story-points (read-only), assignees,
+  // schedule, tags, watchers, and the time summary. Relocated verbatim from
+  // the old body; inline hex swapped for theme tokens.
+  const renderSidebar = () => (
+    <>
+      <div className={styles.meta}>
+        <span className={styles.metaBadge}>{type}</span>
+        <select
+          aria-label={t('statusLabel')}
+          value={statusValue}
+          onChange={(e) => {
+            const next = e.target.value;
+            setStatusValue(next); // optimistic; rolled back on failure
+            doTransition(next);
+          }}
+          disabled={savingStatus}
+          style={{
+            background:    'var(--secondary)',
+            border:        '1px solid var(--border)',
+            borderRadius:  6,
+            color:         'var(--foreground)',
+            padding:       '2px 8px',
+            fontSize:      12,
+            fontWeight:    600,
+            letterSpacing: '0.04em',
+            cursor:        savingStatus ? 'progress' : 'pointer',
+          }}
+        >
+          {/* Prefer the task's effective workflow statuses; fall back to the
+              default-template list when none loaded (no workflow / fetch
+              failed). Always include the current status so a value outside
+              the set still renders and round-trips. */}
+          {Array.from(new Set([
+            statusValue,
+            ...(statusOptions.length > 0 ? statusOptions : DEFAULT_STATUS_OPTIONS),
+          ].filter(Boolean))).map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          aria-label={t('priorityLabel')}
+          value={priorityValue}
+          onChange={(e) => {
+            setPriorityValue(e.target.value);
+            doUpdatePriority(e.target.value);
+          }}
+          disabled={savingPriority}
+          style={{
+            background:    'var(--secondary)',
+            border:        '1px solid var(--border)',
+            borderRadius:  6,
+            color:         PRIORITY_COLOR[priorityValue] ?? 'var(--foreground)',
+            padding:       '2px 8px',
+            fontSize:      12,
+            fontWeight:    600,
+            letterSpacing: '0.04em',
+            cursor:        savingPriority ? 'progress' : 'pointer',
+          }}
+        >
+          {PRIORITY_OPTIONS.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+        {storyPoints != null && (
+          <span className={styles.metaBadge}>{t('storyPoints', { points: storyPoints })}</span>
+        )}
+        {priorityError && (
+          <span style={{ color: 'var(--destructive)', fontSize: 11 }}>
+            {t('failedUpdatePriority')}
+          </span>
+        )}
+      </div>
+
+      {workspaceId && taskTypes.length > 0 && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('typeSection')}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <TaskTypeSelector taskId={taskId} types={taskTypes} value={taskTypeId} />
+            </div>
+            {selectedType?.isMilestone && (
+              <span aria-label={t('milestone')} title={t('milestone')} style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Editable schedule — both Start and Due are day-granular. The
+          server's DueDate column is DATETIME2, but the API has always
+          accepted day-only strings (Gantt sends them on drag). Single Save
+          hits PATCH /roadmap/tasks/:id/dates so the bar on the Gantt and
+          the deadline chip on the board both refresh from one request. */}
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('scheduleSection')}</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <ScheduleRow
+            label={t('startDate')}
+            kind="date"
+            value={startInput}
+            onChange={setStartInput}
+            hasValue={!!startDate}
+            clearLabel={t('clearDate')}
+            onClear={() => {
+              setStartInput('');
+              doUpdateSchedule({
+                startIso: null,
+                dueIso:   dueInput || null,
+              });
+            }}
+            disabled={savingSchedule}
+          />
+          <ScheduleRow
+            label={t('dueDate')}
+            kind="date"
+            value={dueInput}
+            onChange={setDueInput}
+            hasValue={!!dueDate}
+            clearLabel={t('clearDate')}
+            onClear={() => {
+              setDueInput('');
+              doUpdateSchedule({
+                startIso: startInput || null,
+                dueIso:   null,
+              });
+            }}
+            disabled={savingSchedule}
+          />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => doUpdateSchedule({
+                startIso: startInput || null,
+                dueIso:   dueInput || null,
+              })}
+              disabled={
+                savingSchedule
+                || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate))
+              }
+              style={{
+                background:   'var(--primary)',
+                color:        'var(--primary-foreground)',
+                border:       'none',
+                borderRadius: 6,
+                padding:      '6px 14px',
+                fontSize:     13,
+                fontWeight:   500,
+                cursor:       (savingSchedule
+                               || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
+                              ? 'default' : 'pointer',
+                opacity:      (savingSchedule
+                               || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
+                              ? 0.5 : 1,
+              }}
+            >
+              {savingSchedule ? t('savingSchedule') : t('saveSchedule')}
+            </button>
+          </div>
+        </div>
+        {scheduleError && (
+          <p style={{ color: 'var(--destructive)', fontSize: 12, margin: 0 }}>
+            {t('failedUpdateSchedule')}
+          </p>
+        )}
+      </div>
+
+      <div className={styles.section}>
+        <p className={styles.sectionTitle}>{t('assigneesSection')}</p>
+        <div
+          ref={pickerRef}
+          style={{
+            display:    'flex',
+            flexWrap:   'wrap',
+            gap:        6,
+            alignItems: 'center',
+            position:   'relative',
+          }}
+        >
+          {localAssignees.map((a) => (
+            <span
+              key={a.UserId}
+              title={a.Email}
+              style={{
+                display:      'inline-flex',
+                alignItems:   'center',
+                gap:          6,
+                background:   'var(--secondary)',
+                border:       '1px solid var(--border)',
+                borderRadius: 999,
+                padding:      '2px 8px 2px 2px',
+                fontSize:     12,
+                color:        'var(--foreground)',
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width:           20,
+                  height:          20,
+                  borderRadius:    '50%',
+                  background:      a.AvatarUrl ? 'var(--background)' : 'var(--muted)',
+                  backgroundImage: a.AvatarUrl ? `url(${a.AvatarUrl})` : undefined,
+                  backgroundSize:  'cover',
+                  display:         'inline-flex',
+                  alignItems:      'center',
+                  justifyContent:  'center',
+                  fontSize:        9,
+                  fontWeight:      600,
+                  color:           'var(--foreground)',
+                }}
+              >
+                {!a.AvatarUrl && initialsOf(a.Name || a.Email)}
+              </span>
+              <span>{a.Name || a.Email}</span>
+              <button
+                type="button"
+                aria-label={t('removeAssignee', { name: a.Name || a.Email })}
+                onClick={() => {
+                  const next = localAssignees.filter((x) => x.UserId !== a.UserId);
+                  setLocalAssignees(next);
+                  doSetAssignees(next.map((x) => x.UserId));
+                }}
+                disabled={savingAssignees}
+                style={{
+                  background: 'transparent',
+                  color:      'var(--muted-foreground)',
+                  border:     'none',
+                  cursor:     savingAssignees ? 'progress' : 'pointer',
+                  padding:    '0 2px',
+                  lineHeight: 1,
+                  fontSize:   16,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => setPickerOpen((v) => !v)}
+            disabled={!workspaceId || savingAssignees}
+            style={{
+              background:   'transparent',
+              border:       '1px dashed var(--border)',
+              borderRadius: 999,
+              padding:      '3px 10px',
+              fontSize:     12,
+              color:        'var(--muted-foreground)',
+              cursor:       (!workspaceId || savingAssignees) ? 'default' : 'pointer',
+            }}
+          >
+            {t('assignBtn')}
+          </button>
+
+          {pickerOpen && (
+            <div
+              role="dialog"
+              aria-label={t('pickAssignee')}
+              style={{
+                position:     'absolute',
+                top:          '100%',
+                left:         0,
+                marginTop:    4,
+                width:        300,
+                maxHeight:    300,
+                overflowY:    'auto',
+                background:   'var(--background)',
+                border:       '1px solid var(--border)',
+                borderRadius: 6,
+                zIndex:       10,
+                padding:      6,
+                boxShadow:    '0 6px 18px rgba(0,0,0,0.5)',
+              }}
+            >
+              <input
+                type="text"
+                placeholder={t('searchMembers')}
+                value={pickerSearch}
+                onChange={(e) => setPickerSearch(e.target.value)}
+                autoFocus
+                style={{
+                  width:        '100%',
+                  boxSizing:    'border-box',
+                  marginBottom: 6,
+                  background:   'var(--secondary)',
+                  border:       '1px solid var(--border)',
+                  borderRadius: 4,
+                  color:        'var(--foreground)',
+                  padding:      '4px 8px',
+                  fontSize:     12,
+                }}
+              />
+              {loadingMembers && (
+                <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '4px 6px' }}>
+                  {t('loadingMembers')}
+                </p>
+              )}
+              {membersError && (
+                <p style={{ fontSize: 12, color: 'var(--destructive)', margin: '4px 6px' }}>
+                  {t('failedLoadMembers')}
+                </p>
+              )}
+              {members && (() => {
+                const assignedIds = new Set(localAssignees.map((a) => a.UserId));
+                const q = pickerSearch.trim().toLowerCase();
+                const filtered = members
+                  .filter((m) => !assignedIds.has(m.id))
+                  .filter((m) => {
+                    if (!q) return true;
+                    return (m.name || '').toLowerCase().includes(q)
+                        || (m.email || '').toLowerCase().includes(q);
+                  });
+                if (filtered.length === 0) {
+                  return (
+                    <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '4px 6px' }}>
+                      {q ? t('noMembersMatch') : t('everyoneAssigned')}
+                    </p>
+                  );
+                }
+                return filtered.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      const optimistic: AssigneeRow = {
+                        TaskId:    mutationTaskId,
+                        UserId:    m.id,
+                        Email:     m.email,
+                        Name:      m.name ?? '',
+                        AvatarUrl: m.avatarUrl,
+                      };
+                      const next = [...localAssignees, optimistic];
+                      setLocalAssignees(next);
+                      setPickerOpen(false);
+                      setPickerSearch('');
+                      doSetAssignees(next.map((x) => x.UserId));
+                    }}
+                    style={{
+                      display:    'flex',
+                      alignItems: 'center',
+                      gap:        8,
+                      width:      '100%',
+                      background: 'transparent',
+                      border:     'none',
+                      color:      'var(--foreground)',
+                      padding:    '6px 4px',
+                      borderRadius: 4,
+                      cursor:     'pointer',
+                      textAlign:  'left',
+                      fontSize:   12,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--accent)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width:           22,
+                        height:          22,
+                        borderRadius:    '50%',
+                        background:      m.avatarUrl ? 'var(--secondary)' : 'var(--muted)',
+                        backgroundImage: m.avatarUrl ? `url(${m.avatarUrl})` : undefined,
+                        backgroundSize:  'cover',
+                        display:         'inline-flex',
+                        alignItems:      'center',
+                        justifyContent:  'center',
+                        fontSize:        10,
+                        fontWeight:      600,
+                        color:           'var(--foreground)',
+                      }}
+                    >
+                      {!m.avatarUrl && initialsOf(m.name || m.email)}
+                    </span>
+                    <span style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span>{m.name || m.email}</span>
+                      {m.name && (
+                        <span style={{ color: 'var(--muted-foreground)', fontSize: 10 }}>{m.email}</span>
+                      )}
+                    </span>
+                  </button>
+                ));
+              })()}
+            </div>
+          )}
+        </div>
+        {assigneesError && (
+          <p style={{ color: 'var(--destructive)', fontSize: 12, margin: '6px 0 0 0' }}>
+            {t('failedUpdateAssignees')}
+          </p>
+        )}
+      </div>
+
+      {spaceId && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('tagsSection')}</p>
+          <TagPicker taskId={taskId} spaceId={spaceId} />
+        </div>
+      )}
+
+      {workspaceId && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('watchersSection')}</p>
+          <WatcherControl taskId={taskId} workspaceId={workspaceId} />
+        </div>
+      )}
+
+      {/* Time summary — gated on the same time_tracking app toggle as the
+          Details-tab work log. */}
+      {timeTrackingOn && (
+        <div className={styles.section}>
+          <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
+          <TaskEstimateBar taskId={taskId} />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <div className={styles.drawerOverlay} onClick={onClose} />
-      <div className={styles.drawer} ref={drawerRef} role="dialog" aria-modal="true">
+      <div
+        className={`${styles.drawer}${expanded ? ' ' + styles['drawer--expanded'] : ''}`}
+        ref={drawerRef}
+        role="dialog"
+        aria-modal="true"
+      >
         <div className={styles.header}>
-          <span className={styles.issueKey}>{issueKey ?? taskId.slice(0, 8).toUpperCase()}</span>
-          {recurrenceActive && (
-            <span
-              aria-label={t('recurringBadge')}
-              title={t('recurringBadge')}
-              style={{ fontSize: 14, lineHeight: 1 }}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flexWrap: 'wrap' }}>
+            {breadcrumb && (
+              <nav
+                aria-label={t('hierarchyBreadcrumb')}
+                style={{ display: 'flex', gap: 6, fontSize: 12, color: 'var(--muted-foreground)', flexWrap: 'wrap' }}
+              >
+                <span>{breadcrumb.space}</span>
+                {breadcrumb.folder && (<><span>/</span><span>{breadcrumb.folder}</span></>)}
+                {breadcrumb.list && (<><span>/</span><span>{breadcrumb.list}</span></>)}
+              </nav>
+            )}
+            <span className={styles.issueKey}>{issueKey ?? taskId.slice(0, 8).toUpperCase()}</span>
+            {recurrenceActive && (
+              <span
+                aria-label={t('recurringBadge')}
+                title={t('recurringBadge')}
+                style={{ fontSize: 14, lineHeight: 1 }}
+              >
+                🔁
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <PresenceBar viewers={viewers} currentUserId={currentUserId} />
+            <button
+              type="button"
+              className={styles.closeBtn}
+              onClick={() => setShareOpen(true)}
+              aria-label={tShare('title')}
+              title={tShare('title')}
             >
-              🔁
-            </span>
-          )}
-          <PresenceBar viewers={viewers} currentUserId={currentUserId} />
-          <button
-            type="button"
-            className={styles.closeBtn}
-            onClick={() => setShareOpen(true)}
-            aria-label={tShare('title')}
-            title={tShare('title')}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-              <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={styles.closeBtn}
-            onClick={() => setSaveTemplateOpen(true)}
-            aria-label={tTpl('saveAsTemplate')}
-            title={tTpl('saveAsTemplate')}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-              <path d="M8 4v6h8" />
-            </svg>
-          </button>
-          <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={styles.closeBtn}
+              onClick={() => setSaveTemplateOpen(true)}
+              aria-label={tTpl('saveAsTemplate')}
+              title={tTpl('saveAsTemplate')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+                <path d="M8 4v6h8" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={styles.expandBtn}
+              aria-label={expanded ? 'Collapse' : 'Expand'}
+              aria-pressed={expanded}
+              onClick={() => setExpanded((v) => !v)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 3 21 3 21 9" />
+                <polyline points="9 21 3 21 3 15" />
+                <line x1="21" y1="3" x2="14" y2="10" />
+                <line x1="3" y1="21" x2="10" y2="14" />
+              </svg>
+            </button>
+            <button className={styles.closeBtn} onClick={onClose} aria-label={t('close')}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
         </div>
 
-        <div className={styles.body}>
-          {breadcrumb && (
-            <nav
-              aria-label={t('hierarchyBreadcrumb')}
-              style={{ display: 'flex', gap: 6, fontSize: 12, color: 'var(--muted-foreground, #6b7280)', marginBottom: 8, flexWrap: 'wrap' }}
-            >
-              <span>{breadcrumb.space}</span>
-              {breadcrumb.folder && (<><span>/</span><span>{breadcrumb.folder}</span></>)}
-              {breadcrumb.list && (<><span>/</span><span>{breadcrumb.list}</span></>)}
-            </nav>
-          )}
+        <div className={styles.titleBlock}>
           {/* Click-to-edit title: behaves as an h2 visually but is actually a
               borderless textarea that grows with content. Enter commits and
               re-blurs (Shift+Enter for a newline, but titles are single-line
@@ -537,636 +1210,50 @@ export function TaskDrawer({ task, assignees, workspaceId: workspaceIdProp, onCl
               width:       '100%',
               padding:     0,
               fontFamily:  'inherit',
-              colorScheme: 'dark',
             }}
           />
+        </div>
 
-          <div className={styles.meta}>
-            <span className={styles.metaBadge}>{type}</span>
-            <select
-              aria-label={t('statusLabel')}
-              value={statusValue}
-              onChange={(e) => {
-                const next = e.target.value;
-                setStatusValue(next); // optimistic; rolled back on failure
-                doTransition(next);
-              }}
-              disabled={savingStatus}
-              style={{
-                background:    '#2d3748',
-                border:        '1px solid #4a5568',
-                borderRadius:  6,
-                color:         '#e2e8f0',
-                padding:       '2px 8px',
-                fontSize:      12,
-                fontWeight:    600,
-                letterSpacing: '0.04em',
-                cursor:        savingStatus ? 'progress' : 'pointer',
-                colorScheme:   'dark',
-              }}
-            >
-              {/* Prefer the task's effective workflow statuses; fall back to the
-                  default-template list when none loaded (no workflow / fetch
-                  failed). Always include the current status so a value outside
-                  the set still renders and round-trips. */}
-              {Array.from(new Set([
-                statusValue,
-                ...(statusOptions.length > 0 ? statusOptions : DEFAULT_STATUS_OPTIONS),
-              ].filter(Boolean))).map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-            <select
-              aria-label={t('priorityLabel')}
-              value={priorityValue}
-              onChange={(e) => {
-                setPriorityValue(e.target.value);
-                doUpdatePriority(e.target.value);
-              }}
-              disabled={savingPriority}
-              style={{
-                background:    '#2d3748',
-                border:        '1px solid #4a5568',
-                borderRadius:  6,
-                color:         PRIORITY_COLOR[priorityValue] ?? '#e2e8f0',
-                padding:       '2px 8px',
-                fontSize:      12,
-                fontWeight:    600,
-                letterSpacing: '0.04em',
-                cursor:        savingPriority ? 'progress' : 'pointer',
-                colorScheme:   'dark',
-              }}
-            >
-              {PRIORITY_OPTIONS.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-            {storyPoints != null && (
-              <span className={styles.metaBadge}>{t('storyPoints', { points: storyPoints })}</span>
-            )}
-            {priorityError && (
-              <span style={{ color: '#fc8181', fontSize: 11 }}>
-                {t('failedUpdatePriority')}
-              </span>
-            )}
-          </div>
-
-          {/* Editable schedule — both Start and Due are day-granular. The
-              server's DueDate column is DATETIME2, but the API has always
-              accepted day-only strings (Gantt sends them on drag). Single Save
-              hits PATCH /roadmap/tasks/:id/dates so the bar on the Gantt and
-              the deadline chip on the board both refresh from one request. */}
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('scheduleSection')}</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <ScheduleRow
-                label={t('startDate')}
-                kind="date"
-                value={startInput}
-                onChange={setStartInput}
-                hasValue={!!startDate}
-                clearLabel={t('clearDate')}
-                onClear={() => {
-                  setStartInput('');
-                  doUpdateSchedule({
-                    startIso: null,
-                    dueIso:   dueInput || null,
-                  });
-                }}
-                disabled={savingSchedule}
-              />
-              <ScheduleRow
-                label={t('dueDate')}
-                kind="date"
-                value={dueInput}
-                onChange={setDueInput}
-                hasValue={!!dueDate}
-                clearLabel={t('clearDate')}
-                onClear={() => {
-                  setDueInput('');
-                  doUpdateSchedule({
-                    startIso: startInput || null,
-                    dueIso:   null,
-                  });
-                }}
-                disabled={savingSchedule}
-              />
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className={styles.bodyGrid}>
+          <div className={styles.mainCol}>
+            <div className={styles.tabBar} role="tablist" aria-label="Task sections">
+              {TAB_ORDER.map((tab) => (
                 <button
-                  type="button"
-                  onClick={() => doUpdateSchedule({
-                    startIso: startInput || null,
-                    dueIso:   dueInput || null,
-                  })}
-                  disabled={
-                    savingSchedule
-                    || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate))
-                  }
-                  style={{
-                    background:   '#3182ce',
-                    color:        '#fff',
-                    border:       'none',
-                    borderRadius: 6,
-                    padding:      '6px 14px',
-                    fontSize:     13,
-                    fontWeight:   500,
-                    cursor:       (savingSchedule
-                                   || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
-                                  ? 'default' : 'pointer',
-                    opacity:      (savingSchedule
-                                   || (startInput === toDateInput(startDate) && dueInput === toDateInput(dueDate)))
-                                  ? 0.5 : 1,
-                  }}
-                >
-                  {savingSchedule ? t('savingSchedule') : t('saveSchedule')}
-                </button>
-              </div>
-            </div>
-            {scheduleError && (
-              <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
-                {t('failedUpdateSchedule')}
-              </p>
-            )}
-          </div>
-
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('assigneesSection')}</p>
-            <div
-              ref={pickerRef}
-              style={{
-                display:    'flex',
-                flexWrap:   'wrap',
-                gap:        6,
-                alignItems: 'center',
-                position:   'relative',
-              }}
-            >
-              {localAssignees.map((a) => (
-                <span
-                  key={a.UserId}
-                  title={a.Email}
-                  style={{
-                    display:      'inline-flex',
-                    alignItems:   'center',
-                    gap:          6,
-                    background:   '#2d3748',
-                    border:       '1px solid #4a5568',
-                    borderRadius: 999,
-                    padding:      '2px 8px 2px 2px',
-                    fontSize:     12,
-                    color:        '#e2e8f0',
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width:           20,
-                      height:          20,
-                      borderRadius:    '50%',
-                      background:      a.AvatarUrl ? '#1a202c' : '#4a5568',
-                      backgroundImage: a.AvatarUrl ? `url(${a.AvatarUrl})` : undefined,
-                      backgroundSize:  'cover',
-                      display:         'inline-flex',
-                      alignItems:      'center',
-                      justifyContent:  'center',
-                      fontSize:        9,
-                      fontWeight:      600,
-                      color:           '#e2e8f0',
-                    }}
-                  >
-                    {!a.AvatarUrl && initialsOf(a.Name || a.Email)}
-                  </span>
-                  <span>{a.Name || a.Email}</span>
-                  <button
-                    type="button"
-                    aria-label={t('removeAssignee', { name: a.Name || a.Email })}
-                    onClick={() => {
-                      const next = localAssignees.filter((x) => x.UserId !== a.UserId);
-                      setLocalAssignees(next);
-                      doSetAssignees(next.map((x) => x.UserId));
-                    }}
-                    disabled={savingAssignees}
-                    style={{
-                      background: 'transparent',
-                      color:      '#a0aec0',
-                      border:     'none',
-                      cursor:     savingAssignees ? 'progress' : 'pointer',
-                      padding:    '0 2px',
-                      lineHeight: 1,
-                      fontSize:   16,
-                    }}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => setPickerOpen((v) => !v)}
-                disabled={!workspaceId || savingAssignees}
-                style={{
-                  background:   'transparent',
-                  border:       '1px dashed #4a5568',
-                  borderRadius: 999,
-                  padding:      '3px 10px',
-                  fontSize:     12,
-                  color:        '#a0aec0',
-                  cursor:       (!workspaceId || savingAssignees) ? 'default' : 'pointer',
-                }}
-              >
-                {t('assignBtn')}
-              </button>
-
-              {pickerOpen && (
-                <div
-                  role="dialog"
-                  aria-label={t('pickAssignee')}
-                  style={{
-                    position:     'absolute',
-                    top:          '100%',
-                    left:         0,
-                    marginTop:    4,
-                    width:        300,
-                    maxHeight:    300,
-                    overflowY:    'auto',
-                    background:   '#1a202c',
-                    border:       '1px solid #4a5568',
-                    borderRadius: 6,
-                    zIndex:       10,
-                    padding:      6,
-                    boxShadow:    '0 6px 18px rgba(0,0,0,0.5)',
-                  }}
-                >
-                  <input
-                    type="text"
-                    placeholder={t('searchMembers')}
-                    value={pickerSearch}
-                    onChange={(e) => setPickerSearch(e.target.value)}
-                    autoFocus
-                    style={{
-                      width:        '100%',
-                      boxSizing:    'border-box',
-                      marginBottom: 6,
-                      background:   '#2d3748',
-                      border:       '1px solid #4a5568',
-                      borderRadius: 4,
-                      color:        '#e2e8f0',
-                      padding:      '4px 8px',
-                      fontSize:     12,
-                      colorScheme:  'dark',
-                    }}
-                  />
-                  {loadingMembers && (
-                    <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
-                      {t('loadingMembers')}
-                    </p>
-                  )}
-                  {membersError && (
-                    <p style={{ fontSize: 12, color: '#fc8181', margin: '4px 6px' }}>
-                      {t('failedLoadMembers')}
-                    </p>
-                  )}
-                  {members && (() => {
-                    const assignedIds = new Set(localAssignees.map((a) => a.UserId));
-                    const q = pickerSearch.trim().toLowerCase();
-                    const filtered = members
-                      .filter((m) => !assignedIds.has(m.id))
-                      .filter((m) => {
-                        if (!q) return true;
-                        return (m.name || '').toLowerCase().includes(q)
-                            || (m.email || '').toLowerCase().includes(q);
-                      });
-                    if (filtered.length === 0) {
-                      return (
-                        <p style={{ fontSize: 12, color: '#a0aec0', margin: '4px 6px' }}>
-                          {q ? t('noMembersMatch') : t('everyoneAssigned')}
-                        </p>
-                      );
-                    }
-                    return filtered.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          const optimistic: AssigneeRow = {
-                            TaskId:    mutationTaskId,
-                            UserId:    m.id,
-                            Email:     m.email,
-                            Name:      m.name ?? '',
-                            AvatarUrl: m.avatarUrl,
-                          };
-                          const next = [...localAssignees, optimistic];
-                          setLocalAssignees(next);
-                          setPickerOpen(false);
-                          setPickerSearch('');
-                          doSetAssignees(next.map((x) => x.UserId));
-                        }}
-                        style={{
-                          display:    'flex',
-                          alignItems: 'center',
-                          gap:        8,
-                          width:      '100%',
-                          background: 'transparent',
-                          border:     'none',
-                          color:      '#e2e8f0',
-                          padding:    '6px 4px',
-                          borderRadius: 4,
-                          cursor:     'pointer',
-                          textAlign:  'left',
-                          fontSize:   12,
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#2d3748')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                      >
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            width:           22,
-                            height:          22,
-                            borderRadius:    '50%',
-                            background:      m.avatarUrl ? '#2d3748' : '#4a5568',
-                            backgroundImage: m.avatarUrl ? `url(${m.avatarUrl})` : undefined,
-                            backgroundSize:  'cover',
-                            display:         'inline-flex',
-                            alignItems:      'center',
-                            justifyContent:  'center',
-                            fontSize:        10,
-                            fontWeight:      600,
-                            color:           '#e2e8f0',
-                          }}
-                        >
-                          {!m.avatarUrl && initialsOf(m.name || m.email)}
-                        </span>
-                        <span style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span>{m.name || m.email}</span>
-                          {m.name && (
-                            <span style={{ color: '#718096', fontSize: 10 }}>{m.email}</span>
-                          )}
-                        </span>
-                      </button>
-                    ));
-                  })()}
-                </div>
-              )}
-            </div>
-            {assigneesError && (
-              <p style={{ color: '#fc8181', fontSize: 12, margin: '6px 0 0 0' }}>
-                {t('failedUpdateAssignees')}
-              </p>
-            )}
-          </div>
-
-          {/* Description: markdown-rendered by default, click to edit. Empty
-              state shows an "Add description" hint so the section is always
-              actionable. Cmd/Ctrl+Enter commits, Escape cancels. */}
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('descriptionSection')}</p>
-            {editingDescription ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <textarea
-                  value={draftDescription}
-                  onChange={(e) => setDraftDescription(e.target.value)}
+                  key={tab}
+                  role="tab"
+                  id={`task-tab-${tab}`}
+                  aria-selected={activeTab === tab}
+                  aria-controls={`task-panel-${tab}`}
+                  tabIndex={activeTab === tab ? 0 : -1}
+                  className={`${styles.tab}${activeTab === tab ? ' ' + styles['tab--active'] : ''}`}
+                  onClick={() => setActiveTab(tab)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      setDraftDescription(descriptionValue);
-                      setEditingDescription(false);
-                    } else if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                      e.preventDefault();
-                      const next = draftDescription;
-                      setDescriptionValue(next);
-                      setEditingDescription(false);
-                      doUpdateField({ description: next.length === 0 ? null : next });
-                    }
-                  }}
-                  autoFocus
-                  rows={Math.min(20, Math.max(6, draftDescription.split('\n').length + 1))}
-                  placeholder={t('descriptionPlaceholder')}
-                  disabled={savingField}
-                  style={{
-                    background:   '#2d3748',
-                    border:       '1px solid #4a5568',
-                    borderRadius: 6,
-                    color:        '#e2e8f0',
-                    padding:      '10px 12px',
-                    fontSize:     14,
-                    lineHeight:   1.55,
-                    fontFamily:   'inherit',
-                    colorScheme:  'dark',
-                    resize:       'vertical',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = draftDescription;
-                      setDescriptionValue(next);
-                      setEditingDescription(false);
-                      doUpdateField({ description: next.length === 0 ? null : next });
-                    }}
-                    disabled={savingField}
-                    style={{
-                      background:   '#3182ce',
-                      color:        '#fff',
-                      border:       'none',
-                      borderRadius: 6,
-                      padding:      '6px 14px',
-                      fontSize:     13,
-                      fontWeight:   500,
-                      cursor:       savingField ? 'progress' : 'pointer',
-                    }}
-                  >
-                    {savingField ? t('saving') : t('save')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraftDescription(descriptionValue);
-                      setEditingDescription(false);
-                    }}
-                    style={{
-                      background:   'transparent',
-                      color:        '#a0aec0',
-                      border:       '1px solid #4a5568',
-                      borderRadius: 6,
-                      padding:      '6px 14px',
-                      fontSize:     13,
-                      cursor:       'pointer',
-                    }}
-                  >
-                    {t('cancel')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setDraftDescription(descriptionValue);
-                  setEditingDescription(true);
-                }}
-                aria-label={t('descriptionSection')}
-                style={{
-                  background: 'transparent',
-                  border:     '1px dashed transparent',
-                  borderRadius: 6,
-                  padding:    '8px 10px',
-                  margin:     '-8px -10px',
-                  textAlign:  'left',
-                  cursor:     'text',
-                  color:      'inherit',
-                  width:      '100%',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#4a5568')}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'transparent')}
-              >
-                {descriptionValue.trim().length > 0 ? (
-                  <div className={`markdown-body ${styles.description}`}>
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // Match GuideViewer's typography so descriptions feel
-                        // like real markdown, not free text.
-                        p:  (p) => <p style={{ margin: '0 0 0.6em' }} {...p} />,
-                        ul: (p) => <ul style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
-                        ol: (p) => <ol style={{ paddingLeft: 20, margin: '0 0 0.6em' }} {...p} />,
-                        a:  ({ href, ...rest }) => (
-                          <a
-                            href={href}
-                            target={href?.startsWith('http') ? '_blank' : undefined}
-                            rel={href?.startsWith('http') ? 'noopener noreferrer' : undefined}
-                            style={{ color: '#63b3ed', textDecoration: 'underline' }}
-                            onClick={(e) => e.stopPropagation()}
-                            {...rest}
-                          />
-                        ),
-                        code: ({ children, ...rest }) => (
-                          <code
-                            style={{
-                              background:   '#2d3748',
-                              borderRadius: 4,
-                              padding:      '1px 6px',
-                              fontSize:     '0.9em',
-                              fontFamily:   'ui-monospace, SFMono-Regular, Menlo, monospace',
-                            }}
-                            {...rest}
-                          >
-                            {children}
-                          </code>
-                        ),
-                      }}
-                    >
-                      {descriptionValue}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <span style={{ color: '#718096', fontSize: 13, fontStyle: 'italic' }}>
-                    {t('addDescriptionHint')}
-                  </span>
-                )}
-              </button>
-            )}
-            {fieldError && (
-              <p style={{ color: '#fc8181', fontSize: 12, margin: 0 }}>
-                {t('failedUpdateField')}
-              </p>
-            )}
-          </div>
-
-
-          {workspaceId && taskTypes.length > 0 && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>{t('typeSection')}</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <TaskTypeSelector taskId={taskId} types={taskTypes} value={taskTypeId} />
-                </div>
-                {selectedType?.isMilestone && (
-                  <span aria-label={t('milestone')} title={t('milestone')} style={{ color: '#d69e2e', fontSize: 16 }}>◆</span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {spaceId && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>{t('tagsSection')}</p>
-              <TagPicker taskId={taskId} spaceId={spaceId} />
-            </div>
-          )}
-
-          {workspaceId && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>{t('watchersSection')}</p>
-              <WatcherControl taskId={taskId} workspaceId={workspaceId} />
-            </div>
-          )}
-
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('dependenciesSection')}</p>
-            <DependenciesSection taskId={taskId} workspaceId={workspaceId} />
-          </div>
-
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('recurrenceSection')}</p>
-            <RecurrenceEditor taskId={taskId} onActiveChange={setRecurrenceActive} />
-          </div>
-
-          {effectiveFields.length > 0 && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>{t('customFieldsSection')}</p>
-              {effectiveFields.map((ef) => (
-                <div
-                  key={ef.field.id}
-                  style={{
-                    display:    'flex',
-                    // relationship fields can grow tall (chip list + picker), so
-                    // top-align the label rather than centring as the scalar cells do.
-                    alignItems: ef.field.type === 'relationship' ? 'flex-start' : 'center',
-                    gap:        12,
-                    marginBottom: 8,
+                    const i = TAB_ORDER.indexOf(activeTab);
+                    if (e.key === 'ArrowRight') setActiveTab(TAB_ORDER[(i + 1) % TAB_ORDER.length]!);
+                    if (e.key === 'ArrowLeft')  setActiveTab(TAB_ORDER[(i + TAB_ORDER.length - 1) % TAB_ORDER.length]!);
                   }}
                 >
-                  <label style={{ minWidth: 120, fontSize: 13, color: '#718096', paddingTop: ef.field.type === 'relationship' ? 6 : 0 }}>
-                    {ef.field.name}
-                  </label>
-                  <div style={{ flex: 1 }}>
-                    {ef.field.type === 'relationship' ? (
-                      <RelationshipField taskId={taskId} fieldId={ef.field.id} workspaceId={workspaceId} />
-                    ) : ef.field.type === 'rollup' ? (
-                      <RollupValue value={ef.value} />
-                    ) : (
-                      <CustomFieldCell taskId={taskId} field={ef.field} value={ef.value} />
-                    )}
-                  </div>
-                </div>
+                  {t(`tabs.${tab}`)}
+                </button>
               ))}
             </div>
-          )}
 
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('attachmentsSection')}</p>
-            <AttachmentSection taskId={taskId} />
-          </div>
-
-          {timeTrackingOn && (
-            <div className={styles.section}>
-              <p className={styles.sectionTitle}>{t('timeTrackingSection')}</p>
-              <TaskEstimateBar taskId={taskId} />
-              <WorkLogSection taskId={taskId} currentUserId={currentUserId} spaceId={spaceId} />
+            <div
+              className={styles.tabPanel}
+              role="tabpanel"
+              id={`task-panel-${activeTab}`}
+              aria-labelledby={`task-tab-${activeTab}`}
+            >
+              {activeTab === 'details'  && renderDetailsTab()}
+              {activeTab === 'comments' && (
+                <CommentSection taskId={taskId} currentUserId={currentUserId} workspaceId={workspaceId} onTyping={setTyping} />
+              )}
+              {activeTab === 'files'    && <AttachmentSection taskId={taskId} />}
+              {activeTab === 'activity' && taskId && <ActivityTab taskId={taskId} />}
             </div>
-          )}
-
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('pullRequestsSection')}</p>
-            <PullRequestsSection taskId={taskId} />
           </div>
 
-          <div className={styles.section}>
-            <p className={styles.sectionTitle}>{t('commentsSection')}</p>
-            <CommentSection taskId={taskId} currentUserId={currentUserId} workspaceId={workspaceId} onTyping={setTyping} />
-          </div>
+          <aside className={styles.sidebar}>{renderSidebar()}</aside>
         </div>
       </div>
       {blockers && (
@@ -1214,18 +1301,18 @@ function BlockerDialog({ blockers, onClose }: { blockers: Blocker[]; onClose: ()
         onClick={(e) => e.stopPropagation()}
         style={{
           width: 'min(440px, 92vw)',
-          background: '#1a202c',
-          border: '1px solid #4a5568',
+          background: 'var(--background)',
+          border: '1px solid var(--border)',
           borderRadius: 8,
           padding: 20,
           boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-          color: '#e2e8f0',
+          color: 'var(--foreground)',
         }}
       >
-        <h2 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: '#fc8181' }}>
+        <h2 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700, color: 'var(--destructive)' }}>
           {t('blockedTitle')}
         </h2>
-        <p style={{ margin: '0 0 12px', fontSize: 13, color: '#cbd5e0' }}>
+        <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--muted-foreground)' }}>
           {t('blockedBody', { count: blockers.length })}
         </p>
         <ul style={{ margin: '0 0 16px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1234,14 +1321,14 @@ function BlockerDialog({ blockers, onClose }: { blockers: Blocker[]; onClose: ()
               key={b.taskId}
               style={{
                 display: 'flex', alignItems: 'center', gap: 8,
-                background: '#2d3748', border: '1px solid #4a5568',
+                background: 'var(--secondary)', border: '1px solid var(--border)',
                 borderRadius: 6, padding: '6px 10px', fontSize: 13,
               }}
             >
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {b.title}
               </span>
-              {b.status && <span style={{ fontSize: 11, color: '#a0aec0' }}>{b.status}</span>}
+              {b.status && <span style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{b.status}</span>}
             </li>
           ))}
         </ul>
@@ -1251,7 +1338,7 @@ function BlockerDialog({ blockers, onClose }: { blockers: Blocker[]; onClose: ()
             onClick={onClose}
             autoFocus
             style={{
-              background: '#3182ce', color: '#fff', border: 'none',
+              background: 'var(--primary)', color: 'var(--primary-foreground)', border: 'none',
               borderRadius: 6, padding: '6px 16px', fontSize: 13,
               fontWeight: 500, cursor: 'pointer',
             }}
@@ -1284,7 +1371,7 @@ function RollupValue({ value }: { value: unknown }) {
       style={{
         display:      'inline-block',
         fontSize:     13,
-        color:        display === null ? '#718096' : '#e2e8f0',
+        color:        display === null ? 'var(--muted-foreground)' : 'var(--foreground)',
         fontStyle:    display === null ? 'italic' : 'normal',
       }}
     >
@@ -1309,20 +1396,19 @@ function ScheduleRow({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontSize: 12, color: '#a0aec0', minWidth: 84 }}>{label}</span>
+      <span style={{ fontSize: 12, color: 'var(--muted-foreground)', minWidth: 84 }}>{label}</span>
       <input
         type={kind === 'date' ? 'date' : 'datetime-local'}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         style={{
-          background:   '#2d3748',
-          border:       '1px solid #4a5568',
+          background:   'var(--secondary)',
+          border:       '1px solid var(--border)',
           borderRadius: 6,
-          color:        '#e2e8f0',
+          color:        'var(--foreground)',
           padding:      '6px 10px',
           fontSize:     13,
-          colorScheme:  'dark',
         }}
       />
       {hasValue && (
@@ -1332,8 +1418,8 @@ function ScheduleRow({
           disabled={disabled}
           style={{
             background:   'transparent',
-            color:        '#a0aec0',
-            border:       '1px solid #4a5568',
+            color:        'var(--muted-foreground)',
+            border:       '1px solid var(--border)',
             borderRadius: 6,
             padding:      '4px 10px',
             fontSize:     12,

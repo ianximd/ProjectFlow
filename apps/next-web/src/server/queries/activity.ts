@@ -115,3 +115,44 @@ export const getActivityFeed = cache(async (
     return null;
   }
 });
+
+const TASK_ACTIVITY_QUERY = /* GraphQL */ `
+  query TaskActivity($taskId: String!, $page: Int, $pageSize: Int) {
+    taskActivity(taskId: $taskId, page: $page, pageSize: $pageSize) {
+      total
+      page
+      pageSize
+      entries {
+        id workspaceId userId userEmail action resource resourceId
+        oldValues newValues ipAddress createdAt
+      }
+    }
+  }
+`;
+
+/** SSR-fetch the audit feed for a single task. Null on error so the
+ *  Activity tab can fall back to an empty feed. */
+export const getTaskActivity = cache(async (
+  taskId: string,
+  page = 1,
+  pageSize = 50,
+): Promise<import('@projectflow/types').AuditLogPage | null> => {
+  try {
+    const { taskActivity } = await gqlData<{
+      taskActivity: {
+        total: number; page: number; pageSize: number;
+        entries: Record<string, unknown>[];
+      } | null;
+    }>(TASK_ACTIVITY_QUERY, { taskId, page, pageSize });
+
+    if (!taskActivity) return { entries: [], total: 0, page, pageSize };
+    return {
+      total:    taskActivity.total,
+      page:     taskActivity.page,
+      pageSize: taskActivity.pageSize,
+      entries:  (taskActivity.entries ?? []).map(parseEntry),
+    };
+  } catch {
+    return null;
+  }
+});

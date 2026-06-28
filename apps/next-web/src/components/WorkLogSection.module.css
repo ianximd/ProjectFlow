@@ -92,15 +92,15 @@
 }
 
 .saveBtn {
-  background: var(--accent);
-  color: var(--foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
   border: none;
   border-radius: 5px;
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
   cursor: pointer;
 }
-.saveBtn:hover    { background: var(--accent); }
+.saveBtn:hover    { background: var(--primary); filter: brightness(1.08); }
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cancelBtn {
@@ -218,13 +218,13 @@
 .editBtn {
   font-size: 0.78rem;
   background: transparent;
-  border: 1px solid var(--ring);
-  color: var(--accent);
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
   border-radius: 4px;
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
-.editBtn:hover { background: var(--accent); }
+.editBtn:hover { background: var(--accent); color: var(--foreground); }
 
 .deleteBtn {
   font-size: 0.78rem;

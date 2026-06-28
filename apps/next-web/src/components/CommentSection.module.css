@@ -134,8 +134,8 @@
 
 .submitBtn {
   align-self: flex-end;
-  background: var(--accent);
-  color: var(--foreground);
+  background: var(--primary);
+  color: var(--primary-foreground);
   border: none;
   border-radius: 6px;
   padding: 8px 16px;
@@ -147,7 +147,8 @@
 }
 
 .submitBtn:hover:not(:disabled) {
-  background: var(--accent);
+  background: var(--primary);
+  filter: brightness(1.08);
 }
 
 .submitBtn:disabled {

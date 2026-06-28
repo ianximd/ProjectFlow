@@ -115,7 +115,7 @@
 .cancelBtn:hover { background: var(--secondary); }
 
 .error {
-  color: var(--foreground);
+  color: var(--destructive);
   font-size: 0.8rem;
   margin: 0;
 }
@@ -229,13 +229,13 @@
 .deleteBtn {
   font-size: 0.78rem;
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted-foreground);
+  border: 1px solid var(--destructive);
+  color: var(--destructive);
   border-radius: 4px;
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
-.deleteBtn:hover    { background: var(--secondary); }
+.deleteBtn:hover    { background: var(--destructive); color: var(--destructive-foreground); }
 .deleteBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .editForm {

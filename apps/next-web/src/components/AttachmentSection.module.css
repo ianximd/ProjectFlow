@@ -65,7 +65,7 @@
 }
 
 .deleteBtn:hover {
-  color: var(--foreground);
+  color: var(--destructive);
 }
 
 /* Upload zone */
@@ -113,7 +113,7 @@
 
 .error {
   font-size: 13px;
-  color: var(--foreground);
+  color: var(--destructive);
 }
 
 .empty {

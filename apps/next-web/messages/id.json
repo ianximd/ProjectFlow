@@ -71,7 +71,16 @@
     "type_line": "Diagram garis",
     "type_pie": "Diagram lingkaran",
     "type_time_tracked": "Waktu tercatat",
-    "type_goal": "Sasaran"
+    "type_goal": "Sasaran",
+    "type_burndown": "Burndown",
+    "type_velocity": "Velocity",
+    "type_burnup": "Burnup",
+    "type_cumulative_flow": "Aliran kumulatif",
+    "type_lead_cycle_time": "Waktu lead & siklus",
+    "type_sprint_summary": "Ringkasan sprint",
+    "type_portfolio": "Portofolio",
+    "type_timesheet": "Lembar waktu",
+    "type_battery": "Baterai"
   },
   "Sprints": {
     "title": "Sprint",
@@ -2037,7 +2046,10 @@
     "filterActor": "Filter berdasarkan aktor",
     "filterAction": "Filter berdasarkan aksi",
     "allActors": "Semua aktor",
-    "allActions": "Semua aksi"
+    "allActions": "Semua aksi",
+    "tabEmpty": "Belum ada aktivitas",
+    "tabLoading": "Memuat aktivitas…",
+    "tabError": "Gagal memuat aktivitas"
   },
   "Embed": {
     "title": "Tanam",

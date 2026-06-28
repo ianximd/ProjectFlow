@@ -71,7 +71,16 @@
     "type_line": "Line chart",
     "type_pie": "Pie chart",
     "type_time_tracked": "Time tracked",
-    "type_goal": "Goal"
+    "type_goal": "Goal",
+    "type_burndown": "Burndown",
+    "type_velocity": "Velocity",
+    "type_burnup": "Burnup",
+    "type_cumulative_flow": "Cumulative flow",
+    "type_lead_cycle_time": "Lead & cycle time",
+    "type_sprint_summary": "Sprint summary",
+    "type_portfolio": "Portfolio",
+    "type_timesheet": "Timesheet",
+    "type_battery": "Battery"
   },
   "Sprints": {
     "title": "Sprints",
@@ -2037,7 +2046,10 @@
     "filterActor": "Filter by actor",
     "filterAction": "Filter by action",
     "allActors": "All actors",
-    "allActions": "All actions"
+    "allActions": "All actions",
+    "tabEmpty": "No activity yet",
+    "tabLoading": "Loading activity…",
+    "tabError": "Couldn't load activity"
   },
   "Embed": {
     "title": "Embed",

@@ -13,13 +13,13 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: #4a5568;
+  background: var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--foreground);
   flex-shrink: 0;
   text-transform: uppercase;
 }
@@ -39,17 +39,17 @@
 .authorName {
   font-size: 13px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--foreground);
 }
 
 .commentDate {
   font-size: 11px;
-  color: #718096;
+  color: var(--muted-foreground);
 }
 
 .commentText {
   font-size: 14px;
-  color: #a0aec0;
+  color: var(--muted-foreground);
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
@@ -58,7 +58,7 @@
 .commentText.edited::after {
   content: ' (edited)';
   font-size: 11px;
-  color: #718096;
+  color: var(--muted-foreground);
 }
 
 .reactions {
@@ -69,18 +69,18 @@
 }
 
 .reactionBtn {
-  background: #2d3748;
-  border: 1px solid #4a5568;
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 2px 8px;
   font-size: 13px;
   cursor: pointer;
-  color: #a0aec0;
+  color: var(--muted-foreground);
   transition: background 0.15s;
 }
 
 .reactionBtn:hover {
-  background: #4a5568;
+  background: var(--accent);
 }
 
 .commentActions {
@@ -93,14 +93,14 @@
   background: none;
   border: none;
   font-size: 12px;
-  color: #718096;
+  color: var(--muted-foreground);
   cursor: pointer;
   padding: 0;
   text-decoration: underline;
 }
 
 .actionBtn:hover {
-  color: #a0aec0;
+  color: var(--foreground);
 }
 
 /* Add comment form */
@@ -111,12 +111,12 @@
 
 .textarea {
   flex: 1;
-  background: #2d3748;
-  border: 1px solid #4a5568;
+  background: var(--secondary);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 12px;
   font-size: 14px;
-  color: #e2e8f0;
+  color: var(--foreground);
   resize: vertical;
   min-height: 72px;
   font-family: inherit;
@@ -125,17 +125,17 @@
 }
 
 .textarea:focus {
-  border-color: #4299e1;
+  border-color: var(--ring);
 }
 
 .textarea::placeholder {
-  color: #718096;
+  color: var(--muted-foreground);
 }
 
 .submitBtn {
   align-self: flex-end;
-  background: #4299e1;
-  color: #fff;
+  background: var(--accent);
+  color: var(--foreground);
   border: none;
   border-radius: 6px;
   padding: 8px 16px;
@@ -147,7 +147,7 @@
 }
 
 .submitBtn:hover:not(:disabled) {
-  background: #3182ce;
+  background: var(--accent);
 }
 
 .submitBtn:disabled {
@@ -157,6 +157,6 @@
 
 .empty {
   font-size: 13px;
-  color: #718096;
+  color: var(--muted-foreground);
   font-style: italic;
 }

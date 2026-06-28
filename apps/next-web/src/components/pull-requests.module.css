@@ -9,7 +9,7 @@
 .groupTitle {
   font-size: 0.75rem;
   font-weight: 700;
-  color: #7f849c;
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin: 0 0 0.5rem;
@@ -29,8 +29,8 @@
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 0.75rem;
-  background: #11111b;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 6px;
   flex-wrap: wrap;
 }
@@ -45,11 +45,11 @@
 }
 .providerTag[data-provider="github"] {
   background: rgba(88, 91, 112, 0.25);
-  color: #a6adc8;
+  color: var(--muted-foreground);
 }
 .providerTag[data-provider="gitlab"] {
   background: rgba(250, 179, 135, 0.15);
-  color: #fab387;
+  color: var(--foreground);
 }
 
 .prTitle,
@@ -57,7 +57,7 @@
   flex: 1;
   min-width: 0;
   font-size: 0.85rem;
-  color: #cdd6f4;
+  color: var(--foreground);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
@@ -65,7 +65,7 @@
 }
 .prTitle:hover,
 .commitMsg:hover {
-  color: #cba6f7;
+  color: var(--accent);
   text-decoration: underline;
 }
 
@@ -80,7 +80,7 @@
 
 .branch {
   font-size: 0.75rem;
-  color: #7f849c;
+  color: var(--muted-foreground);
   font-family: 'Fira Code', monospace;
   flex-shrink: 0;
   max-width: 120px;
@@ -91,25 +91,25 @@
 
 .sha {
   font-size: 0.75rem;
-  color: #7f849c;
+  color: var(--muted-foreground);
   font-family: 'Fira Code', monospace;
   flex-shrink: 0;
 }
 
 .author {
   font-size: 0.75rem;
-  color: #585b70;
+  color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
 .date {
   font-size: 0.75rem;
-  color: #585b70;
+  color: var(--muted-foreground);
   flex-shrink: 0;
 }
 
 .empty {
   font-size: 0.85rem;
-  color: #585b70;
+  color: var(--muted-foreground);
   margin: 0;
 }

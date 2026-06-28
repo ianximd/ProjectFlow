@@ -16,27 +16,27 @@
 
 .totalBadge {
   font-size: 0.82rem;
-  color: #9399b2;
+  color: var(--muted-foreground);
 }
 .totalBadge strong {
-  color: #cdd6f4;
+  color: var(--foreground);
 }
 
 .logBtn {
   font-size: 0.8rem;
-  background: #313244;
+  background: var(--secondary);
   border: none;
-  color: #cdd6f4;
+  color: var(--foreground);
   border-radius: 4px;
   padding: 0.25rem 0.65rem;
   cursor: pointer;
 }
-.logBtn:hover { background: #45475a; }
+.logBtn:hover { background: var(--accent); }
 
 /* ── form ── */
 .form {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.85rem;
   display: flex;
@@ -58,32 +58,32 @@
 
 .fieldLabel {
   font-size: 0.75rem;
-  color: #9399b2;
+  color: var(--muted-foreground);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .input {
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 5px;
-  color: #cdd6f4;
+  color: var(--foreground);
   font-size: 0.88rem;
   padding: 0.4rem 0.6rem;
 }
-.input:focus { outline: none; border-color: #6c63ff; }
+.input:focus { outline: none; border-color: var(--ring); }
 
 .textarea {
-  background: #181825;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 5px;
-  color: #cdd6f4;
+  color: var(--foreground);
   font-size: 0.85rem;
   padding: 0.4rem 0.6rem;
   min-height: 60px;
   resize: vertical;
 }
-.textarea:focus { outline: none; border-color: #6c63ff; }
+.textarea:focus { outline: none; border-color: var(--ring); }
 
 .formActions {
   display: flex;
@@ -92,38 +92,38 @@
 }
 
 .saveBtn {
-  background: #6c63ff;
-  color: #fff;
+  background: var(--accent);
+  color: var(--foreground);
   border: none;
   border-radius: 5px;
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
   cursor: pointer;
 }
-.saveBtn:hover    { background: #5b53e0; }
+.saveBtn:hover    { background: var(--accent); }
 .saveBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .cancelBtn {
   background: transparent;
-  color: #9399b2;
-  border: 1px solid #45475a;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
   border-radius: 5px;
   padding: 0.35rem 0.9rem;
   font-size: 0.85rem;
   cursor: pointer;
 }
-.cancelBtn:hover { background: #313244; }
+.cancelBtn:hover { background: var(--secondary); }
 
 .error {
-  color: #f38ba8;
+  color: var(--foreground);
   font-size: 0.8rem;
   margin: 0;
 }
 
 /* ── totals ── */
 .totals {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem 0.85rem;
   display: flex;
@@ -141,8 +141,8 @@
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: #6c63ff;
-  color: #fff;
+  background: var(--accent);
+  color: var(--foreground);
   font-size: 0.7rem;
   font-weight: 700;
   display: flex;
@@ -153,13 +153,13 @@
 
 .userName {
   font-size: 0.85rem;
-  color: #cdd6f4;
+  color: var(--foreground);
   flex: 1;
 }
 
 .userTotal {
   font-size: 0.85rem;
-  color: #a6e3a1;
+  color: var(--foreground);
   font-weight: 600;
 }
 
@@ -171,8 +171,8 @@
 }
 
 .logItem {
-  background: #1e1e2e;
-  border: 1px solid #313244;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.7rem 0.85rem;
 }
@@ -194,17 +194,17 @@
 .logUser {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #cdd6f4;
+  color: var(--foreground);
 }
 
 .logTime {
   font-size: 0.78rem;
-  color: #7f849c;
+  color: var(--muted-foreground);
 }
 
 .logDesc {
   font-size: 0.83rem;
-  color: #9399b2;
+  color: var(--muted-foreground);
   margin: 0.2rem 0 0;
 }
 
@@ -218,24 +218,24 @@
 .editBtn {
   font-size: 0.78rem;
   background: transparent;
-  border: 1px solid #6c63ff;
-  color: #6c63ff;
+  border: 1px solid var(--ring);
+  color: var(--accent);
   border-radius: 4px;
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
-.editBtn:hover { background: #6c63ff22; }
+.editBtn:hover { background: var(--accent); }
 
 .deleteBtn {
   font-size: 0.78rem;
   background: transparent;
-  border: 1px solid #f38ba8;
-  color: #f38ba8;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
   border-radius: 4px;
   padding: 0.15rem 0.5rem;
   cursor: pointer;
 }
-.deleteBtn:hover    { background: #f38ba822; }
+.deleteBtn:hover    { background: var(--secondary); }
 .deleteBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .editForm {
@@ -246,6 +246,6 @@
 
 .empty {
   font-size: 0.85rem;
-  color: #7f849c;
+  color: var(--muted-foreground);
   margin: 0;
 }

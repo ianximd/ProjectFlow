@@ -8,6 +8,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      // `server-only` is a Next.js guard package that throws at runtime when
+      // imported in a browser/client context. It has no meaningful export —
+      // alias it to an empty shim so vitest's transform can resolve it without
+      // error. All actual server actions are mocked in tests anyway, so the
+      // guard is never executed.
+      'server-only': path.resolve(__dirname, 'src/__mocks__/server-only.ts'),
     },
   },
   test: {

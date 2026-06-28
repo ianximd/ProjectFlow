@@ -39,7 +39,7 @@ export function ActivityTab({ taskId }: { taskId: string }) {
                   <div key={c.field} className={styles.change}>
                     <span className={styles.field}>{c.field}</span>
                     <span className={styles.from}>{c.from}</span>
-                    <span className={styles.arrow}>→</span>
+                    <span className={styles.arrow} aria-hidden="true">→</span>
                     <span className={styles.to}>{c.to}</span>
                   </div>
                 ))}

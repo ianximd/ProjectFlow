@@ -45,7 +45,7 @@ export class ActivityRepository {
    */
   async listScoped(filters: AuditFilters): Promise<AuditLogPage> {
     const rows = await execSpOne<any>('dbo.usp_AuditLog_List', [
-      { name: 'WorkspaceId', type: sql.NVarChar(255), value: filters.workspaceId },
+      { name: 'WorkspaceId', type: sql.NVarChar(255), value: filters.workspaceId ?? null },
       { name: 'UserId',      type: sql.NVarChar(255), value: filters.userId      ?? null },
       { name: 'Resource',    type: sql.NVarChar(100), value: filters.resource    ?? null },
       { name: 'Action',      type: sql.NVarChar(50),  value: filters.action      ?? null },

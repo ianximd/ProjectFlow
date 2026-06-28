@@ -4,6 +4,7 @@ import { createTestUser, createTestWorkspace, createTestProject } from '../../..
 import { truncateAll } from '../../../__tests__/fixtures/truncate.js';
 import { closePool } from '../../../shared/lib/db.js';
 import { activityService } from '../activity.service.js';
+import { adminRepository } from '../../admin/admin.repository.js';
 
 interface GqlResult { data?: Record<string, any> | null; errors?: { message: string; extensions?: { code?: string } }[] }
 
@@ -14,8 +15,15 @@ async function gql(token: string, query: string, variables: Record<string, unkno
 
 /**
  * Seeds a task inside a List, in a workspace with an owner (member) and a
- * stranger (not in the workspace). Also fires a PATCH on the task to generate
- * a Task UPDATE audit row with resourceId = task.id.
+ * stranger (not in the workspace), then writes a Task UPDATE audit row with
+ * resourceId = task.id EXACTLY the way production does: with WorkspaceId = NULL.
+ *
+ * The request-audit middleware (audit.middleware.ts) logs every task write via
+ * adminService.log WITHOUT a workspaceId, so real Task audit rows always have
+ * WorkspaceId NULL. We seed the row directly through adminRepository (the same
+ * SP path the middleware uses) — and crucially WITHOUT a workspaceId — so the
+ * test exercises the production row shape. We write it synchronously (the
+ * middleware path is fire-and-forget) so the assertion is deterministic.
  */
 async function seedTaskWithAudit() {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -40,10 +48,16 @@ async function seedTaskWithAudit() {
   }), 201)).data;
   const taskId = task.Id ?? task.id;
 
-  // PATCH the task to generate a Task UPDATE audit row (resourceId = taskId)
-  await request(`/tasks/${taskId}`, {
-    method: 'PATCH', token: owner.accessToken,
-    json: { title: 'Audit seed task (updated)' },
+  // Seed the Task UPDATE audit row the way PRODUCTION writes it: WorkspaceId
+  // OMITTED → stored as NULL. This is the row shape that a workspace-scoped
+  // filter would wrongly exclude.
+  await adminRepository.createAuditEntry({
+    // workspaceId intentionally omitted (→ NULL), matching audit.middleware
+    userId:     owner.user.Id,
+    userEmail:  owner.user.Email,
+    action:     'UPDATE',
+    resource:   'Task',
+    resourceId: taskId,
   });
 
   // memberCtx / outsiderCtx — thin objects that match what activityService expects
@@ -77,14 +91,14 @@ describe('taskActivity', () => {
   it('returns audit rows for the task and enforces LIST VIEW authz', async () => {
     const { task, memberCtx, outsiderCtx } = await seedTaskWithAudit();
 
-    // Member sees the row (or at least gets a valid page — the PATCH audit row
-    // may land asynchronously, so we just confirm the call resolves and the
-    // resourceId matches when present)
+    // Member sees the task's audit row. This row has WorkspaceId=NULL (the
+    // production shape), so a workspace-scoped filter would wrongly exclude it
+    // and this assertion would FAIL — this is the regression guard for the
+    // task-scoped feed correctness bug.
     const page = await activityService.getTaskActivity(
       memberCtx.user.userId, task.id, { page: 1, pageSize: 50 },
     );
-    expect(Array.isArray(page.entries)).toBe(true);
-    expect(typeof page.total).toBe('number');
+    expect(page.entries.some((e) => e.resourceId === task.id)).toBe(true);
 
     // Outsider (not a workspace member) must be FORBIDDEN
     await expect(

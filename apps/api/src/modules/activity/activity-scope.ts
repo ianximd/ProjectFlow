@@ -22,7 +22,10 @@ export interface ScopeDescriptor {
 
 /** The AuditListFilters shape consumed by ActivityRepository. */
 export interface AuditFilters {
-  workspaceId: string;
+  // Optional: the task-scoped feed (getTaskActivity) intentionally omits the
+  // workspace filter because request-audit rows carry WorkspaceId=NULL. The
+  // generic activityFeed path always sets it via buildAuditFilters.
+  workspaceId?: string;
   userId?:     string;
   resource?:   string;
   action?:     string;

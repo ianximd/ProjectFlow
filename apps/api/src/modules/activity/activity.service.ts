@@ -111,8 +111,11 @@ export class ActivityService {
 
   /**
    * Activity feed for a single task. Visibility derives from the containing
-   * LIST (same rule as HIERARCHY_RESOURCE). Reuses listScoped with a
-   * resourceId=taskId filter — task UPDATE audit rows carry resourceId=taskId.
+   * LIST (same rule as HIERARCHY_RESOURCE). Scopes ONLY by resourceId=taskId:
+   * a task id is a globally-unique UUID so the resourceId filter alone precisely
+   * returns the task's rows. We deliberately do NOT add a workspaceId filter —
+   * the request-audit middleware writes Task rows with WorkspaceId=NULL, so a
+   * non-null workspace filter would exclude every row and empty the feed.
    */
   async getTaskActivity(
     userId:   string,
@@ -125,9 +128,7 @@ export class ActivityService {
     }
     const listId = (task as { ListId?: string; listId?: string }).ListId
                  ?? (task as { listId?: string }).listId;
-    const workspaceId = (task as { WorkspaceId?: string; workspaceId?: string }).WorkspaceId
-                 ?? (task as { workspaceId?: string }).workspaceId;
-    if (!listId || !workspaceId) {
+    if (!listId) {
       throw new GraphQLError('Task not found', { extensions: { code: 'NOT_FOUND' } });
     }
     const allowed = await accessService.can(userId, 'LIST', listId, 'VIEW');
@@ -135,7 +136,6 @@ export class ActivityService {
       throw new GraphQLError('Forbidden', { extensions: { code: 'FORBIDDEN' } });
     }
     return activityRepository.listScoped({
-      workspaceId,
       resourceId: taskId,
       page:       opts.page && opts.page >= 1 ? opts.page : 1,
       pageSize:   opts.pageSize && opts.pageSize >= 1 ? Math.min(opts.pageSize, 200) : 50,

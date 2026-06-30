@@ -7,10 +7,28 @@ import { toActionError } from './error';
 import type { ActionResult } from './result';
 import type {
   Whiteboard,
+  WhiteboardSummary,
+  WhiteboardScopeType,
   CreateWhiteboardInput,
   ConvertShapeToTaskInput,
   ConvertShapeToTaskResult,
 } from '@projectflow/types';
+
+/** GET /whiteboards?workspaceId&scopeType&scopeId — boards within one scope. */
+export async function listWhiteboards(
+  workspaceId: string,
+  scopeType: WhiteboardScopeType,
+  scopeId: string,
+): Promise<ActionResult<WhiteboardSummary[]>> {
+  await requireSession();
+  try {
+    const params = new URLSearchParams({ workspaceId, scopeType, scopeId });
+    const data = await serverFetch<WhiteboardSummary[]>(`/whiteboards?${params.toString()}`);
+    return { ok: true, data: data ?? [] };
+  } catch (e) {
+    return toActionError(e);
+  }
+}
 
 /**
  * POST /whiteboards/:id/convert-to-task — mint a Task in the target List from a

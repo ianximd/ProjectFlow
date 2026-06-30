@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { FileStack } from 'lucide-react';
+import { FileStack, Settings } from 'lucide-react';
 import { HIERARCHY_ICONS } from '@/config/hierarchy.config';
 import type { List } from '@/server/queries/normalize';
 
@@ -69,6 +69,15 @@ export function ListNode({
         <>
           <Link href={`/lists/${list.id}`} className="grow truncate" onDoubleClick={() => setEditing(true)}>
             {list.name}
+          </Link>
+          <Link
+            href={`/lists/${list.id}/settings`}
+            aria-label={t('listSettings')}
+            title={t('listSettings')}
+            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Settings className="size-3.5" />
           </Link>
           <button
             type="button"

@@ -35,14 +35,17 @@ async function resolveTaskWorkspaceFromBody(c: any): Promise<string | null> {
 }
 
 // Object-level VIEW gate for the task-scoped READ routes (list + rollup): resolve
-// the task's List so reads are gated exactly like the GraphQL mirror — otherwise
-// any authenticated user could read any task's time totals by GUID (IDOR).
-async function resolveTaskList(c: any): Promise<{ type: 'LIST'; id: string } | null> {
+// the task's nearest hierarchy node so reads are gated like the GraphQL mirror —
+// otherwise any authenticated user could read any task's time totals by GUID (IDOR).
+// Reuse requireApp's scope resolver (scopeNodeForTask) so the two gates can't
+// diverge: a task in a List gates on that LIST; a list-less task that lives
+// directly under a Space gates on that SPACE (previously such tasks 404'd here).
+async function resolveTaskList(c: any): Promise<{ type: 'LIST' | 'SPACE'; id: string } | null> {
   const taskId = c.req.param('taskId') ?? c.req.query('taskId');
   if (!taskId) return null;
-  const task = await taskRepoForLookup.getById(taskId);
-  const listId = (task as any)?.listId ?? (task as any)?.ListId ?? null;
-  return listId ? { type: 'LIST', id: listId } : null;
+  const scope = await appService.scopeNodeForTask(taskId);
+  if (!scope?.scopeId) return null;
+  return { type: scope.scopeType === 'list' ? 'LIST' : 'SPACE', id: scope.scopeId };
 }
 
 // time_tracking scope resolvers (the leaf List/Space the gate cares about).

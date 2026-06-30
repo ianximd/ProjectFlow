@@ -128,10 +128,13 @@ export function SidebarTree({ data }: { data: HierarchyTreeData }) {
         data-testid="everything-nav"
         aria-current={everythingActive ? 'page' : undefined}
         className={cn(
-          'flex items-center gap-2 h-8 px-1 text-sm font-medium rounded hover:bg-muted',
+          'flex items-center gap-1 h-8 px-1 text-sm font-medium rounded hover:bg-muted',
           everythingActive ? 'text-primary bg-muted' : 'text-accent-foreground',
         )}
       >
+        {/* Spacer matching the leading chevron toggle on Space/Folder rows so
+            the Globe icon and label align with the rows below. */}
+        <span className="size-4 shrink-0" aria-hidden="true" />
         <Globe className="size-4 shrink-0 text-muted-foreground" />
         <span className="grow truncate">{t('everything')}</span>
       </Link>

@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useSubscription } from '@apollo/client/react';
 import {
   Bell, BellOff, Check, CheckCheck, ChevronLeft, ChevronRight, Bookmark, BookmarkCheck,
+  ShieldCheck, X,
 } from 'lucide-react';
 
 import { notifyActionError } from '@/lib/apiErrorToast';
@@ -13,6 +14,7 @@ import { formatDateTime } from '@/lib/date';
 import {
   markNotificationRead, markAllNotificationsRead, setNotificationSaved,
 } from '@/server/actions/notifications';
+import { resolveAccessRequest } from '@/server/actions/share';
 import { NOTIFICATION_ADDED } from '@/lib/realtime/operations';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -138,6 +140,20 @@ export function NotificationsView({
     });
   }
 
+  // Resolve an ACCESS_REQUESTED notification inline (owner/admin grants or denies);
+  // settling also marks its notification read so it leaves the unread set.
+  function handleResolveAccess(id: string, accessRequestId: string, decision: 'granted' | 'denied') {
+    startTransition(async () => {
+      const res = await resolveAccessRequest(accessRequestId, decision);
+      if (!res.ok) {
+        notifyActionError(res);
+        return;
+      }
+      await markNotificationRead(id);
+      setItems((prev) => prev.map((x) => (x.id === id ? { ...x, isRead: true } : x)));
+    });
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col gap-4">
@@ -186,6 +202,7 @@ export function NotificationsView({
             rows={items}
             onMarkRead={handleMarkRead}
             onToggleSaved={handleToggleSaved}
+            onResolveAccess={handleResolveAccess}
             markBusy={isPending}
             activeTab={activeTab}
             t={t}
@@ -222,11 +239,12 @@ export function NotificationsView({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function NotificationList({
-  rows, onMarkRead, onToggleSaved, markBusy, activeTab, t,
+  rows, onMarkRead, onToggleSaved, onResolveAccess, markBusy, activeTab, t,
 }: {
   rows: NotificationRow[];
   onMarkRead: (id: string) => void;
   onToggleSaved: (id: string, next: boolean) => void;
+  onResolveAccess: (id: string, accessRequestId: string, decision: 'granted' | 'denied') => void;
   markBusy: boolean;
   activeTab: InboxTab;
   t: InboxT;
@@ -245,6 +263,7 @@ function NotificationList({
             row={n}
             onMarkRead={() => onMarkRead(n.id)}
             onToggleSaved={() => onToggleSaved(n.id, !n.savedForLater)}
+            onResolveAccess={onResolveAccess}
             markBusy={markBusy}
             t={t}
           />
@@ -255,11 +274,12 @@ function NotificationList({
 }
 
 function NotificationItem({
-  row, onMarkRead, onToggleSaved, markBusy, t,
+  row, onMarkRead, onToggleSaved, onResolveAccess, markBusy, t,
 }: {
   row: NotificationRow;
   onMarkRead: () => void;
   onToggleSaved: () => void;
+  onResolveAccess: (id: string, accessRequestId: string, decision: 'granted' | 'denied') => void;
   markBusy: boolean;
   t: InboxT;
 }) {
@@ -268,6 +288,11 @@ function NotificationItem({
 
   const taskTitle: string | null = row.payload?.taskTitle ?? null;
   const taskId: string | null    = row.payload?.taskId    ?? null;
+
+  // ACCESS_REQUESTED rows carry the pending request id; surface inline approve/deny.
+  const accessRequestId: string | null =
+    row.type === 'ACCESS_REQUESTED' ? (row.payload?.accessRequestId ?? null) : null;
+  const [resolved, setResolved] = useState<'granted' | 'denied' | null>(null);
 
   // Localized type label (fall back to a humanized enum for unknown types).
   const label = meta.labelKey ? t(meta.labelKey) : humanize(row.type);
@@ -323,6 +348,32 @@ function NotificationItem({
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {accessRequestId && (
+          resolved ? (
+            <span className="px-2 text-xs text-muted-foreground">
+              {resolved === 'granted' ? t('accessApproved') : t('accessDenied')}
+            </span>
+          ) : (
+            <>
+              <Button
+                size="sm" variant="outline"
+                className="h-7 px-2 text-xs"
+                onClick={() => { setResolved('granted'); onResolveAccess(row.id, accessRequestId, 'granted'); }}
+                disabled={markBusy}
+              >
+                <ShieldCheck className="size-3.5" /> {t('approveAccess')}
+              </Button>
+              <Button
+                size="sm" variant="ghost"
+                className="h-7 px-2 text-xs text-destructive"
+                onClick={() => { setResolved('denied'); onResolveAccess(row.id, accessRequestId, 'denied'); }}
+                disabled={markBusy}
+              >
+                <X className="size-3.5" /> {t('denyAccess')}
+              </Button>
+            </>
+          )
+        )}
         <Button
           size="sm" variant="ghost"
           className={cn(

@@ -4,6 +4,7 @@ import {
   BookOpen,
   Braces,
   Building2,
+  ClipboardList,
   Clock,
   FileStack,
   Folder,
@@ -14,6 +15,7 @@ import {
   LifeBuoy,
   List,
   ShieldCheck,
+  Sparkles,
   Tag,
   Trophy,
   UserCog,
@@ -31,6 +33,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Notifications', labelKey: 'notifications', icon: Bell,            path: '/notifications' },
   { title: 'Timesheets',    labelKey: 'timesheets',    icon: Clock,           path: '/timesheets' },
   { title: 'Goals',         labelKey: 'goals',         icon: Trophy,          path: '/goals' },
+  { title: 'Ask AI',        labelKey: 'askAi',         icon: Sparkles,        path: '/ask' },
 
   { heading: 'Plan',          headingKey: 'headingPlan' },
   { title: 'Epics',     labelKey: 'epics',     icon: Layers,          path: '/epics' },
@@ -42,6 +45,7 @@ export const MENU_SIDEBAR: MenuConfig = [
   { title: 'Automations',   labelKey: 'automations',   icon: Zap,            path: '/automations' },
   { title: 'Labels',        labelKey: 'labels',        icon: Tag,            path: '/project-settings' },
   { title: 'Git',           labelKey: 'git',           icon: GitPullRequest, path: '/project-settings?tab=git' },
+  { title: 'Forms',         labelKey: 'forms',         icon: ClipboardList,  path: '/forms' },
 
   { heading: 'System',        headingKey: 'headingSystem' },
   { title: 'Workspaces',    labelKey: 'workspaces',    icon: Building2,      path: '/workspaces' },

@@ -38,17 +38,35 @@ plus the common flows you'll repeat dozens of times a week.
 
 ## 3. Navigation
 
-The sidebar groups pages into four sections:
+The sidebar groups pages into sections:
 
 | Group | Pages |
 |---|---|
-| **Workspace** | Board · Backlog · Roadmap · Dashboard · Notifications |
-| **Plan** | Epics · Versions |
+| **Workspace** | Board · Backlog · Roadmap · Dashboard · Notifications · Timesheets · Goals |
+| **Plan** | Epics · Versions · Templates |
 | **Configure** | Workflows · Automations · Labels · Git |
 | **System** | Workspaces · Projects · Admin · GraphQL |
+| **Account** | My Profile |
+| **Help** | User Guide |
 
 The header shows the **active workspace + project** with switchers next to
 each. The avatar in the top-right opens *Settings*, *Sign out*, etc.
+
+### The workspace hierarchy tree
+
+Below the menu groups the sidebar shows your **workspace hierarchy** — the
+content tree you navigate day to day:
+
+- **Everything** — the top entry (globe icon). Opens a workspace-wide view of
+  every item across all spaces, regardless of where it lives. Its icon aligns
+  with the main menu items above it; it is a top-level destination, not a child
+  of any space.
+- **Spaces** — listed under the *SPACES* heading. Each space expands (chevron)
+  to reveal its **Folders** and **Lists**. Folders in turn contain lists.
+- **Row actions** (hover a space or folder): add a folder, add a list, *Save as
+  template*, or delete. **Double-click** a space / folder / list name to rename
+  it inline.
+- **Reorder** lists by dragging them within a space.
 
 ---
 
@@ -345,4 +363,4 @@ The system refuses to revoke the *last* super-admin to prevent lockout.
 
 ---
 
-*Last updated: May 2026 — v1.0.0.*
+*Last updated: June 2026 — v1.0.0.*

@@ -10,6 +10,8 @@ import {
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { inviteMember, removeMember, updateMemberRole } from '@/server/actions/members';
 import type { WorkspaceDetail, MemberRow } from '@/server/queries/workspace';
+import type { Guest, GuestInvite } from '@projectflow/types';
+import { GuestManagementPanel, type ObjectOption } from '@/components/settings/GuestManagementPanel';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -52,9 +54,15 @@ function initials(name: string) {
 export function MembersView({
   workspace,
   members,
+  initialGuests,
+  initialPending,
+  objectOptions,
 }: {
   workspace: WorkspaceDetail;
   members: MemberRow[];
+  initialGuests: Guest[];
+  initialPending: GuestInvite[];
+  objectOptions: ObjectOption[];
 }) {
   const t = useTranslations('Workspaces');
   const [inviteOpen, setInviteOpen]     = useState(false);
@@ -206,6 +214,16 @@ export function MembersView({
             </table>
           </div>
         )}
+      </Card>
+
+      {/* Guest & limited-member management for this workspace's folders/lists. */}
+      <Card className="p-4">
+        <GuestManagementPanel
+          workspaceId={workspace.id}
+          initialGuests={initialGuests}
+          initialPending={initialPending}
+          objectOptions={objectOptions}
+        />
       </Card>
 
       <InviteDialog

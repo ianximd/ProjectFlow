@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
+import { X } from 'lucide-react';
 import type { Tag } from '@projectflow/types';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { loadSpaceTags, loadTaskTags, createTag, linkTag, unlinkTag } from '@/server/actions/tags';
+import { loadSpaceTags, loadTaskTags, createTag, deleteTag, linkTag, unlinkTag } from '@/server/actions/tags';
 import { notifyActionError } from '@/lib/apiErrorToast';
 import { useTranslations } from 'next-intl';
 
@@ -75,6 +76,22 @@ export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string
     });
   }
 
+  function remove(tag: Tag) {
+    if (!window.confirm(t('deleteTagConfirm', { name: tag.name }))) return;
+    start(async () => {
+      const r = await deleteTag(tag.id);
+      if (!r.ok) { notifyActionError(r); return; }
+      // Drop it from the space list and any local linked state (the server has
+      // already unlinked it from every task as part of the delete).
+      setSpaceTags((prev) => prev.filter((x) => x.id !== tag.id));
+      setLinkedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(tag.id);
+        return next;
+      });
+    });
+  }
+
   const linked = spaceTags.filter((tag) => linkedIds.has(tag.id));
 
   return (
@@ -88,10 +105,23 @@ export function TagPicker({ taskId, spaceId }: { taskId: string; spaceId: string
           <div className="flex flex-col gap-1">
             {spaceTags.length === 0 && <span className="px-2 py-1 text-xs text-muted-foreground">{t('noTagsYet')}</span>}
             {spaceTags.map((tag) => (
-              <label key={tag.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent cursor-pointer">
-                <input type="checkbox" checked={linkedIds.has(tag.id)} onChange={() => toggle(tag)} />
-                <Chip tag={tag} />
-              </label>
+              <div key={tag.id} className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-accent">
+                {/* Delete lives outside the label so clicking it deletes the tag
+                    space-wide rather than toggling the task link. */}
+                <label className="flex flex-1 items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={linkedIds.has(tag.id)} onChange={() => toggle(tag)} />
+                  <Chip tag={tag} />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => remove(tag)}
+                  aria-label={t('deleteTag', { name: tag.name })}
+                  title={t('deleteTag', { name: tag.name })}
+                  className="grid place-items-center rounded p-0.5 text-muted-foreground opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-muted hover:text-destructive"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
             ))}
             <div className="mt-2 flex items-center gap-1">
               <Input

@@ -2,13 +2,21 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
-import { Plus, Edit3, Trash2 } from 'lucide-react';
+import { Plus, Edit3, Trash2, GripVertical } from 'lucide-react';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, arrayMove, verticalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import type {
   CustomField, CustomFieldType, CustomFieldConfig, RollupFunction, FieldRef,
 } from '@projectflow/types';
 
-import { createCustomField, updateCustomField, deleteCustomField } from '@/server/actions/custom-fields';
+import { midpoint } from '@/components/Board';
+import { createCustomField, updateCustomField, deleteCustomField, reorderCustomField } from '@/server/actions/custom-fields';
 import { loadSpaceLists, type SpaceListOption } from '@/server/actions/relationships';
 import { notifyActionError } from '@/lib/apiErrorToast';
 
@@ -94,6 +102,33 @@ export function FieldManager({
   const [editing, setEditing] = useState<CustomField | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isPending, start] = useTransition();
+
+  // Local copy of the field order so a drag can reorder optimistically; re-synced
+  // whenever the SSR `fields` prop changes (after a create/delete/reorder revalidate).
+  const [items, setItems] = useState<CustomField[]>(fields);
+  useEffect(() => { setItems(fields); }, [fields]);
+
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // Reorder by fractional position: arrayMove to find true post-move neighbours,
+  // compute a midpoint between them, persist. Mirrors SidebarTree's list reorder.
+  function onFieldDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const ordered = [...items].sort((a, b) => a.position - b.position);
+    const oldIndex = ordered.findIndex((f) => f.id === active.id);
+    const newIndex = ordered.findIndex((f) => f.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const moved = arrayMove(ordered, oldIndex, newIndex);
+    setItems(moved); // optimistic
+    const pos = moved.findIndex((f) => f.id === active.id);
+    const prev = moved[pos - 1]?.position ?? null;
+    const next = moved[pos + 1]?.position ?? null;
+    start(async () => {
+      const r = await reorderCustomField(String(active.id), midpoint(prev, next));
+      if (!r.ok) { setItems(fields); notifyActionError(r); }
+    });
+  }
 
   // Relationship fields already defined on THIS scope — the candidate set for a
   // rollup's "relationship field" picker.
@@ -219,41 +254,29 @@ export function FieldManager({
         </div>
       ) : (
         <Card className="p-0 overflow-hidden">
-          <ul role="list" className="divide-y divide-border/60">
-            {fields.map((f) => (
-              <li
-                key={f.id}
-                data-testid="custom-field-row"
-                className="group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
-              >
-                <span className="text-sm font-medium text-foreground truncate">{f.name}</span>
-                <span className="text-xs text-muted-foreground">{TYPE_LABELS[f.type] ?? f.type}</span>
-                {f.required && (
-                  <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
-                    {t('requiredBadge')}
-                  </span>
-                )}
-                <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                  <Button
-                    size="sm" variant="ghost" className="h-7 w-7 p-0"
-                    onClick={() => openEdit(f)}
-                    aria-label={t('editFieldAriaLabel', { name: f.name })}
-                  >
-                    <Edit3 className="size-3.5" />
-                  </Button>
-                  <Button
-                    size="sm" variant="ghost"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
-                    onClick={() => remove(f)}
+          <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onFieldDragEnd}>
+            <SortableContext
+              items={[...items].sort((a, b) => a.position - b.position).map((f) => f.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul role="list" className="divide-y divide-border/60">
+                {[...items].sort((a, b) => a.position - b.position).map((f) => (
+                  <SortableFieldRow
+                    key={f.id}
+                    field={f}
+                    typeLabel={TYPE_LABELS[f.type] ?? f.type}
+                    requiredBadge={t('requiredBadge')}
+                    dragHandleLabel={t('reorderFieldAriaLabel', { name: f.name })}
+                    editLabel={t('editFieldAriaLabel', { name: f.name })}
+                    deleteLabel={t('deleteFieldAriaLabel', { name: f.name })}
+                    onEdit={() => openEdit(f)}
+                    onDelete={() => remove(f)}
                     disabled={isPending}
-                    aria-label={t('deleteFieldAriaLabel', { name: f.name })}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+                  />
+                ))}
+              </ul>
+            </SortableContext>
+          </DndContext>
         </Card>
       )}
 
@@ -421,5 +444,63 @@ export function FieldManager({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function SortableFieldRow({
+  field, typeLabel, requiredBadge, dragHandleLabel, editLabel, deleteLabel, onEdit, onDelete, disabled,
+}: {
+  field: CustomField;
+  typeLabel: string;
+  requiredBadge: string;
+  dragHandleLabel: string;
+  editLabel: string;
+  deleteLabel: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  disabled: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      data-testid="custom-field-row"
+      className="group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/20 transition-colors"
+    >
+      {/* Drag handle carries the listeners so the edit/delete buttons stay clickable. */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={dragHandleLabel}
+        className="cursor-grab text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing"
+      >
+        <GripVertical className="size-4" />
+      </button>
+      <span className="text-sm font-medium text-foreground truncate">{field.name}</span>
+      <span className="text-xs text-muted-foreground">{typeLabel}</span>
+      {field.required && (
+        <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-destructive">
+          {requiredBadge}
+        </span>
+      )}
+      <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={onEdit} aria-label={editLabel}>
+          <Edit3 className="size-3.5" />
+        </Button>
+        <Button
+          size="sm" variant="ghost"
+          className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+          onClick={onDelete}
+          disabled={disabled}
+          aria-label={deleteLabel}
+        >
+          <Trash2 className="size-3.5" />
+        </Button>
+      </div>
+    </li>
   );
 }

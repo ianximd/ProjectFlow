@@ -18,13 +18,13 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 
 import { midpoint } from '@/components/Board';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { notifyActionError } from '@/lib/apiErrorToast';
-import { createSavedView, reorderSavedView } from '@/server/actions/views';
+import { createSavedView, deleteSavedView, reorderSavedView } from '@/server/actions/views';
 import type { SavedView, ViewScopeType } from '@projectflow/types';
 
 interface Props {
@@ -97,6 +97,30 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId 
 
   const ordered = [...views].sort((a, b) => a.position - b.position);
 
+  // Delete a view, then move focus off it: navigate to the nearest remaining
+  // view (or drop ?viewId entirely if it was the last one) so the surface never
+  // renders a dangling tab. Mirrors the confirm-then-refresh DeleteFormButton flow.
+  const onDeleteView = (id: string, name: string) => {
+    if (!window.confirm(t('deleteViewConfirm', { name }))) return;
+    startTransition(async () => {
+      const res = await deleteSavedView(id);
+      if (!res.ok) { notifyActionError(res); return; }
+      if (activeViewId === id) {
+        const fallback = ordered.find((v) => v.id !== id);
+        if (fallback) {
+          selectView(fallback.id);
+        } else {
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete('viewId');
+          params.delete('page');
+          const qs = params.toString();
+          router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        }
+      }
+      router.refresh();
+    });
+  };
+
   return (
     <div className="flex items-center gap-1 border-b border-border" role="tablist" aria-label={t('savedViews')}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -107,6 +131,8 @@ export function ViewTabs({ views, activeViewId, scopeType, scopeId, workspaceId 
               view={v}
               active={v.id === activeViewId}
               onSelect={() => selectView(v.id)}
+              onDelete={() => onDeleteView(v.id, v.name)}
+              deleteLabel={t('deleteView', { name: v.name })}
             />
           ))}
         </SortableContext>
@@ -130,10 +156,14 @@ function ViewTab({
   view,
   active,
   onSelect,
+  onDelete,
+  deleteLabel,
 }: {
   view: SavedView;
   active: boolean;
   onSelect: () => void;
+  onDelete: () => void;
+  deleteLabel: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: view.id,
@@ -144,26 +174,47 @@ function ViewTab({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Wrapper carries the sortable node + visual tab chrome; the select button
+  // holds the drag listeners (so the tab is the drag handle) while the delete
+  // affordance — shown only on the active tab — stays outside the listeners so
+  // clicking it never starts a drag. Nested buttons would be invalid markup, so
+  // both live as siblings inside the wrapper.
   return (
-    <button
+    <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
-      type="button"
-      role="tab"
-      aria-selected={active}
-      data-testid="view-tab"
-      data-active={active ? 'true' : undefined}
-      onClick={onSelect}
       className={cn(
-        'h-8 px-3 text-xs font-medium whitespace-nowrap rounded-t -mb-px border-b-2 transition-colors',
+        'group flex items-center h-8 rounded-t -mb-px border-b-2 transition-colors',
         active
           ? 'border-primary text-foreground'
           : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50',
       )}
     >
-      {view.name}
-    </button>
+      <button
+        {...attributes}
+        {...listeners}
+        type="button"
+        role="tab"
+        aria-selected={active}
+        data-testid="view-tab"
+        data-active={active ? 'true' : undefined}
+        onClick={onSelect}
+        className="h-full pl-3 pr-1.5 text-xs font-medium whitespace-nowrap"
+      >
+        {view.name}
+      </button>
+      {active && (
+        <button
+          type="button"
+          onClick={onDelete}
+          data-testid="view-delete"
+          aria-label={deleteLabel}
+          title={deleteLabel}
+          className="mr-1.5 grid place-items-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </div>
   );
 }

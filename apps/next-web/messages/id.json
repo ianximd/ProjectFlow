@@ -830,6 +830,8 @@
     "newTagPlaceholder": "Label baru…",
     "newTagAriaLabel": "Nama label baru",
     "addTag": "Tambah",
+    "deleteTag": "Hapus label “{name}”",
+    "deleteTagConfirm": "Hapus label “{name}” dari space ini? Label akan dihapus dari semua tugas.",
     "watchersSection": "Pengamat",
     "noWatchers": "Tidak ada pengamat",
     "noMembers": "Tidak ada anggota",
@@ -943,7 +945,9 @@
     "tabs": {
       "savedViews": "Tampilan tersimpan",
       "newView": "Tampilan baru",
-      "newViewDefaultName": "Tampilan baru"
+      "newViewDefaultName": "Tampilan baru",
+      "deleteView": "Hapus tampilan “{name}”",
+      "deleteViewConfirm": "Hapus tampilan “{name}”? Tindakan ini tidak dapat dibatalkan."
     },
     "filters": {
       "opIs": "adalah",
@@ -1113,6 +1117,7 @@
     "requiredBadge": "Wajib",
     "editFieldAriaLabel": "Ubah {name}",
     "deleteFieldAriaLabel": "Hapus {name}",
+    "reorderFieldAriaLabel": "Susun ulang {name}",
     "dialogCreateTitle": "Bidang khusus baru",
     "dialogEditTitle": "Ubah {name}",
     "nameLabel": "Nama Bidang",
@@ -1793,6 +1798,10 @@
     "newRole": "Peran khusus baru",
     "roleNamePlaceholder": "mis. Peninjau QA",
     "createRole": "Buat peran",
+    "saveChanges": "Simpan perubahan",
+    "descriptionPlaceholder": "Deskripsi (opsional)",
+    "manage": "Kelola",
+    "close": "Tutup",
     "addUserPlaceholder": "ID pengguna untuk diberi akses",
     "addGrant": "Tambah",
     "counts": "{perms} izin · {members} anggota",
@@ -1944,6 +1953,11 @@
     "wiki": "Wiki",
     "verified": "Terverifikasi",
     "createTask": "Buat tugas dari pilihan",
+    "createTaskListLabel": "Daftar",
+    "createTaskConfirm": "Buat tugas",
+    "createTaskCancel": "Batal",
+    "createTaskSuccess": "Tugas dibuat dari pilihan",
+    "createTaskNoLists": "Tidak ada daftar tersedia",
     "slash": {
       "h1": "Judul 1",
       "h2": "Judul 2",

@@ -40,3 +40,55 @@
   padding: 24px;
   color: var(--text-2, #6b7280);
 }
+
+/* ── Selection bubble menu (create task from selection) ──────────────────── */
+.bubblePicker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bubbleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2, #6b7280);
+}
+
+.bubbleButton,
+.bubbleButtonGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.bubbleButton {
+  color: var(--primary-foreground, #fff);
+  background: var(--primary, #3b82f6);
+  border: 1px solid var(--primary, #3b82f6);
+}
+
+.bubbleButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.bubbleButtonGhost {
+  color: var(--text-2, #6b7280);
+  background: transparent;
+  border: 1px solid var(--border, #d1d5db);
+}
+
+.bubbleNote {
+  font-size: 12px;
+  color: var(--text-2, #6b7280);
+  padding: 4px 8px;
+}

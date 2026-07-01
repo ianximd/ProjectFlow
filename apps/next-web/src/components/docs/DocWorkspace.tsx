@@ -12,9 +12,10 @@ interface Props {
   doc: Doc;
   pages: DocPage[];
   me: { name: string };
+  lists: { id: string; name: string }[];
 }
 
-export function DocWorkspace({ doc, pages, me }: Props) {
+export function DocWorkspace({ doc, pages, me, lists }: Props) {
   const router = useRouter();
   const [activePageId, setActivePageId] = useState<string | null>(
     pages.length > 0 ? pages[0].id : null,
@@ -30,7 +31,15 @@ export function DocWorkspace({ doc, pages, me }: Props) {
         onChanged={() => router.refresh()}
       />
       <div style={{ flex: 1, overflow: 'auto' }}>
-        {activePageId && <DocEditor pageId={activePageId} me={me} />}
+        {activePageId && (
+          <DocEditor
+            pageId={activePageId}
+            me={me}
+            scopeType={doc.scopeType}
+            scopeId={doc.scopeId}
+            lists={lists}
+          />
+        )}
       </div>
       {activePageId && (
         <DocHistoryPanel docId={doc.id} pageId={activePageId} />

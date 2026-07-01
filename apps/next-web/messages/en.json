@@ -830,6 +830,8 @@
     "newTagPlaceholder": "New tag…",
     "newTagAriaLabel": "New tag name",
     "addTag": "Add",
+    "deleteTag": "Delete tag “{name}”",
+    "deleteTagConfirm": "Delete the tag “{name}” from this space? It will be removed from all tasks.",
     "watchersSection": "Watchers",
     "noWatchers": "No watchers",
     "noMembers": "No members",
@@ -943,7 +945,9 @@
     "tabs": {
       "savedViews": "Saved views",
       "newView": "New view",
-      "newViewDefaultName": "New view"
+      "newViewDefaultName": "New view",
+      "deleteView": "Delete view “{name}”",
+      "deleteViewConfirm": "Delete the view “{name}”? This can't be undone."
     },
     "filters": {
       "opIs": "is",
@@ -1113,6 +1117,7 @@
     "requiredBadge": "Required",
     "editFieldAriaLabel": "Edit {name}",
     "deleteFieldAriaLabel": "Delete {name}",
+    "reorderFieldAriaLabel": "Reorder {name}",
     "dialogCreateTitle": "New custom field",
     "dialogEditTitle": "Edit {name}",
     "nameLabel": "Name",
@@ -1793,6 +1798,10 @@
     "newRole": "New custom role",
     "roleNamePlaceholder": "e.g. QA Reviewer",
     "createRole": "Create role",
+    "saveChanges": "Save changes",
+    "descriptionPlaceholder": "Description (optional)",
+    "manage": "Manage",
+    "close": "Close",
     "addUserPlaceholder": "User ID to grant",
     "addGrant": "Add",
     "counts": "{perms} permissions · {members} members",
@@ -1944,6 +1953,11 @@
     "wiki": "Wiki",
     "verified": "Verified",
     "createTask": "Create task from selection",
+    "createTaskListLabel": "List",
+    "createTaskConfirm": "Create task",
+    "createTaskCancel": "Cancel",
+    "createTaskSuccess": "Task created from selection",
+    "createTaskNoLists": "No lists available",
     "slash": {
       "h1": "Heading 1",
       "h2": "Heading 2",
